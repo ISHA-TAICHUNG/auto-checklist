@@ -31,9 +31,8 @@
  */
 
 function handleSubmission_(payload) {
-  // 不在這層 catch — 讓 doPost / admin 自己決定（debug 模式回 stack）
-  if (true) {
-    if (!payload || !payload.formType) throw new Error('缺少 formType');
+  // 這層不 catch — 讓 doPost 用 friendlyError 統一包裝
+  if (!payload || !payload.formType) throw new Error('缺少 formType');
     if (!payload.equipmentId) throw new Error('缺少 equipmentId');
     if (!payload.checkDate) throw new Error('缺少 checkDate');
     if (!Array.isArray(payload.items) || !payload.items.length) {
@@ -118,7 +117,6 @@ function handleSubmission_(payload) {
     } finally {
       lock.releaseLock();
     }
-  }
 }
 
 /**

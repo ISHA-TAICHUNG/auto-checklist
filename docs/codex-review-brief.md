@@ -1,6 +1,15 @@
 # 自動檢查表電子化系統 — 給 codex 的審查 brief
 
 > 目的：讓 codex 接手審視整體架構決策、找出潛在 bug、評估 trade-offs
+>
+> **更新狀態（最新 commit v3.0）**：codex 已 review 並指出 3 個 P1/P2 安全問題，全部已修正：
+> - ✅ fetchPdf admin endpoint 已移除（避免任意 Drive 檔案下載）
+> - ✅ testSubmit admin endpoint 已移除（避免污染 production audit）
+> - ✅ ?debug=1 模式已移除（避免未授權 stack trace 洩漏）
+>
+> 系統目前 production-ready，僅留以下 admin endpoints（皆需 token）：
+> - `admin&action=fixWebAppUrl` — 修正 webAppUrl 設定
+> - `admin&action=setBranding` — 寫機構名稱 / 承辦 email 到 DB
 
 ---
 

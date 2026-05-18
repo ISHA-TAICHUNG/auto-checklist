@@ -67,9 +67,7 @@ GitHub Pages (repo root)       Apps Script (apps-script/)
 │  ├─ Pdf.gs                   # PDF 產生
 │  ├─ Calendar.gs              # 場地使用判斷
 │  ├─ Reminder.gs              # 每日 09:00 提醒信
-│  ├─ Setup.gs                 # 一鍵初始化 DB
-│  ├─ pdf-daily.html           # 日檢 PDF 模板
-│  └─ pdf-monthly.html         # 月檢 PDF 模板
+│  └─ Setup.gs                 # 一鍵初始化 DB + branding 設定 + OAuth helper
 ├─ index.html                  # GitHub Pages 入口（設備列表）
 ├─ daily.html                  # 每日檢點表
 ├─ monthly.html                # 每月檢查紀錄
