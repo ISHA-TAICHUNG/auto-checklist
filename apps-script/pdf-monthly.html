@@ -130,10 +130,10 @@
 <div class="footer">
   <div>
     <div class="sig-box">
-      <? // signature 已在後端 validateSignature_ 嚴格驗證為 data:image/(png|jpeg);base64,...
-         // 這裡再做一層白名單檢查，雙重保險
-         if (p.signature && /^data:image\/(png|jpeg);base64,/.test(p.signature)) { ?>
-        <img src="<?= p.signature ?>" alt="signature">
+      <? // signatureUrl 來自 Pdf.gs，是 Drive 暫存圖的 URL（Apps Script PDF 引擎支援）
+         // 不能用 base64 data URL，PDF 引擎不支援會變破圖
+         if (signatureUrl) { ?>
+        <img src="<?= signatureUrl ?>" alt="signature">
       <? } ?>
     </div>
     <div class="sig-label">檢查人員簽名：<?= p.inspector || '' ?></div>
