@@ -34,6 +34,10 @@ function doGet(e) {
         break;
       }
 
+      case 'status':
+        result = { ok: true, status: getSystemStatus_() };
+        break;
+
       default:
         throw new Error('未知的 api: ' + api);
     }

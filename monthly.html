@@ -196,6 +196,12 @@
 
       // ----- 簽名 -----
       const sigCard = makeCard('檢查人員簽名');
+
+      const sigHint = document.createElement('div');
+      sigHint.className = 'signature-hint';
+      sigHint.textContent = '可直接在下方簽名，或點「展開大畫面簽名」獲得更大空間';
+      sigCard.body.appendChild(sigHint);
+
       const canvas = document.createElement('canvas');
       canvas.className = 'signature-pad';
       sigCard.body.appendChild(canvas);
@@ -208,11 +214,19 @@
       clearBtn.textContent = '清除重簽';
       sigActions.appendChild(clearBtn);
       sigCard.body.appendChild(sigActions);
+
+      const fsBtn = document.createElement('button');
+      fsBtn.type = 'button';
+      fsBtn.className = 'btn-fullscreen-sig';
+      fsBtn.textContent = '展開大畫面簽名（建議手機橫向）';
+      sigCard.body.appendChild(fsBtn);
+
       root.appendChild(sigCard.card);
 
       setTimeout(() => {
         sigPad = new SignaturePad(canvas);
         clearBtn.onclick = () => sigPad.clear();
+        fsBtn.onclick = () => openFullscreenSignature(sigPad);
       }, 0);
 
       // ----- 送出 -----

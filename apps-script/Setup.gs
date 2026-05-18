@@ -143,3 +143,61 @@ function setWebAppUrlFromCurrent() {
   sheet.appendRow(['webAppUrl', url, '由 setWebAppUrlFromCurrent() 自動填入']);
   return url;
 }
+
+/**
+ * 系統狀態快照（不含敏感資訊，可供外部診斷）
+ *
+ * 回傳：所有設定鍵值、trigger 數量、紀錄筆數、Drive URL 等
+ */
+function getSystemStatus_() {
+  const ss = SpreadsheetApp.openById(CONFIG.DB_SHEET_ID);
+
+  // 1. 系統設定
+  const settingsSheet = ss.getSheetByName('系統設定');
+  const settings = {};
+  if (settingsSheet && settingsSheet.getLastRow() > 1) {
+    const data = settingsSheet.getRange(2, 1, settingsSheet.getLastRow() - 1, 2).getValues();
+    data.forEach(r => { if (r[0]) settings[String(r[0])] = String(r[1] || ''); });
+  }
+
+  // 2. 觸發器
+  const triggers = ScriptApp.getProjectTriggers().map(t => ({
+    handler: t.getHandlerFunction(),
+    type: String(t.getEventType()),
+  }));
+
+  // 3. 各表筆數
+  const counts = {};
+  ['設備清單', '檢查表模板', '檢查項目', '填報紀錄', '節假日關鍵字'].forEach(name => {
+    const s = ss.getSheetByName(name);
+    counts[name] = s ? Math.max(0, s.getLastRow() - 1) : -1;
+  });
+
+  // 4. Drive 資源檢查
+  let archiveOk = false;
+  try {
+    DriveApp.getFolderById(CONFIG.ARCHIVE_ROOT_FOLDER_ID);
+    archiveOk = true;
+  } catch (e) { /* ignore */ }
+
+  let venueOk = false;
+  let venueTitle = '';
+  try {
+    const venueId = getVenueSheetId_();
+    const venueSs = SpreadsheetApp.openById(venueId);
+    venueOk = true;
+    venueTitle = venueSs.getName();
+  } catch (e) { /* ignore */ }
+
+  return {
+    timeZone: tz_(),
+    deploymentUrl: ScriptApp.getService().getUrl() || '',
+    dbSheetUrl: 'https://docs.google.com/spreadsheets/d/' + CONFIG.DB_SHEET_ID + '/edit',
+    settings,
+    triggers,
+    counts,
+    archive: { ok: archiveOk, folderId: CONFIG.ARCHIVE_ROOT_FOLDER_ID },
+    venue: { ok: venueOk, title: venueTitle, sheetId: getVenueSheetId_() },
+    holidayKeywordsCount: getHolidayKeywords_().length,
+  };
+}
