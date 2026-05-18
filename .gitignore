@@ -19,3 +19,7 @@ _temp_*
 node_modules/
 dist/
 build/
+
+# 測試/實際填表產出的 PDF 不上 git（含具體機構/位置/設備資訊）
+*.pdf
+.claude/
