@@ -16,7 +16,7 @@ function initializeDatabase() {
   setupSheet_(ss, '系統設定', ['鍵', '值', '備註'], [
     ['venueSheetId', CONFIG.VENUE_SHEET_ID_FALLBACK, '場地使用試算表 ID（每年新表只要改這裡）'],
     ['webAppUrl', '', 'Apps Script 部署後的 exec URL（部署完執行 setWebAppUrlFromCurrent 自動填）'],
-    ['webFrontendUrl', '', 'GitHub Pages 前端網址（提醒信會帶這連結）例：https://ishataichung.github.io/auto-checklist'],
+    ['webFrontendUrl', '', 'GitHub Pages 前端網址（提醒信會帶這連結）例：https://<your-github-username>.github.io/auto-checklist'],
   ]);
 
   setupSheet_(ss, '節假日關鍵字', ['關鍵字', '備註'],
@@ -142,6 +142,37 @@ function setWebAppUrlFromCurrent() {
   }
   sheet.appendRow(['webAppUrl', url, '由 setWebAppUrlFromCurrent() 自動填入']);
   return url;
+}
+
+/**
+ * 寫入 branding 設定（機構名稱、承辦 email）到 DB 系統設定
+ *
+ * 從 admin endpoint 呼叫，讓 source code 不用寫死具體機構資訊
+ */
+function setBrandingSettings_(settings) {
+  const ss = SpreadsheetApp.openById(CONFIG.DB_SHEET_ID);
+  const sheet = ss.getSheetByName('系統設定');
+  const data = sheet.getDataRange().getValues();
+  const written = {};
+
+  function upsert(key, value, note) {
+    if (!value) return;
+    for (let i = 1; i < data.length; i++) {
+      if (data[i][0] === key) {
+        sheet.getRange(i + 1, 2).setValue(value);
+        written[key] = '更新';
+        return;
+      }
+    }
+    sheet.appendRow([key, value, note || '']);
+    data.push([key, value, note || '']);
+    written[key] = '新增';
+  }
+
+  upsert('organizationName', settings.organizationName, '機構抬頭（PDF / 提醒信顯示）');
+  upsert('reminderEmailTo', settings.reminderEmailTo, '提醒信收件人 email');
+
+  return written;
 }
 
 /**

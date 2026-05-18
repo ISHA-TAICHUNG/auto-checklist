@@ -58,5 +58,23 @@
     getFormMeta: (form, eqp) => apiGet({ api: 'meta', form, eqp }),
     submit: (payload) => apiPost(payload),
     health: () => apiGet({ api: 'health' }),
+    branding: () => apiGet({ api: 'branding' }),
   };
+
+  // 啟動時自動 fetch 機構名稱、更新所有 .org-name 元素
+  async function loadBranding() {
+    try {
+      const r = await window.API.branding();
+      if (r.ok && r.organizationName) {
+        document.querySelectorAll('[data-org-name]').forEach(el => {
+          el.textContent = r.organizationName;
+        });
+      }
+    } catch (e) { /* 無 branding 不致命 */ }
+  }
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', loadBranding);
+  } else {
+    loadBranding();
+  }
 })();

@@ -23,20 +23,20 @@
 
 ## 情況 A：加同類設備（最常見）
 
-**範例**：<位置>已有 1 號天車（CRANE-LJ-001），要再加 2 號天車。
+**範例**：範例：場地已有 1 號天車（<設備代號>），要再加 2 號天車。
 
 ### 步驟
 
-1. 打開 [DB Sheet](https://docs.google.com/spreadsheets/d/1ar4SHX7hqaTiCMjkrPbNXhzR7z8wbcPKifVHshHt83I/edit)
+1. 打開 [DB Sheet](https://docs.google.com/spreadsheets/d/<YOUR_DB_SHEET_ID>/edit)
 2. 左下角分頁切到「**設備清單**」
 3. 在最後一列下面新增：
 
 | 設備代號 | 設備名稱 | 機械編號 | 型式規格 | 設備類別 | 所在位置 | 場地表分頁 | 啟用 |
 |---|---|---|---|---|---|---|---|
-| `CRANE-LJ-002` | <位置>_天車2號 | 12F36D0130002 | 普通架空移動起重機 | 固定式起重機 | <位置> | 固定式起重機 | TRUE |
+| `<新設備代號>` | <位置>_天車2號 | <機械編號> | 普通架空移動起重機 | 固定式起重機 | <位置> | 固定式起重機 | TRUE |
 
 **重點**：
-- `設備代號` 唯一，自己取（例如 `CRANE-LJ-002`、`CRANE-CH-001`）
+- `設備代號` 唯一，自己取（例如 `<新設備代號>`、`<設備代號>`）
 - `設備類別` **必須完全一樣**寫「固定式起重機」（系統靠這個對應到日檢/月檢模板）
 - `場地表分頁` 寫「固定式起重機」（就是場地表的那個分頁名）
 - `啟用` 填 `TRUE`（要關閉就改 `FALSE`，不要直接刪除）
@@ -44,7 +44,7 @@
 ### 完成後
 
 馬上打開 `https://<your-github-username>.github.io/auto-checklist/` 就會看到新設備。
-新天車的 QR Code 內容：`https://<your-github-username>.github.io/auto-checklist/daily.html?eqp=CRANE-LJ-002`
+新天車的 QR Code 內容：`https://<your-github-username>.github.io/auto-checklist/daily.html?eqp=<新設備代號>`
 
 ---
 
@@ -54,7 +54,7 @@
 
 ### 步驟 1：先傳場地表分頁截圖給我看
 
-打開 `115-術科V1` 場地表，把目標分頁（如「內外場-堆高機、移動式、危運、吊籠、一壓」）截圖傳給我。
+打開 `<場地使用表名稱>` 場地表，把目標分頁（如「內外場-堆高機、移動式、危運、吊籠、一壓」）截圖傳給我。
 
 **為什麼**：如果該分頁結構和「固定式起重機」一樣（每月 2 欄、星期 + 日期 + 內容），你自己加 sheet 就完工。如果不同（例如直式行事曆、或多欄位），我要先改 `Calendar.gs` 加新的解析邏輯。
 
@@ -152,13 +152,13 @@
 - 手動執行 `dailyReminderJob` 看執行記錄找原因
 
 ### 3. 簽完沒看到 PDF？
-- 開啟 [歸檔資料夾](https://drive.google.com/drive/folders/1Yn4Nj-7qc4TH1aQ7M4NzZCASHO_DQSVz) → 對應設備類別 → 民國年 → 月份
+- 開啟 [歸檔資料夾](https://drive.google.com/drive/folders/<YOUR_ARCHIVE_FOLDER_ID>) → 對應設備類別 → 民國年 → 月份
 - 也可以在 DB「填報紀錄」最後一列看「PDF連結」欄
 
 ### 4. 想看系統現在狀態？
 打開：
 ```
-https://script.google.com/macros/s/AKfycbwrAgEXjxRfvQtpGVFqRrHRmr-i5itZZSH9DmrvVl48YWlxFhdxJvEIwQYpR7rv6SkTrQ/exec?api=status
+https://script.google.com/macros/s/<YOUR_WEBAPP_DEPLOYMENT_ID>/exec?api=status
 ```
 會看到所有設定、觸發器、表筆數等。
 

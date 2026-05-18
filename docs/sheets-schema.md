@@ -11,7 +11,7 @@
 |---|---|---|
 | `venueSheetId` | (場地表的 Sheet ID) | 每年新表只要改這裡，不用改程式 |
 | `webAppUrl` | (Apps Script exec URL) | 部署後執行 `setWebAppUrlFromCurrent` 自動填入 |
-| `webFrontendUrl` | (GitHub Pages 網址) | 例：`https://ishataichung.github.io/auto-checklist`，提醒信會帶這連結 |
+| `webFrontendUrl` | (GitHub Pages 網址) | 例：`https://<your-github-username>.github.io/auto-checklist`，提醒信會帶這連結 |
 
 ## 2. `節假日關鍵字`
 
@@ -25,7 +25,7 @@
 
 | 設備代號 | 設備名稱 | 機械編號 | 型式規格 | 設備類別 | 所在位置 | 場地表分頁 | 啟用 |
 |---|---|---|---|---|---|---|---|
-| CRANE-LJ-001 | <設備名稱> | 12F36D0130001 | 普通架空移動起重機 | 固定式起重機 | <位置> | 固定式起重機 | TRUE |
+| <設備代號> | <設備名稱> | <機械編號> | 普通架空移動起重機 | 固定式起重機 | <位置> | 固定式起重機 | TRUE |
 
 未來新增「堆高機3號」：加一列，「場地表分頁」填「內外場-堆高機、移動式、危運、吊籠、一壓」，啟用=TRUE。
 

@@ -90,14 +90,29 @@
     isEmpty() { return !this.hasInk; }
     toDataURL() { return this.hasInk ? this.canvas.toDataURL('image/png') : ''; }
 
-    /** 把外部 dataURL 載入到此 canvas（用於從全螢幕回填）*/
+    /** 把外部 dataURL 載入到此 canvas（用於從全螢幕回填）
+     *  等比例縮放 + 置中（避免變形或集中左上）*/
     loadFromDataURL(dataUrl) {
       if (!dataUrl) return;
       const rect = this.canvas.getBoundingClientRect();
       const img = new Image();
       img.onload = () => {
         this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
-        this.ctx.drawImage(img, 0, 0, rect.width, rect.height);
+        // 算等比例 fit
+        const imgRatio = img.width / img.height;
+        const canvasRatio = rect.width / rect.height;
+        let dw, dh, dx, dy;
+        if (imgRatio > canvasRatio) {
+          // image 比 canvas 寬：fit width
+          dw = rect.width;
+          dh = rect.width / imgRatio;
+        } else {
+          dh = rect.height;
+          dw = rect.height * imgRatio;
+        }
+        dx = (rect.width - dw) / 2;
+        dy = (rect.height - dh) / 2;
+        this.ctx.drawImage(img, dx, dy, dw, dh);
         this.hasInk = true;
       };
       img.src = dataUrl;
@@ -114,15 +129,30 @@
 
     const header = document.createElement('div');
     header.className = 'sig-overlay-header';
+
+    const cancelLink = document.createElement('span');
+    cancelLink.textContent = '✕ 取消';
+    cancelLink.style.cursor = 'pointer';
+    cancelLink.style.padding = '6px 10px';
+    cancelLink.style.fontSize = '16px';
+    cancelLink.onclick = () => cleanup();
+
     const title = document.createElement('span');
-    title.textContent = '✍ 全螢幕簽名（建議手機橫向）';
-    const closeX = document.createElement('span');
-    closeX.textContent = '✕ 取消';
-    closeX.style.cursor = 'pointer';
-    closeX.style.fontSize = '15px';
-    closeX.onclick = () => cleanup();
+    title.textContent = '簽名';
+
+    const doneTopBtn = document.createElement('span');
+    doneTopBtn.textContent = '✓ 完成';
+    doneTopBtn.style.cursor = 'pointer';
+    doneTopBtn.style.padding = '8px 14px';
+    doneTopBtn.style.background = '#fff';
+    doneTopBtn.style.color = '#1a73e8';
+    doneTopBtn.style.borderRadius = '6px';
+    doneTopBtn.style.fontSize = '16px';
+    doneTopBtn.style.fontWeight = '700';
+
+    header.appendChild(cancelLink);
     header.appendChild(title);
-    header.appendChild(closeX);
+    header.appendChild(doneTopBtn);
 
     const wrap = document.createElement('div');
     wrap.className = 'sig-overlay-canvas-wrap';
@@ -148,7 +178,7 @@
     clearBtn.textContent = '清除重簽';
     const doneBtn = document.createElement('button');
     doneBtn.className = 'btn-primary';
-    doneBtn.textContent = '完成';
+    doneBtn.textContent = '✓ 完成';
     footer.appendChild(clearBtn);
     footer.appendChild(doneBtn);
 
@@ -170,12 +200,14 @@
 
     clearBtn.onclick = () => fullPad && fullPad.clear();
 
-    doneBtn.onclick = () => {
+    const onDone = () => {
       if (fullPad && !fullPad.isEmpty()) {
         mainPad.loadFromDataURL(fullPad.toDataURL());
       }
       cleanup();
     };
+    doneBtn.onclick = onDone;
+    doneTopBtn.onclick = onDone;
 
     function cleanup() {
       if (overlay.parentNode) overlay.parentNode.removeChild(overlay);

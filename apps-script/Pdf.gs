@@ -18,7 +18,9 @@ function buildPdf_(formType, ctx) {
   const tplName = formType === 'daily' ? 'pdf-daily' : 'pdf-monthly';
   const tpl = HtmlService.createTemplateFromFile(tplName);
 
-  // 簽名：存 Drive 暫存 → 取 URL
+  // 簽名：存 Drive 暫存 → 取 lh3.googleusercontent URL
+  // 為什麼用 lh3：drive.google.com/uc?id= 在 Apps Script PDF 引擎內可能被擋
+  // lh3.googleusercontent.com 是 Google CDN，PDF 引擎可正常 fetch
   let signatureUrl = '';
   let signatureFile = null;
   if (ctx.payload.signature) {
@@ -28,15 +30,23 @@ function buildPdf_(formType, ctx) {
         const tempFolder = getOrCreateSignatureTempFolder_();
         signatureFile = tempFolder.createFile(sigBlob);
         signatureFile.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
-        signatureUrl = 'https://drive.google.com/uc?id=' + signatureFile.getId();
+        const fileId = signatureFile.getId();
+        signatureUrl = 'https://lh3.googleusercontent.com/d/' + fileId + '=w800';
+        Logger.log('簽名暫存：' + fileId + ' URL=' + signatureUrl);
+        // 給 sharing 一點 propagation 時間（保險）
+        Utilities.sleep(500);
+      } else {
+        Logger.log('簽名 blob 解析失敗');
       }
     } catch (e) {
-      Logger.log('簽名暫存失敗：' + e);
+      Logger.log('簽名暫存例外：' + e + '\n' + (e.stack || ''));
     }
+  } else {
+    Logger.log('payload.signature 為空');
   }
 
   // 把所有要塞進模板的變數放上去
-  tpl.org = CONFIG.ORGANIZATION_HEADER;
+  tpl.org = getOrgHeader_();
   tpl.equipment = ctx.equipment;
   tpl.payload = ctx.payload;
   tpl.checkDate = ctx.checkDate;

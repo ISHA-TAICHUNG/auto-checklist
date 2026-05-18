@@ -14,7 +14,7 @@
   <header class="header">
     <a class="back" href="index.html">回設備列表</a>
     <h1>每月定期檢查紀錄</h1>
-    <div class="sub" id="orgName"></div>
+    <div class="sub" data-org-name></div>
   </header>
 
   <main class="container">
@@ -24,7 +24,7 @@
   </main>
 
   <script>
-    document.getElementById('orgName').textContent = SYSTEM_CONFIG.ORG_NAME;
+    // 機構名稱由 api.js 啟動時動態載入到 [data-org-name] 元素
 
     const urlParams = new URLSearchParams(location.search);
     const eqp = urlParams.get('eqp');

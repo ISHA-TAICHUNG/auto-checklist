@@ -27,10 +27,10 @@ const CONFIG = {
   // 部署時建立一個新的 Google Sheets，把它的 ID 填到這裡
   DB_SHEET_ID: 'REPLACE_WITH_YOUR_DB_SHEET_ID',
 
-  // 場地使用試算表（你提供的「115-術科V1」那張）
+  // 場地使用試算表（你提供的「<場地使用表名稱>」那張）
   // 之後每年新建時，到 DB 的「系統設定」工作表更改即可
   // 預設讀取「系統設定」表中的 venueSheetId 鍵值，這裡只是 fallback
-  VENUE_SHEET_ID_FALLBACK: '1ZCC99WjQuIKmDuR8L3jOTmKHI0hgTk0rJMm_vyQX45o',
+  VENUE_SHEET_ID_FALLBACK: 'REPLACE_WITH_YOUR_VENUE_SHEET_ID',
 
   // 場地使用試算表的「分頁」名稱
   // 之後新增其他機具（堆高機、高空工作車）時，在 DB「機具場地對應」表設定
@@ -42,33 +42,30 @@ const CONFIG = {
   // 結構會是：[根資料夾] / [機具類別] / [民國年] / [民國月] / [檔名].pdf
   ARCHIVE_ROOT_FOLDER_ID: 'REPLACE_WITH_YOUR_DRIVE_FOLDER_ID',
 
-  // ------ 提醒信 ------
+  // ------ 提醒信（這些是 source code 預設值，runtime 會被 DB 系統設定覆蓋）------
 
-  REMINDER_EMAIL_TO: '<reminder-recipient@example.com>',
-  REMINDER_EMAIL_CC: '',           // 副本（多人用逗號隔開）
+  REMINDER_EMAIL_TO_DEFAULT: 'admin@example.com',  // DB 設定 reminderEmailTo 會覆寫
+  REMINDER_EMAIL_CC: '',                           // 副本（多人用逗號隔開）
   REMINDER_EMAIL_FROM_NAME: '自動檢查表提醒系統',
 
   // 每天觸發提醒的時間（24 小時制，整點）
   REMINDER_TRIGGER_HOUR: 9,
 
-  // ------ 機構抬頭（PDF 上會顯示）------
+  // ------ 機構抬頭（source code 預設，runtime 從 DB 系統設定 organizationName 載入）------
+  ORGANIZATION_HEADER_DEFAULT: '本中心',
 
-  ORGANIZATION_HEADER: '<機構名稱>',
+  // ------ GitHub Pages 前端 URL（DB 系統設定 webFrontendUrl 會覆蓋）------
+  DEFAULT_WEB_FRONTEND_URL: '',
 
-  // ------ GitHub Pages 前端 URL（提醒信「前往填寫」按鈕用）------
-  // 如果 DB「系統設定」有設定 webFrontendUrl，會優先用 DB 的值
-  DEFAULT_WEB_FRONTEND_URL: 'https://<your-github-username>.github.io/auto-checklist',
-
-  // ------ 預設設備（系統啟用時自動建立第一筆設備）------
-
+  // ------ 預設設備（系統啟用時自動建立第一筆設備，僅做為範例 placeholder）------
   DEFAULT_EQUIPMENT: {
-    equipmentId: 'CRANE-LJ-001',
-    equipmentName: '<設備名稱>',
-    machineSerial: '12F36D0130001',
-    machineType: '普通架空移動起重機',
-    category: '固定式起重機',
-    location: '<位置>',
-    venueSheetTab: '固定式起重機',   // 對應場地表的分頁名稱
+    equipmentId: 'EQUIPMENT-001',
+    equipmentName: '設備 1 號',
+    machineSerial: 'SN-XXXXXX',
+    machineType: '機械型式',
+    category: '機具類別',
+    location: '所在位置',
+    venueSheetTab: '機具類別',
   },
 
   // ------ 節假日排除關鍵字（預設）------
@@ -107,6 +104,20 @@ function getSetting_(key, fallback) {
  */
 function getVenueSheetId_() {
   return getSetting_('venueSheetId', CONFIG.VENUE_SHEET_ID_FALLBACK);
+}
+
+/**
+ * 取得機構抬頭（runtime）— DB 系統設定 organizationName 優先，否則 fallback
+ */
+function getOrgHeader_() {
+  return getSetting_('organizationName', '') || CONFIG.ORGANIZATION_HEADER_DEFAULT;
+}
+
+/**
+ * 取得提醒信收件人（runtime）— DB 系統設定 reminderEmailTo 優先
+ */
+function getReminderEmail_() {
+  return getSetting_('reminderEmailTo', '') || CONFIG.REMINDER_EMAIL_TO_DEFAULT;
 }
 
 /**

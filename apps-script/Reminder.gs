@@ -109,13 +109,13 @@ function sendUnfilledReminder_(equipment, date, usage) {
       <hr style="border: none; border-top: 1px solid #ddd; margin: 24px 0;">
       <p style="font-size: 12px; color: #888;">
         本信由「自動檢查表電子化系統」自動寄送<br>
-        ${E(CONFIG.ORGANIZATION_HEADER)}
+        ${E(getOrgHeader_())}
       </p>
     </div>
   `;
 
   MailApp.sendEmail({
-    to: CONFIG.REMINDER_EMAIL_TO,
+    to: getReminderEmail_(),
     cc: CONFIG.REMINDER_EMAIL_CC,
     name: CONFIG.REMINDER_EMAIL_FROM_NAME,
     subject,

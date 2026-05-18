@@ -18,8 +18,9 @@ window.SYSTEM_CONFIG = {
   // 必填：共享 token（與後端 Config.gs 的 API_TOKEN 一致）
   API_TOKEN: '089da735a8fd6a1f4aea4eab0e74af3e62f1b2801cb3b69d',
 
-  // 機構抬頭（顯示用）
-  ORG_NAME: '<機構名稱>',
+  // 機構抬頭 — 由前端啟動時 fetch API_BASE?api=branding 動態載入
+  // 實際機構名稱存在後端 DB「系統設定」的 organizationName，不寫死在 source code
+  ORG_NAME: '',
 
   // 系統版本
   VERSION: 'v1.0',

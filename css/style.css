@@ -178,7 +178,18 @@ body {
 
 .abnormal-input { margin: 12px 0 0 42px; display: none; }
 .abnormal-input.show { display: block; }
-.abnormal-input textarea { background: #fff8e1; border-color: #f9ab00; }
+.abnormal-input textarea {
+  width: 100%;
+  min-height: 100px;           /* 異常欄位至少 100px 高 */
+  padding: 14px;
+  font-size: 17px;
+  font-family: inherit;
+  border-radius: 8px;
+  background: #fff8e1;
+  border: 2px solid #f9ab00;
+  resize: vertical;
+  line-height: 1.5;
+}
 
 /* ---- 簽名 ---- */
 .signature-hint {

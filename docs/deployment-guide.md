@@ -8,14 +8,14 @@
 ┌──────────────────────┐    HTTPS    ┌──────────────────────┐
 │  GitHub Pages       │  ◄────────► │  Apps Script Web App │
 │  （前端、靜態）       │   fetch JSON │  （後端 API、排程）  │
-│  ishataichung/...   │             │  Sheets / Drive       │
+│  <your-github-username>/...   │             │  Sheets / Drive       │
 └──────────────────────┘             └──────────────────────┘
                                               ▲
                                               │ 讀
                                               │
                                      ┌────────┴────────┐
                                      │ 場地使用試算表   │
-                                     │ (115-術科V1...)  │
+                                     │ (<場地使用表名稱>...)  │
                                      └─────────────────┘
 ```
 
@@ -38,7 +38,7 @@
 
 ### A-3. 確認場地使用試算表已共用
 
-打開 `1ZCC99WjQuIKmDuR8L3jOTmKHI0hgTk0rJMm_vyQX45o`（115-術科V1）。
+打開 `<YOUR_VENUE_SHEET_ID>`（<場地使用表名稱>）。
 確認右上角已共用給 `<your-gmail@gmail.com>`（檢視者即可）。
 
 ### A-4. 建立 Apps Script 專案
@@ -123,11 +123,11 @@ API_TOKEN:              'REPLACE_WITH_RANDOM_TOKEN_...',     // ← A-5-1 產的
 
 ---
 
-## B. GitHub 端（push 到 ishataichung 組織）
+## B. GitHub 端（push 到 <your-github-username> 組織）
 
 ### B-1. 建立 repo
 
-在 ishataichung 組織開一個新 repo：
+在 <your-github-username> 組織開一個新 repo：
 - 名稱建議：`auto-checklist`（或你想要的名稱）
 - 公開（GitHub Pages 必須公開）
 
@@ -144,7 +144,7 @@ API_TOKEN: '<A-5-1 產的 token，必須與 Config.gs 完全一致>',
 
 ### B-2-1. 把前端 URL 寫回 DB
 
-GitHub Pages 啟用後（B-4），記得回到 DB 試算表「系統設定」工作表，把 `webFrontendUrl` 那一格填入 `https://ishataichung.github.io/auto-checklist`（提醒信中的「前往填寫」按鈕會用這個）。
+GitHub Pages 啟用後（B-4），記得回到 DB 試算表「系統設定」工作表，把 `webFrontendUrl` 那一格填入 `https://<your-github-username>.github.io/auto-checklist`（提醒信中的「前往填寫」按鈕會用這個）。
 
 ### B-3. 推上去
 
@@ -153,7 +153,7 @@ GitHub Pages 啟用後（B-4），記得回到 DB 試算表「系統設定」工
 在 `/Users/hao/Desktop/自動檢查表_電子化` 執行：
 
 ```bash
-git remote add origin git@github.com:ishataichung/auto-checklist.git
+git remote add origin git@github.com:<your-github-username>/auto-checklist.git
 # 把目前最新狀態 commit 後 push
 git add -A
 git commit -m "chore: 部署設定"   # 若沒新變更可省略
@@ -171,7 +171,7 @@ git push -u origin main
 2. Source：`Deploy from a branch`
 3. Branch：`main` / Folder：`/ (root)`
 4. 儲存
-5. 等 1-2 分鐘，會顯示網址：`https://ishataichung.github.io/auto-checklist/`
+5. 等 1-2 分鐘，會顯示網址：`https://<your-github-username>.github.io/auto-checklist/`
 
 ---
 
@@ -179,7 +179,7 @@ git push -u origin main
 
 ### C-1. 開首頁
 
-打開 `https://ishataichung.github.io/auto-checklist/`，應該看到一張設備卡「<設備名稱>」。
+打開 `https://<your-github-username>.github.io/auto-checklist/`，應該看到一張設備卡「<設備名稱>」。
 
 ### C-2. 試填日檢
 
@@ -204,7 +204,7 @@ git push -u origin main
 把這個網址輸入 → 生成 QR Code → 列印貼在天車上：
 
 ```
-https://ishataichung.github.io/auto-checklist/daily.html?eqp=CRANE-LJ-001
+https://<your-github-username>.github.io/auto-checklist/daily.html?eqp=<設備代號>
 ```
 
 操作員手機掃 QR Code 就直接進入該台天車的日檢表。

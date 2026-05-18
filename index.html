@@ -11,8 +11,8 @@
 </head>
 <body>
   <header class="header">
-    <h1 id="orgName">自動檢查表系統</h1>
-    <div class="sub" id="orgSub"></div>
+    <h1>自動檢查表系統</h1>
+    <div class="sub" data-org-name></div>
   </header>
 
   <main class="container">
@@ -26,9 +26,7 @@
   </main>
 
   <script>
-    // 文字節點注入（避免 XSS）
-    document.getElementById('orgName').textContent = '自動檢查表系統';
-    document.getElementById('orgSub').textContent = SYSTEM_CONFIG.ORG_NAME;
+    // 機構名稱由 api.js 啟動時 fetch /branding 動態填到 [data-org-name] 元素
     document.getElementById('versionTag').textContent = SYSTEM_CONFIG.VERSION;
 
     function renderError(msg) {

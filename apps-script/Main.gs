@@ -4,7 +4,7 @@
  * 部署為 Web App 後（執行身分=自己、存取權=任何人），前端（GitHub Pages）
  * 透過下列 endpoints 呼叫：
  *
- *   GET  ...exec?api=meta&form=daily&eqp=CRANE-LJ-001
+ *   GET  ...exec?api=meta&form=daily&eqp=<EQUIPMENT_ID>
  *   GET  ...exec?api=equipments
  *   POST ...exec   body={ apiToken, formType, equipmentId, ... }
  *
@@ -38,6 +38,11 @@ function doGet(e) {
         result = { ok: true, status: getSystemStatus_() };
         break;
 
+      case 'branding':
+        // public：前端 fetch 取得機構名稱（避免寫死在 source code）
+        result = { ok: true, organizationName: getOrgHeader_() };
+        break;
+
       case 'admin': {
         // 管理用：需要 token，從 doGet context 觸發
         // 這樣 ScriptApp.getService().getUrl() 才會回 production /exec URL
@@ -47,6 +52,15 @@ function doGet(e) {
           case 'fixWebAppUrl':
             result = { ok: true, action, url: setWebAppUrlFromCurrent() };
             break;
+          case 'setBranding': {
+            // 把機構名稱與承辦 email 寫入 DB 系統設定
+            const ok = setBrandingSettings_({
+              organizationName: e.parameter.orgName || '',
+              reminderEmailTo: e.parameter.email || '',
+            });
+            result = { ok: true, action, written: ok };
+            break;
+          }
           default:
             throw new Error('未知 admin action: ' + action);
         }

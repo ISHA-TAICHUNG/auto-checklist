@@ -12,7 +12,7 @@
  * payload 範例（daily）：
  *   {
  *     formType: 'daily',
- *     equipmentId: 'CRANE-LJ-001',
+ *     equipmentId: '<設備代號>',
  *     checkDate: '2026-05-18',            // 必填，daily 也要
  *     inspector: '張三',
  *     items: [{ order, name, result, note }, ...],
@@ -22,7 +22,7 @@
  * payload 範例（monthly）：
  *   {
  *     formType: 'monthly',
- *     equipmentId: 'CRANE-LJ-001',
+ *     equipmentId: '<設備代號>',
  *     checkDate: '2026-05-31',
  *     inspector: '李四',
  *     items: [{ order, name, methods, result, abnormalDesc, risk, action, review }, ...],
