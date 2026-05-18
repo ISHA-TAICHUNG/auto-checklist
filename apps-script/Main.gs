@@ -61,6 +61,65 @@ function doGet(e) {
             result = { ok: true, action, written: ok };
             break;
           }
+          case 'testSubmit': {
+            // 全流程測試 — 手動展開 handleSubmission_ 步驟以拿到真實 stack
+            const steps = [];
+            try {
+              const equipment = getEquipmentList_()[0];
+              steps.push('1. 取設備：' + equipment.equipmentId);
+              const full = getEquipmentById_(equipment.equipmentId);
+              steps.push('2. 取完整設備：OK');
+
+              const payload = {
+                formType: 'daily',
+                equipmentId: full.equipmentId,
+                checkDate: '2026-05-18',
+                inspector: '自動測試',
+                items: [
+                  { order: 1, name: '過捲預防裝置作動狀況', result: 'V', note: '', methods: [], abnormalDesc: '', risk: '', action: '', review: '' },
+                  { order: 7, name: '直、橫行軌道', result: 'X', note: 'debug', methods: [], abnormalDesc: '', risk: '', action: '', review: '' },
+                ],
+                signature: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkAAIAAAoAAv/lxKUAAAAASUVORK5CYII=',
+              };
+              validateSignature_(payload.signature);
+              steps.push('3. 簽名驗證：OK');
+
+              const recordId = uuid_();
+              const submittedAt = new Date();
+              const checkDate = parseISODate_(payload.checkDate);
+              steps.push('4. 日期解析：OK');
+
+              const pdfBlob = buildPdf_('daily', { recordId, submittedAt, checkDate, equipment: full, payload, rocDateStr: formatROCDate_(checkDate) });
+              steps.push('5. PDF 產生：' + pdfBlob.getBytes().length + ' bytes');
+
+              const fileName = buildPdfFilename_('daily', checkDate, full);
+              pdfBlob.setName(fileName);
+              steps.push('6. 檔名：' + fileName);
+
+              const folder = getOrCreateArchiveFolder_(full.category, checkDate);
+              steps.push('7. 歸檔資料夾：' + folder.getName());
+
+              const file = folder.createFile(pdfBlob);
+              const fileUrl = file.getUrl();
+              const fileId = file.getId();
+              steps.push('8. Drive 建檔：' + fileId);
+
+              writeRecord_({ recordId, submittedAt, checkDate, formType: 'daily', equipment: full, payload, fileUrl });
+              steps.push('9. 寫紀錄：OK');
+
+              result = { ok: true, action, fileId, fileUrl, fileName, steps };
+            } catch (err) {
+              result = { ok: false, action, error: String(err.message || err), stack: String(err.stack || ''), steps };
+            }
+            break;
+          }
+          case 'fetchPdf': {
+            const fid = e.parameter.fileId;
+            if (!fid) throw new Error('需要 fileId');
+            const blob = DriveApp.getFileById(fid).getBlob();
+            result = { ok: true, base64: Utilities.base64Encode(blob.getBytes()) };
+            break;
+          }
           case 'testPdf': {
             // debug 用：直接跑一個簡單的 PDF 產生流程，回傳 stack（不經 friendlyError）
             try {
@@ -104,15 +163,14 @@ function doGet(e) {
 }
 
 function doPost(e) {
+  const debug = e && e.parameter && e.parameter.debug === '1';
   try {
-    // 1. payload size limit
     const raw = (e && e.postData && e.postData.contents) || '';
     if (!raw) throw new Error('空白 payload');
     if (raw.length > CONFIG.MAX_PAYLOAD_BYTES) {
       throw new Error('payload 過大');
     }
 
-    // 2. parse
     let payload;
     try {
       payload = JSON.parse(raw);
@@ -120,7 +178,6 @@ function doPost(e) {
       throw new Error('payload 不是合法 JSON');
     }
 
-    // 3. token verification（防匿名濫用）
     if (!CONFIG.API_TOKEN || CONFIG.API_TOKEN.indexOf('REPLACE_') === 0) {
       throw new Error('系統未設定 API_TOKEN');
     }
@@ -130,10 +187,17 @@ function doPost(e) {
     delete payload.apiToken;
 
     const result = handleSubmission_(payload);
+    // debug 模式且 handleSubmission_ 失敗 → 重新拋出讓外層 catch 回 stack
+    if (debug && result && result.ok === false) {
+      throw new Error('handleSubmission_ 失敗：' + result.error);
+    }
     return jsonResponse_(result);
 
   } catch (err) {
     Logger.log('doPost 失敗：' + err + '\n' + (err.stack || ''));
+    if (debug) {
+      return jsonResponse_({ ok: false, error: String(err.message || err), stack: String(err.stack || '') });
+    }
     return jsonResponse_({ ok: false, error: friendlyError_(err) });
   }
 }

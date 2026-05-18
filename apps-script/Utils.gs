@@ -87,6 +87,19 @@ function uuid_() {
 }
 
 /**
+ * 把 data:image/(png|jpeg);base64,... 解析成 Apps Script Blob
+ * 失敗回 null（不拋例外，由呼叫者判斷）
+ */
+function dataUrlToBlob_(dataUrl, filename) {
+  if (!dataUrl || typeof dataUrl !== 'string') return null;
+  const match = dataUrl.match(/^data:(image\/\w+);base64,(.+)$/);
+  if (!match) return null;
+  const mime = match[1];
+  const bytes = Utilities.base64Decode(match[2]);
+  return Utilities.newBlob(bytes, mime, filename || 'image.png');
+}
+
+/**
  * 驗證 signature 必須是合法的 data:image/(png|jpeg);base64,... 格式
  *
  * 業務規則：簽名「必填」，未提供視為錯誤（職業安全衛生管理辦法要求簽名留證）

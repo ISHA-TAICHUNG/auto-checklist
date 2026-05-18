@@ -20,6 +20,10 @@ function buildPdf_(formType, ctx) {
   const doc = DocumentApp.create(docName);
   const docId = doc.getId();
 
+  // 在這層自己算 rocDateStr 與 submittedAt 字串，不依賴外部傳入
+  const rocDateStr = formatROCDate_(ctx.checkDate);
+  const submittedAtStr = Utilities.formatDate(ctx.submittedAt, tz_(), 'yyyy/MM/dd HH:mm');
+
   try {
     const body = doc.getBody();
 
@@ -41,7 +45,7 @@ function buildPdf_(formType, ctx) {
 
     // ----- 設備資訊表 -----
     const eq = ctx.equipment;
-    const rocDate = `${ctx.rocDateStr.substring(0,3)}/${ctx.rocDateStr.substring(3,5)}/${ctx.rocDateStr.substring(5,7)}`;
+    const rocDate = `${rocDateStr.substring(0,3)}/${rocDateStr.substring(3,5)}/${rocDateStr.substring(5,7)}`;
     const metaTable = body.appendTable([
       ['設備名稱', eq.equipmentName, '設備類別', eq.category],
       ['機械編號', eq.machineSerial, '型式規格', eq.machineType],
@@ -101,23 +105,16 @@ function buildPdf_(formType, ctx) {
 
     let signatureInserted = false;
     if (ctx.payload.signature) {
-      try {
-        const sigBlob = dataUrlToBlob_(ctx.payload.signature, 'sig.png');
-        if (sigBlob) {
-          const img = body.appendImage(sigBlob);
-          // 限制簽名圖寬度，高度自動依比例
-          const maxW = 260;
-          if (img.getWidth() > maxW) {
-            const ratio = img.getHeight() / img.getWidth();
-            img.setWidth(maxW);
-            img.setHeight(Math.round(maxW * ratio));
-          }
-          signatureInserted = true;
-          Logger.log('簽名圖已嵌入 PDF');
-        }
-      } catch (e) {
-        Logger.log('插入簽名失敗：' + e + '\n' + (e.stack || ''));
+      const sigBlob = dataUrlToBlob_(ctx.payload.signature, 'sig.png');
+      if (!sigBlob) throw new Error('dataUrlToBlob_ 回 null，signature 開頭: ' + ctx.payload.signature.substring(0, 50));
+      const img = body.appendImage(sigBlob);
+      const maxW = 260;
+      if (img.getWidth() > maxW) {
+        const ratio = img.getHeight() / img.getWidth();
+        img.setWidth(maxW);
+        img.setHeight(Math.round(maxW * ratio));
       }
+      signatureInserted = true;
     }
     if (!signatureInserted) {
       const noSig = body.appendParagraph('（無簽名）');
@@ -129,7 +126,7 @@ function buildPdf_(formType, ctx) {
 
     // ----- 送出時間 -----
     body.appendParagraph('');
-    const submitP = body.appendParagraph('送出時間：' + ctx.submittedAt + '   系統自動產製');
+    const submitP = body.appendParagraph('送出時間：' + submittedAtStr + '   系統自動產製');
     submitP.editAsText().setFontSize(9).setForegroundColor('#888888');
     submitP.setAlignment(DocumentApp.HorizontalAlignment.RIGHT);
 
@@ -170,9 +167,16 @@ function styleMetaTable_(table) {
   }
 }
 
-/** 檢查項目表樣式：header 藍底白字、欄寬控制、字 10pt、異常紅字 */
+/** 檢查項目表樣式：header 藍底白字、欄寬控制、字 10pt、異常紅字
+ *  注意：對齊要用 cell 第一個 paragraph 的 setAlignment（TableCell 本身沒有 setHorizontalAlignment）
+ */
 function styleItemsTable_(table, colWidths, isDaily) {
   const numRows = table.getNumRows();
+  const HCenter = DocumentApp.HorizontalAlignment.CENTER;
+  const setCenter = (cell) => {
+    try { cell.getChild(0).asParagraph().setAlignment(HCenter); } catch (_) {}
+  };
+
   for (let r = 0; r < numRows; r++) {
     const row = table.getRow(r);
     const numCols = row.getNumCells();
@@ -185,18 +189,14 @@ function styleItemsTable_(table, colWidths, isDaily) {
       if (colWidths && colWidths[c]) cell.setWidth(colWidths[c]);
 
       if (r === 0) {
-        // header
         cell.setBackgroundColor('#1a73e8');
         text.setForegroundColor('#ffffff').setBold(true);
-        cell.setHorizontalAlignment(DocumentApp.HorizontalAlignment.CENTER);
+        setCenter(cell);
       } else {
-        // body：項次、結果欄置中；結果為 X 或 異常 用紅字
-        if (c === 0) {
-          cell.setHorizontalAlignment(DocumentApp.HorizontalAlignment.CENTER);
-        }
+        if (c === 0) setCenter(cell);
         if (isDaily && c === 2) {
           const v = text.getText();
-          cell.setHorizontalAlignment(DocumentApp.HorizontalAlignment.CENTER);
+          setCenter(cell);
           if (v === 'X') text.setForegroundColor('#c5221f').setBold(true);
           else if (v === 'V') text.setForegroundColor('#137333').setBold(true);
           else text.setForegroundColor('#666666');
