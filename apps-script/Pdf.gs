@@ -17,7 +17,7 @@ function buildPdf_(formType, ctx) {
   tpl.checkDate = ctx.checkDate;
   tpl.rocDateStr = formatROCDate_(ctx.checkDate);
   tpl.submittedAt = Utilities.formatDate(
-    ctx.submittedAt, Session.getScriptTimeZone(), 'yyyy/MM/dd HH:mm'
+    ctx.submittedAt, tz_(), 'yyyy/MM/dd HH:mm'
   );
   tpl.escapeHtml = escapeHtml_;
   tpl.toROC = toROC_;

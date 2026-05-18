@@ -39,23 +39,49 @@ function handleSubmission_(payload) {
       throw new Error('缺少 items');
     }
 
-    // 簽名格式驗證（必須是 data:image/png|jpeg;base64,...）
+    // 簽名格式驗證（必填、且必須是 data:image/png|jpeg;base64,...）
     validateSignature_(payload.signature);
 
     // 文字欄位 sanitize（控制字元、長度）
     payload.inspector = sanitizeText_(payload.inspector);
     if (!payload.inspector) throw new Error('缺少 inspector');
-    payload.items = payload.items.map(it => ({
-      order: Number(it.order) || 0,
-      name: sanitizeText_(it.name, 200),
-      result: sanitizeText_(it.result, 30),
-      note: sanitizeText_(it.note),
-      methods: Array.isArray(it.methods) ? it.methods.map(m => sanitizeText_(m, 20)) : undefined,
-      abnormalDesc: sanitizeText_(it.abnormalDesc),
-      risk: sanitizeText_(it.risk, 30),
-      action: sanitizeText_(it.action),
-      review: sanitizeText_(it.review),
-    }));
+
+    // result / risk / methods 用白名單，不允許任意字串塞進 PDF
+    const RESULT_WHITELIST = {
+      daily: ['V', 'X', '/'],
+      monthly: ['normal', 'abnormal'],
+    };
+    const RISK_WHITELIST = ['', 'severe', 'possible', 'none'];
+    const METHODS_WHITELIST = ['目視', '測試'];
+    const allowedResults = RESULT_WHITELIST[payload.formType] || [];
+
+    payload.items = payload.items.map((it, idx) => {
+      const result = sanitizeText_(it.result, 30);
+      if (allowedResults.indexOf(result) < 0) {
+        throw new Error(`第 ${idx + 1} 項結果值不合法：${result}`);
+      }
+      const risk = sanitizeText_(it.risk, 30);
+      if (RISK_WHITELIST.indexOf(risk) < 0) {
+        throw new Error(`第 ${idx + 1} 項風險值不合法：${risk}`);
+      }
+      let methods;
+      if (Array.isArray(it.methods)) {
+        methods = it.methods
+          .map(m => sanitizeText_(m, 20))
+          .filter(m => METHODS_WHITELIST.indexOf(m) >= 0);
+      }
+      return {
+        order: Number(it.order) || 0,
+        name: sanitizeText_(it.name, 200),
+        result,
+        note: sanitizeText_(it.note),
+        methods,
+        abnormalDesc: sanitizeText_(it.abnormalDesc),
+        risk,
+        action: sanitizeText_(it.action),
+        review: sanitizeText_(it.review),
+      };
+    });
 
     const equipment = getEquipmentById_(payload.equipmentId);
     if (!equipment) throw new Error('找不到設備：' + payload.equipmentId);
@@ -126,9 +152,13 @@ function writeRecord_({ recordId, submittedAt, checkDate, formType, equipment, p
   setCol('設備類別', equipment.category);
   setCol('檢點人員', payload.inspector || '');
 
-  // payload 不含 signature dataURL（避免 cell 超長）
+  // payload 不含 signature dataURL（避免 cell 超長），並截斷以防超過 50000 上限
   const payloadForLog = Object.assign({}, payload, { signature: '[stored in PDF]' });
-  setCol('完整資料JSON', JSON.stringify(payloadForLog));
+  let jsonStr = JSON.stringify(payloadForLog);
+  if (jsonStr.length > 49000) {
+    jsonStr = jsonStr.substring(0, 49000) + '...[truncated]';
+  }
+  setCol('完整資料JSON', jsonStr);
 
   setCol('PDF連結', fileUrl);
 

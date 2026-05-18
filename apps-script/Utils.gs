@@ -88,10 +88,11 @@ function uuid_() {
 
 /**
  * 驗證 signature 必須是合法的 data:image/(png|jpeg);base64,... 格式
- * 若空字串 / null，視為「未簽名」回 false；非法格式 throw
+ *
+ * 業務規則：簽名「必填」，未提供視為錯誤（職業安全衛生管理辦法要求簽名留證）
  */
 function validateSignature_(dataUrl) {
-  if (!dataUrl) return false;
+  if (!dataUrl) throw new Error('缺少簽名');
   if (typeof dataUrl !== 'string') throw new Error('簽名格式錯誤');
   if (dataUrl.length > CONFIG.MAX_SIGNATURE_BYTES) throw new Error('簽名圖太大');
   if (!/^data:image\/(png|jpeg);base64,[A-Za-z0-9+/=]+$/.test(dataUrl)) {

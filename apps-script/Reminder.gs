@@ -56,8 +56,13 @@ function hasDailyRecord_(equipmentId, date) {
 
   const target = formatISODate_(date);
   for (let i = 1; i < data.length; i++) {
+    // Sheet 可能把 '2026-05-18' 自動轉成 Date 物件，兩邊都正規化
+    let cellDate = data[i][idx('檢查日期')];
+    if (cellDate instanceof Date) cellDate = formatISODate_(cellDate);
+    else cellDate = String(cellDate);
+
     if (
-      data[i][idx('檢查日期')] === target &&
+      cellDate === target &&
       data[i][idx('表單類型')] === '每日' &&
       data[i][idx('設備代號')] === equipmentId
     ) {
