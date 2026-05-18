@@ -334,23 +334,12 @@
 
       const meta = document.createElement('div');
       meta.className = 'result-meta';
-      meta.textContent = '檔名：' + r.fileName;
+      meta.textContent = '本次紀錄已自動歸檔';
       card.appendChild(meta);
-
-      const link = document.createElement('a');
-      link.href = r.fileUrl;
-      link.target = '_blank';
-      link.className = 'btn btn-primary';
-      link.style.display = 'block';
-      link.style.textAlign = 'center';
-      link.style.textDecoration = 'none';
-      link.style.marginBottom = '8px';
-      link.textContent = '在 Drive 開啟 PDF';
-      card.appendChild(link);
 
       const back = document.createElement('a');
       back.href = 'index.html';
-      back.className = 'btn';
+      back.className = 'btn btn-primary';
       back.style.display = 'block';
       back.style.textAlign = 'center';
       back.style.textDecoration = 'none';
