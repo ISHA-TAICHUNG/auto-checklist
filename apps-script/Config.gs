@@ -6,6 +6,21 @@
 
 const CONFIG = {
 
+  // ------ 時區（所有日期格式化用這個，不要依賴 Apps Script 預設）------
+  // 新建 Apps Script 預設可能是 GMT，會讓民國年月日差一天
+  TIMEZONE: 'Asia/Taipei',
+
+  // ------ API 共享 token（防匿名濫用 POST）------
+  // 部署時改成隨機字串（建議 32+ 字元）。前端 web/js/config.js 要設定相同的值。
+  // 注意：因為前端是公開的 GitHub Pages，這個 token 等於是「半公開」，
+  // 主要目的是擋掉不知道網址直接打 API 的機器人。要更嚴的話需要登入機制。
+  API_TOKEN: 'REPLACE_WITH_RANDOM_TOKEN_AT_LEAST_32_CHARS',
+
+  // ------ 防 DoS：payload 大小與簽名長度上限 ------
+  MAX_PAYLOAD_BYTES: 500 * 1024,     // 整個 JSON 上限 500KB
+  MAX_SIGNATURE_BYTES: 300 * 1024,   // 簽名 base64 上限 300KB
+  MAX_TEXT_FIELD_LENGTH: 500,         // 任一文字欄位上限（inspector/note/desc/action/review）
+
   // ------ 資料來源 ------
 
   // 系統資料庫（檢查表模板、設備清單、檢查項目、填報紀錄、人員、設定）
@@ -71,7 +86,9 @@ function getSetting_(key, fallback) {
     const ss = SpreadsheetApp.openById(CONFIG.DB_SHEET_ID);
     const sheet = ss.getSheetByName('系統設定');
     if (!sheet) return fallback;
-    const values = sheet.getRange(2, 1, sheet.getLastRow() - 1, 2).getValues();
+    const lastRow = sheet.getLastRow();
+    if (lastRow < 2) return fallback;
+    const values = sheet.getRange(2, 1, lastRow - 1, 2).getValues();
     for (const row of values) {
       if (row[0] === key) return row[1] || fallback;
     }
@@ -95,13 +112,14 @@ function getHolidayKeywords_() {
   try {
     const ss = SpreadsheetApp.openById(CONFIG.DB_SHEET_ID);
     const sheet = ss.getSheetByName('節假日關鍵字');
-    if (sheet && sheet.getLastRow() > 1) {
-      return sheet
-        .getRange(2, 1, sheet.getLastRow() - 1, 1)
-        .getValues()
-        .map(r => String(r[0] || '').trim())
-        .filter(Boolean);
-    }
+    if (!sheet) return CONFIG.HOLIDAY_KEYWORDS_DEFAULT;
+    const lastRow = sheet.getLastRow();
+    if (lastRow < 2) return CONFIG.HOLIDAY_KEYWORDS_DEFAULT;
+    return sheet
+      .getRange(2, 1, lastRow - 1, 1)
+      .getValues()
+      .map(r => String(r[0] || '').trim())
+      .filter(Boolean);
   } catch (e) {
     Logger.log('讀取節假日關鍵字失敗：' + e);
   }

@@ -52,7 +52,8 @@ GitHub Pages (web/)            Apps Script (apps-script/)
 ```
 .
 ├─ apps-script/                # Google Apps Script 後端
-│  ├─ Config.gs                # 全域設定
+│  ├─ appsscript.json          # 專案資訊清單（強制 Asia/Taipei 時區）
+│  ├─ Config.gs                # 全域設定（API_TOKEN, TIMEZONE, 上限）
 │  ├─ Utils.gs                 # 日期、字串工具
 │  ├─ Main.gs                  # Web App 入口（doGet/doPost）
 │  ├─ Templates.gs             # 檢查表模板讀取

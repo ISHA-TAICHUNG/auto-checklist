@@ -46,7 +46,9 @@
 1. Google Drive → 右鍵新增 → 更多 → Google Apps Script
    （若沒看到，「連結更多應用程式」搜尋 Apps Script 啟用）
 2. 進入後左上角專案名稱改成「自動檢查表-API」
-3. 把 `apps-script/` 資料夾內**所有 9 個檔案**逐一貼進去：
+3. **設定時區**：左側「專案設定」→ 勾選「在編輯器中顯示『appsscript.json』資訊清單檔案」
+4. 回到編輯器，點開 `appsscript.json`，把內容換成 `apps-script/appsscript.json` 的內容（含 `"timeZone": "Asia/Taipei"`）
+5. 把 `apps-script/` 資料夾內**所有 10 個 .gs + 2 個 HTML 檔**逐一貼進去：
 
 | 在 Apps Script 編輯器點「＋」→ | 選 | 命名 | 貼上對應檔內容 |
 |---|---|---|---|
@@ -67,14 +69,27 @@
 
 ### A-5. 填入 Config
 
-在 `Config.gs` 找到：
+#### A-5-1. 產生 API_TOKEN
 
-```js
-DB_SHEET_ID: 'REPLACE_WITH_YOUR_DB_SHEET_ID',
-ARCHIVE_ROOT_FOLDER_ID: 'REPLACE_WITH_YOUR_DRIVE_FOLDER_ID',
+開 Mac 終端機跑這個指令，產一段隨機字串：
+
+```bash
+node -e "console.log(require('crypto').randomBytes(24).toString('hex'))"
 ```
 
-把 A-1 和 A-2 暫存的 ID 填進去。儲存（`⌘+S`）。
+或在線上工具（[random.org](https://www.random.org/strings/)）產 32 字以上的英數字串。**這個 token 等等前後端要設定成完全一樣的值**。
+
+#### A-5-2. 改 Config.gs
+
+在 `Config.gs` 找到並修改：
+
+```js
+DB_SHEET_ID:            'REPLACE_WITH_YOUR_DB_SHEET_ID',     // ← A-1 的 ID
+ARCHIVE_ROOT_FOLDER_ID: 'REPLACE_WITH_YOUR_DRIVE_FOLDER_ID', // ← A-2 的 ID
+API_TOKEN:              'REPLACE_WITH_RANDOM_TOKEN_...',     // ← A-5-1 產的 token
+```
+
+儲存（`⌘+S`）。**記得 token 是要保密的**，不要分享、不要貼到對話、不要寫進說明文件。
 
 ### A-6. 初始化 DB
 
@@ -116,28 +131,39 @@ ARCHIVE_ROOT_FOLDER_ID: 'REPLACE_WITH_YOUR_DRIVE_FOLDER_ID',
 - 名稱建議：`auto-checklist`（或你想要的名稱）
 - 公開（GitHub Pages 必須公開）
 
-### B-2. 設定 API 位址
+### B-2. 設定 API 位址與 Token
 
-編輯本地 `web/js/config.js`：
+編輯本地 `web/js/config.js`，把兩個 PASTE_YOUR 換成實際值：
 
 ```js
-API_BASE: 'PASTE_YOUR_APPS_SCRIPT_WEB_APP_EXEC_URL_HERE',
+API_BASE:  '<A-7 的 Apps Script exec URL>',
+API_TOKEN: '<A-5-1 產的 token，必須與 Config.gs 完全一致>',
 ```
 
-換成 A-7 暫存的 Apps Script exec URL。
+⚠ **重要**：API_TOKEN 是「半公開」的（前端會看得到），但仍應該保留至少這層防護。不要把這個 token 公開貼到 README、Issues、聊天室。
+
+### B-2-1. 把前端 URL 寫回 DB
+
+GitHub Pages 啟用後（B-4），記得回到 DB 試算表「系統設定」工作表，把 `webFrontendUrl` 那一格填入 `https://ishataichung.github.io/auto-checklist`（提醒信中的「前往填寫」按鈕會用這個）。
 
 ### B-3. 推上去
+
+⚠ **推送前確認**：`web/js/config.js` 的 `API_TOKEN` 已填，`Config.gs` 已不在 staging 區（這個檔含敏感 token）— 但 `Config.gs` 是部署到 Apps Script 才有實際值，git 上的版本是 `REPLACE_...`，所以可以 push。
 
 在 `/Users/hao/Desktop/自動檢查表_電子化` 執行：
 
 ```bash
-git init
-git add web/ apps-script/ docs/ README.md
-git commit -m "feat: 初版上線"
-git branch -M main
 git remote add origin git@github.com:ishataichung/auto-checklist.git
+# 把目前最新狀態 commit 後 push
+git add -A
+git commit -m "chore: 部署設定"   # 若沒新變更可省略
 git push -u origin main
 ```
+
+> ⚠ **token 進 git 怎麼辦？** 若不小心把含真實 token 的 `config.js` push 上去，立刻：
+> 1. 到 Apps Script Config.gs 改 API_TOKEN（馬上失效）
+> 2. 改 web/js/config.js 為新 token
+> 3. 重 commit、push（舊 token 已沒用）
 
 ### B-4. 啟用 GitHub Pages
 

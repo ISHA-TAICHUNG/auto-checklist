@@ -15,7 +15,8 @@ function initializeDatabase() {
 
   setupSheet_(ss, '系統設定', ['鍵', '值', '備註'], [
     ['venueSheetId', CONFIG.VENUE_SHEET_ID_FALLBACK, '場地使用試算表 ID（每年新表只要改這裡）'],
-    ['webAppUrl', '', 'Apps Script 部署後的 exec URL（提醒信會帶這個連結）'],
+    ['webAppUrl', '', 'Apps Script 部署後的 exec URL（部署完執行 setWebAppUrlFromCurrent 自動填）'],
+    ['webFrontendUrl', '', 'GitHub Pages 前端網址（提醒信會帶這連結）例：https://ishataichung.github.io/auto-checklist'],
   ]);
 
   setupSheet_(ss, '節假日關鍵字', ['關鍵字', '備註'],
@@ -81,7 +82,11 @@ function initializeDatabase() {
 }
 
 /**
- * 建立或更新工作表（已存在則不覆蓋）
+ * 建立或更新工作表（已存在則不覆蓋資料、只補欄位）
+ *
+ * 修法重點：
+ *   - 新建表預設只有 26 欄；若 headers.length > 26 要 insertColumns
+ *   - 既存表的欄數可能 < headers.length，setValues 前先確保欄夠
  */
 function setupSheet_(ss, sheetName, headers, initialRows) {
   let sheet = ss.getSheetByName(sheetName);
@@ -89,9 +94,16 @@ function setupSheet_(ss, sheetName, headers, initialRows) {
     sheet = ss.insertSheet(sheetName);
   }
 
-  // 寫入標題列（如果第一列是空的）
-  const firstRow = sheet.getRange(1, 1, 1, Math.max(headers.length, sheet.getLastColumn() || 1)).getValues()[0];
+  // 確保欄數足夠
+  const currentMaxCol = sheet.getMaxColumns();
+  if (currentMaxCol < headers.length) {
+    sheet.insertColumnsAfter(currentMaxCol, headers.length - currentMaxCol);
+  }
+
+  // 判斷第一列是否為空（沒寫過 header）
+  const firstRow = sheet.getRange(1, 1, 1, headers.length).getValues()[0];
   const firstRowEmpty = firstRow.every(v => v === '' || v === null);
+
   if (firstRowEmpty) {
     sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
     sheet.getRange(1, 1, 1, headers.length)

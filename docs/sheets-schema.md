@@ -11,6 +11,7 @@
 |---|---|---|
 | `venueSheetId` | (場地表的 Sheet ID) | 每年新表只要改這裡，不用改程式 |
 | `webAppUrl` | (Apps Script exec URL) | 部署後執行 `setWebAppUrlFromCurrent` 自動填入 |
+| `webFrontendUrl` | (GitHub Pages 網址) | 例：`https://ishataichung.github.io/auto-checklist`，提醒信會帶這連結 |
 
 ## 2. `節假日關鍵字`
 

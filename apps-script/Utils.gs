@@ -1,58 +1,76 @@
 /**
  * ===== 共用工具：日期、字串、格式化 =====
+ *
+ * 所有日期函數都透過 tz_() 取得「Asia/Taipei」，
+ * 避免 Apps Script 預設 GMT 造成民國年月日差一天的 bug。
  */
 
 /**
- * 西元年轉民國年
- * 例：2026 -> 115
+ * 取得設定的時區（fallback 為 script timezone）
  */
-function toROC_(date) {
-  return date.getFullYear() - 1911;
+function tz_() {
+  return (CONFIG && CONFIG.TIMEZONE) || Session.getScriptTimeZone();
 }
 
 /**
- * 取得民國年月日字串（用於檔名）
+ * 取得指定日期在台北時區的「年、月、日」三個整數
+ */
+function dateParts_(date) {
+  const s = Utilities.formatDate(date, tz_(), 'yyyy-MM-dd');
+  const [y, m, d] = s.split('-').map(Number);
+  return { y, m, d };
+}
+
+/**
+ * 西元年轉民國年（以台北時區的年為基準）
+ */
+function toROC_(date) {
+  return dateParts_(date).y - 1911;
+}
+
+/**
+ * 民國年月日字串（用於檔名）
  * 例：2026/5/18 -> "1150518"
  */
 function formatROCDate_(date) {
-  const y = toROC_(date);
-  const m = String(date.getMonth() + 1).padStart(2, '0');
-  const d = String(date.getDate()).padStart(2, '0');
-  return `${y}${m}${d}`;
+  const { y, m, d } = dateParts_(date);
+  return `${y - 1911}${String(m).padStart(2, '0')}${String(d).padStart(2, '0')}`;
 }
 
-/**
- * 取得民國年（字串）
- */
 function formatROCYear_(date) {
   return `${toROC_(date)}年`;
 }
 
-/**
- * 取得月份（字串，2 位數）
- * 例：5 月 -> "05月"
- */
 function formatROCMonth_(date) {
-  return `${String(date.getMonth() + 1).padStart(2, '0')}月`;
+  const { m } = dateParts_(date);
+  return `${String(m).padStart(2, '0')}月`;
 }
 
 /**
  * 取得西元日期字串 YYYY-MM-DD（用於 DB 比對）
  */
 function formatISODate_(date) {
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, '0');
-  const d = String(date.getDate()).padStart(2, '0');
-  return `${y}-${m}-${d}`;
+  return Utilities.formatDate(date, tz_(), 'yyyy-MM-dd');
 }
 
 /**
- * 取得今日 0 點（去除時分秒）
+ * 將 "YYYY-MM-DD" 字串解析為 Date 物件（以台北時區的 0:00 為準）
+ * 直接 new Date('2026-05-31') 會被當 UTC 0:00，台北時區會多 8 小時、跨日不出錯但仍危險
+ */
+function parseISODate_(s) {
+  if (s instanceof Date) return s;
+  if (!s || typeof s !== 'string') throw new Error('日期格式錯誤');
+  const m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) throw new Error('日期格式錯誤：' + s);
+  return new Date(`${m[1]}-${m[2]}-${m[3]}T00:00:00+08:00`);
+}
+
+/**
+ * 取得今日 0 點（台北時區）
  */
 function todayStart_() {
-  const t = new Date();
-  t.setHours(0, 0, 0, 0);
-  return t;
+  const now = new Date();
+  return parseISODate_(formatISODate_(now));
 }
 
 /**
@@ -64,44 +82,47 @@ function yesterdayStart_() {
   return t;
 }
 
-/**
- * 把任意 Date 物件複製為當日 0 點
- */
-function dateOnly_(d) {
-  const r = new Date(d);
-  r.setHours(0, 0, 0, 0);
-  return r;
-}
-
-/**
- * 產生 UUID（用於填報紀錄 ID）
- */
 function uuid_() {
   return Utilities.getUuid();
 }
 
 /**
- * 從 base64 dataURL 解析簽名圖（手寫簽名 canvas 用）
- * 例：data:image/png;base64,iVBORw0KG...
+ * 驗證 signature 必須是合法的 data:image/(png|jpeg);base64,... 格式
+ * 若空字串 / null，視為「未簽名」回 false；非法格式 throw
  */
-function dataUrlToBlob_(dataUrl, filename) {
-  if (!dataUrl || !dataUrl.startsWith('data:')) return null;
-  const match = dataUrl.match(/^data:(image\/\w+);base64,(.+)$/);
-  if (!match) return null;
-  const mime = match[1];
-  const bytes = Utilities.base64Decode(match[2]);
-  return Utilities.newBlob(bytes, mime, filename || 'signature.png');
+function validateSignature_(dataUrl) {
+  if (!dataUrl) return false;
+  if (typeof dataUrl !== 'string') throw new Error('簽名格式錯誤');
+  if (dataUrl.length > CONFIG.MAX_SIGNATURE_BYTES) throw new Error('簽名圖太大');
+  if (!/^data:image\/(png|jpeg);base64,[A-Za-z0-9+/=]+$/.test(dataUrl)) {
+    throw new Error('簽名格式錯誤');
+  }
+  return true;
 }
 
 /**
- * 安全取得儲存格字串（避免 null）
+ * 把任意字串限制長度、去除控制字元
+ */
+function sanitizeText_(s, maxLen) {
+  if (s === null || s === undefined) return '';
+  let str = String(s);
+  // 去除 ASCII 控制字元（保留 \n、\t）
+  str = str.replace(/[\x00-\x08\x0B-\x1F\x7F]/g, '');
+  const limit = maxLen || CONFIG.MAX_TEXT_FIELD_LENGTH;
+  if (str.length > limit) str = str.substring(0, limit);
+  return str;
+}
+
+/**
+ * 安全取得儲存格字串
  */
 function cellStr_(v) {
   return v === null || v === undefined ? '' : String(v).trim();
 }
 
 /**
- * 對 HTML 進行 escape（防止使用者輸入破壞 PDF 模板）
+ * HTML escape — Apps Script 模板的 <?= ?> 預設就會 escape，
+ * 但有些位置我們手動拼字串就要呼叫這個
  */
 function escapeHtml_(s) {
   return String(s == null ? '' : s)

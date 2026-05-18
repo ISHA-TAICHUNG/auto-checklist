@@ -77,8 +77,10 @@
 
       // ----- 檢查資訊 -----
       const dateCard = makeCard('檢查資訊');
+      // 用 local timezone 組今日字串，避免 UTC 早上 8 點前顯示前一天
       const today = new Date();
-      const isoToday = today.toISOString().slice(0, 10);
+      const pad = n => String(n).padStart(2, '0');
+      const isoToday = `${today.getFullYear()}-${pad(today.getMonth() + 1)}-${pad(today.getDate())}`;
 
       const fDate = makeField('檢查日期', 'date', isoToday);
       fDate.input.id = 'checkDate';
