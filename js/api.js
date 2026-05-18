@@ -15,10 +15,10 @@
 
   function ensureConfigured(needToken) {
     if (!C.API_BASE || C.API_BASE.indexOf('PASTE_YOUR') === 0) {
-      throw new Error('尚未設定 API_BASE（請編輯 web/js/config.js）');
+      throw new Error('尚未設定 API_BASE（請編輯 js/config.js）');
     }
     if (needToken && (!C.API_TOKEN || C.API_TOKEN.indexOf('PASTE_YOUR') === 0)) {
-      throw new Error('尚未設定 API_TOKEN（請編輯 web/js/config.js）');
+      throw new Error('尚未設定 API_TOKEN（請編輯 js/config.js）');
     }
   }
 
