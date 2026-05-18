@@ -38,6 +38,21 @@ function doGet(e) {
         result = { ok: true, status: getSystemStatus_() };
         break;
 
+      case 'admin': {
+        // 管理用：需要 token，從 doGet context 觸發
+        // 這樣 ScriptApp.getService().getUrl() 才會回 production /exec URL
+        if (e.parameter.token !== CONFIG.API_TOKEN) throw new Error('未授權');
+        const action = e.parameter.action;
+        switch (action) {
+          case 'fixWebAppUrl':
+            result = { ok: true, action, url: setWebAppUrlFromCurrent() };
+            break;
+          default:
+            throw new Error('未知 admin action: ' + action);
+        }
+        break;
+      }
+
       default:
         throw new Error('未知的 api: ' + api);
     }
