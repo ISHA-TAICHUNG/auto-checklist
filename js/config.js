@@ -13,10 +13,10 @@
  */
 window.SYSTEM_CONFIG = {
   // 必填：Apps Script Web App 的 exec URL
-  API_BASE: 'PASTE_YOUR_APPS_SCRIPT_WEB_APP_EXEC_URL_HERE',
+  API_BASE: 'https://script.google.com/macros/s/AKfycbwrAgEXjxRfvQtpGVFqRrHRmr-i5itZZSH9DmrvVl48YWlxFhdxJvEIwQYpR7rv6SkTrQ/exec',
 
   // 必填：共享 token（與後端 Config.gs 的 API_TOKEN 一致）
-  API_TOKEN: 'PASTE_YOUR_API_TOKEN_HERE',
+  API_TOKEN: '089da735a8fd6a1f4aea4eab0e74af3e62f1b2801cb3b69d',
 
   // 機構抬頭（顯示用）
   ORG_NAME: '<機構名稱>',
