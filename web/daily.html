@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+  <meta name="theme-color" content="#1a73e8">
+  <title>每日作業前檢點表</title>
+  <link rel="stylesheet" href="css/style.css">
+  <script src="js/config.js"></script>
+  <script src="js/api.js"></script>
+  <script src="js/signature.js"></script>
+</head>
+<body>
+  <header class="header">
+    <a class="back" href="index.html">回設備列表</a>
+    <h1>每日作業前檢點表</h1>
+    <div class="sub" id="orgName"></div>
+  </header>
+
+  <main class="container">
+    <div id="content">
+      <div class="page-loading"><span class="loading"></span>&nbsp;載入中...</div>
+    </div>
+  </main>
+
+  <script>
+    document.getElementById('orgName').textContent = SYSTEM_CONFIG.ORG_NAME;
+
+    const urlParams = new URLSearchParams(location.search);
+    const eqp = urlParams.get('eqp');
+
+    let formMeta = null;
+    let sigPad = null;
+
+    if (!eqp) {
+      showError('未指定設備（缺少 eqp 參數）');
+    } else {
+      loadForm();
+    }
+
+    function showError(msg) {
+      const root = document.getElementById('content');
+      root.textContent = '';
+      const div = document.createElement('div');
+      div.className = 'alert alert-error';
+      div.textContent = msg;
+      root.appendChild(div);
+    }
+
+    async function loadForm() {
+      try {
+        const r = await API.getFormMeta('daily', eqp);
+        if (!r.ok) return showError(r.error || '取得表單失敗');
+        formMeta = r.meta;
+        renderForm();
+      } catch (err) {
+        showError('連線後端失敗：' + err.message);
+      }
+    }
+
+    function renderForm() {
+      const root = document.getElementById('content');
+      root.textContent = '';
+
+      // ----- 設備資訊卡 -----
+      const infoCard = makeCard('設備資訊');
+      const grid = document.createElement('div');
+      grid.className = 'meta-grid';
+      const eqInfo = formMeta.equipment;
+      addGridRow(grid, '設備名稱', eqInfo.equipmentName);
+      addGridRow(grid, '設備類別', eqInfo.category);
+      addGridRow(grid, '機械編號', eqInfo.machineSerial);
+      addGridRow(grid, '型式規格', eqInfo.machineType);
+      addGridRow(grid, '所在位置', eqInfo.location);
+      infoCard.body.appendChild(grid);
+      root.appendChild(infoCard.card);
+
+      // ----- 檢查日期 & 檢點人員 -----
+      const dateCard = makeCard('檢點資訊');
+      const today = new Date();
+      const isoToday = today.toISOString().slice(0, 10);
+
+      const fDate = makeField('檢查日期', 'date', isoToday);
+      fDate.input.id = 'checkDate';
+      dateCard.body.appendChild(fDate.field);
+
+      const fInspector = makeField('檢點人員姓名', 'text', '');
+      fInspector.input.id = 'inspector';
+      fInspector.input.placeholder = '請填寫操作員姓名';
+      dateCard.body.appendChild(fInspector.field);
+
+      root.appendChild(dateCard.card);
+
+      // ----- 檢查項目 -----
+      const itemsCard = makeCard('檢查項目（' + formMeta.items.length + ' 項）');
+      const rule = document.createElement('div');
+      rule.className = 'alert alert-info';
+      rule.style.margin = '0 0 12px';
+      rule.style.fontSize = '13px';
+      rule.textContent = '良好「正常」/ 無此項「無」/ 不良「異常」— 不良請填說明';
+      itemsCard.body.appendChild(rule);
+
+      formMeta.items.forEach((it, idx) => {
+        const row = document.createElement('div');
+        row.className = 'item-row';
+
+        const title = document.createElement('div');
+        title.className = 'item-title';
+        const order = document.createElement('span');
+        order.className = 'order';
+        order.textContent = it.order;
+        title.appendChild(order);
+        const text = document.createElement('span');
+        text.className = 'text';
+        text.textContent = it.name;
+        title.appendChild(text);
+        row.appendChild(title);
+
+        const group = makeRadioGroup('item_' + idx, [
+          { value: 'V', label: '正常',  cls: 'checked-good' },
+          { value: 'X', label: '異常',  cls: 'checked-bad' },
+          { value: '/', label: '無此項', cls: 'checked-na' },
+        ]);
+        row.appendChild(group.el);
+
+        // 異常說明（選 X 才出現）
+        const abnormalWrap = document.createElement('div');
+        abnormalWrap.className = 'abnormal-input';
+        const ta = document.createElement('textarea');
+        ta.placeholder = '請填寫異常情形 / 處理方式';
+        ta.dataset.itemIdx = idx;
+        abnormalWrap.appendChild(ta);
+        row.appendChild(abnormalWrap);
+
+        group.onChange = (v) => {
+          if (v === 'X') abnormalWrap.classList.add('show');
+          else abnormalWrap.classList.remove('show');
+        };
+
+        itemsCard.body.appendChild(row);
+      });
+
+      root.appendChild(itemsCard.card);
+
+      // ----- 簽名 -----
+      const sigCard = makeCard('檢點人員簽名');
+      const sigWrap = document.createElement('div');
+      const canvas = document.createElement('canvas');
+      canvas.className = 'signature-pad';
+      sigWrap.appendChild(canvas);
+
+      const sigActions = document.createElement('div');
+      sigActions.className = 'signature-actions';
+      const clearBtn = document.createElement('button');
+      clearBtn.type = 'button';
+      clearBtn.className = 'btn';
+      clearBtn.textContent = '清除重簽';
+      sigActions.appendChild(clearBtn);
+      sigWrap.appendChild(sigActions);
+      sigCard.body.appendChild(sigWrap);
+      root.appendChild(sigCard.card);
+
+      // 必須等 canvas 加進 DOM 才能 init（要拿 boundingClientRect）
+      setTimeout(() => {
+        sigPad = new SignaturePad(canvas);
+        clearBtn.onclick = () => sigPad.clear();
+      }, 0);
+
+      // ----- 送出 -----
+      const submitArea = document.createElement('div');
+      submitArea.className = 'submit-area';
+      const submitBtn = document.createElement('button');
+      submitBtn.type = 'button';
+      submitBtn.className = 'btn btn-primary';
+      submitBtn.id = 'submitBtn';
+      submitBtn.textContent = '送出檢點表';
+      submitArea.appendChild(submitBtn);
+      root.appendChild(submitArea);
+
+      submitBtn.onclick = onSubmit;
+    }
+
+    function makeCard(titleText) {
+      const card = document.createElement('div');
+      card.className = 'card';
+      const title = document.createElement('h2');
+      title.className = 'card-title';
+      title.textContent = titleText;
+      card.appendChild(title);
+      return { card, body: card };
+    }
+
+    function addGridRow(grid, label, value) {
+      const l = document.createElement('div');
+      l.className = 'label';
+      l.textContent = label;
+      const v = document.createElement('div');
+      v.className = 'value';
+      v.textContent = value || '—';
+      grid.appendChild(l);
+      grid.appendChild(v);
+    }
+
+    function makeField(labelText, type, defaultValue) {
+      const field = document.createElement('div');
+      field.className = 'field';
+      const label = document.createElement('label');
+      label.className = 'field-label';
+      label.textContent = labelText;
+      field.appendChild(label);
+      const input = document.createElement('input');
+      input.type = type;
+      if (defaultValue) input.value = defaultValue;
+      field.appendChild(input);
+      return { field, input };
+    }
+
+    function makeRadioGroup(name, options) {
+      const el = document.createElement('div');
+      el.className = 'radio-group';
+      const wrapper = { el, value: null, onChange: null };
+
+      options.forEach(opt => {
+        const lbl = document.createElement('label');
+        lbl.textContent = opt.label;
+        lbl.dataset.value = opt.value;
+        lbl.dataset.cls = opt.cls;
+
+        const input = document.createElement('input');
+        input.type = 'radio';
+        input.name = name;
+        input.value = opt.value;
+        lbl.insertBefore(input, lbl.firstChild);
+
+        input.onchange = () => {
+          el.querySelectorAll('label').forEach(L => {
+            L.classList.remove('checked-good', 'checked-bad', 'checked-na');
+          });
+          lbl.classList.add(opt.cls);
+          wrapper.value = opt.value;
+          if (wrapper.onChange) wrapper.onChange(opt.value);
+        };
+        el.appendChild(lbl);
+      });
+
+      return wrapper;
+    }
+
+    async function onSubmit() {
+      const btn = document.getElementById('submitBtn');
+      const inspector = document.getElementById('inspector').value.trim();
+      const checkDate = document.getElementById('checkDate').value;
+
+      if (!checkDate) return alert('請選擇檢查日期');
+      if (!inspector)  return alert('請填寫檢點人員姓名');
+
+      // 蒐集每一項的結果
+      const results = [];
+      let missing = -1;
+      formMeta.items.forEach((it, idx) => {
+        const checked = document.querySelector(`input[name="item_${idx}"]:checked`);
+        if (!checked) { if (missing < 0) missing = idx + 1; return; }
+        const note = document.querySelector(`textarea[data-item-idx="${idx}"]`).value.trim();
+        results.push({
+          order: it.order,
+          name: it.name,
+          result: checked.value,
+          note: note,
+        });
+      });
+      if (missing > 0) return alert('第 ' + missing + ' 項尚未勾選');
+
+      if (!sigPad || sigPad.isEmpty()) return alert('請簽名');
+
+      const payload = {
+        formType: 'daily',
+        equipmentId: eqp,
+        checkDate: checkDate,
+        inspector: inspector,
+        items: results,
+        signature: sigPad.toDataURL(),
+      };
+
+      btn.disabled = true;
+      const span = document.createElement('span');
+      span.className = 'loading';
+      btn.textContent = '';
+      btn.appendChild(span);
+      btn.appendChild(document.createTextNode(' 送出中...'));
+
+      try {
+        const r = await API.submit(payload);
+        if (!r.ok) throw new Error(r.error || '送出失敗');
+        showResult(r);
+      } catch (err) {
+        btn.disabled = false;
+        btn.textContent = '送出檢點表';
+        alert('送出失敗：' + err.message);
+      }
+    }
+
+    function showResult(r) {
+      const root = document.getElementById('content');
+      root.textContent = '';
+      const card = document.createElement('div');
+      card.className = 'card';
+
+      const icon = document.createElement('div');
+      icon.className = 'result-icon';
+      icon.textContent = '✓';
+      icon.style.color = '#34a853';
+      card.appendChild(icon);
+
+      const title = document.createElement('div');
+      title.className = 'result-title';
+      title.textContent = '檢點表已送出';
+      card.appendChild(title);
+
+      const meta = document.createElement('div');
+      meta.className = 'result-meta';
+      meta.textContent = '檔名：' + r.fileName;
+      card.appendChild(meta);
+
+      const link = document.createElement('a');
+      link.href = r.fileUrl;
+      link.target = '_blank';
+      link.className = 'btn btn-primary';
+      link.style.display = 'block';
+      link.style.textAlign = 'center';
+      link.style.textDecoration = 'none';
+      link.style.marginBottom = '8px';
+      link.textContent = '在 Drive 開啟 PDF';
+      card.appendChild(link);
+
+      const back = document.createElement('a');
+      back.href = 'index.html';
+      back.className = 'btn';
+      back.style.display = 'block';
+      back.style.textAlign = 'center';
+      back.style.textDecoration = 'none';
+      back.textContent = '回設備列表';
+      card.appendChild(back);
+
+      root.appendChild(card);
+    }
+  </script>
+</body>
+</html>

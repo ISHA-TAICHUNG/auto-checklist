@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+  <meta name="theme-color" content="#1a73e8">
+  <title>自動檢查表系統</title>
+  <link rel="stylesheet" href="css/style.css">
+  <script src="js/config.js"></script>
+  <script src="js/api.js"></script>
+</head>
+<body>
+  <header class="header">
+    <h1 id="orgName">自動檢查表系統</h1>
+    <div class="sub" id="orgSub"></div>
+  </header>
+
+  <main class="container">
+    <h2 class="card-title">請選擇設備</h2>
+    <div id="content">
+      <div class="page-loading"><span class="loading"></span>&nbsp;載入中...</div>
+    </div>
+    <p style="text-align:center; color:#9aa0a6; font-size:11px; margin-top:32px;">
+      <span id="versionTag"></span>
+    </p>
+  </main>
+
+  <script>
+    // 文字節點注入（避免 XSS）
+    document.getElementById('orgName').textContent = '自動檢查表系統';
+    document.getElementById('orgSub').textContent = SYSTEM_CONFIG.ORG_NAME;
+    document.getElementById('versionTag').textContent = SYSTEM_CONFIG.VERSION;
+
+    function renderError(msg) {
+      const root = document.getElementById('content');
+      root.textContent = '';
+      const div = document.createElement('div');
+      div.className = 'alert alert-error';
+      div.textContent = msg;
+      root.appendChild(div);
+    }
+
+    function renderEmpty() {
+      const root = document.getElementById('content');
+      root.textContent = '';
+      const div = document.createElement('div');
+      div.className = 'alert alert-info';
+      div.textContent = '尚未建立任何設備。請先到 Google Sheets「設備清單」工作表新增。';
+      root.appendChild(div);
+    }
+
+    function renderList(equipments) {
+      const root = document.getElementById('content');
+      root.textContent = '';
+      equipments.forEach(e => {
+        const card = document.createElement('div');
+        card.className = 'equip-card';
+
+        const name = document.createElement('div');
+        name.className = 'equip-name';
+        name.textContent = e.equipmentName || e.equipmentId;
+        card.appendChild(name);
+
+        const meta = document.createElement('div');
+        meta.className = 'equip-meta';
+        meta.textContent = [e.category, e.location, e.equipmentId].filter(Boolean).join(' ｜ ');
+        card.appendChild(meta);
+
+        const actions = document.createElement('div');
+        actions.className = 'equip-actions';
+
+        const dailyLink = document.createElement('a');
+        dailyLink.className = 'btn-daily';
+        dailyLink.textContent = '每日檢點';
+        dailyLink.href = 'daily.html?eqp=' + encodeURIComponent(e.equipmentId);
+        actions.appendChild(dailyLink);
+
+        const monthlyLink = document.createElement('a');
+        monthlyLink.className = 'btn-monthly';
+        monthlyLink.textContent = '每月檢查';
+        monthlyLink.href = 'monthly.html?eqp=' + encodeURIComponent(e.equipmentId);
+        actions.appendChild(monthlyLink);
+
+        card.appendChild(actions);
+        root.appendChild(card);
+      });
+    }
+
+    (async () => {
+      try {
+        const r = await API.listEquipments();
+        if (!r.ok) return renderError(r.error || '取得設備清單失敗');
+        if (!r.equipments || !r.equipments.length) return renderEmpty();
+        renderList(r.equipments);
+      } catch (err) {
+        renderError('連線後端失敗：' + err.message);
+      }
+    })();
+  </script>
+</body>
+</html>
