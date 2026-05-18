@@ -17,7 +17,7 @@
 ## 架構
 
 ```
-GitHub Pages (web/)            Apps Script (apps-script/)
+GitHub Pages (repo root)       Apps Script (apps-script/)
   ├─ index.html                ├─ Main.gs        — doGet/doPost API
   ├─ daily.html                ├─ Submission.gs  — 接收填報
   ├─ monthly.html              ├─ Pdf.gs         — 產 PDF
@@ -40,8 +40,8 @@ GitHub Pages (web/)            Apps Script (apps-script/)
 1. 建 Google Sheets（DB） + Drive 資料夾 + Apps Script 專案
 2. 把 `apps-script/` 內容貼進 Apps Script，填好 Config，執行 `initializeDatabase`
 3. 部署為 Web App，記下 exec URL
-4. 把 exec URL 填到 `web/js/config.js`
-5. Push 到 GitHub，啟用 Pages（`/web` 資料夾）
+4. 把 exec URL 填到 `js/config.js`
+5. Push 到 GitHub，啟用 Pages（branch=`main`，folder=`/`）
 
 ## 資料庫規格
 
@@ -65,15 +65,14 @@ GitHub Pages (web/)            Apps Script (apps-script/)
 │  ├─ Setup.gs                 # 一鍵初始化 DB
 │  ├─ pdf-daily.html           # 日檢 PDF 模板
 │  └─ pdf-monthly.html         # 月檢 PDF 模板
-├─ web/                        # GitHub Pages 前端
-│  ├─ index.html               # 設備列表入口
-│  ├─ daily.html               # 每日檢點表
-│  ├─ monthly.html             # 每月檢查紀錄
-│  ├─ css/style.css
-│  └─ js/
-│     ├─ config.js             # ⚠ 部署後要填 API_BASE
-│     ├─ api.js                # 與 Apps Script 溝通
-│     └─ signature.js          # 手寫簽名 canvas
+├─ index.html                  # GitHub Pages 入口（設備列表）
+├─ daily.html                  # 每日檢點表
+├─ monthly.html                # 每月檢查紀錄
+├─ css/style.css
+├─ js/
+│  ├─ config.js                # ⚠ 部署後要填 API_BASE + API_TOKEN
+│  ├─ api.js                   # 與 Apps Script 溝通
+│  └─ signature.js             # 手寫簽名 canvas
 └─ docs/
    ├─ deployment-guide.md
    └─ sheets-schema.md

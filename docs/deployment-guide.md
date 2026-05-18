@@ -133,7 +133,7 @@ API_TOKEN:              'REPLACE_WITH_RANDOM_TOKEN_...',     // ← A-5-1 產的
 
 ### B-2. 設定 API 位址與 Token
 
-編輯本地 `web/js/config.js`，把兩個 PASTE_YOUR 換成實際值：
+編輯本地 `js/config.js`，把兩個 PASTE_YOUR 換成實際值：
 
 ```js
 API_BASE:  '<A-7 的 Apps Script exec URL>',
@@ -148,7 +148,7 @@ GitHub Pages 啟用後（B-4），記得回到 DB 試算表「系統設定」工
 
 ### B-3. 推上去
 
-⚠ **推送前確認**：`web/js/config.js` 的 `API_TOKEN` 已填，`Config.gs` 已不在 staging 區（這個檔含敏感 token）— 但 `Config.gs` 是部署到 Apps Script 才有實際值，git 上的版本是 `REPLACE_...`，所以可以 push。
+⚠ **推送前確認**：`js/config.js` 的 `API_TOKEN` 已填，`Config.gs` 已不在 staging 區（這個檔含敏感 token）— 但 `Config.gs` 是部署到 Apps Script 才有實際值，git 上的版本是 `REPLACE_...`，所以可以 push。
 
 在 `/Users/hao/Desktop/自動檢查表_電子化` 執行：
 
@@ -162,14 +162,14 @@ git push -u origin main
 
 > ⚠ **token 進 git 怎麼辦？** 若不小心把含真實 token 的 `config.js` push 上去，立刻：
 > 1. 到 Apps Script Config.gs 改 API_TOKEN（馬上失效）
-> 2. 改 web/js/config.js 為新 token
+> 2. 改 js/config.js 為新 token
 > 3. 重 commit、push（舊 token 已沒用）
 
 ### B-4. 啟用 GitHub Pages
 
 1. 進 GitHub repo → Settings → Pages
 2. Source：`Deploy from a branch`
-3. Branch：`main` / Folder：`/web`
+3. Branch：`main` / Folder：`/ (root)`
 4. 儲存
 5. 等 1-2 分鐘，會顯示網址：`https://ishataichung.github.io/auto-checklist/`
 
