@@ -90,6 +90,38 @@
     isEmpty() { return !this.hasInk; }
     toDataURL() { return this.hasInk ? this.canvas.toDataURL('image/png') : ''; }
 
+    /** 回傳「裁切空白」後的 dataURL — 只保留筆跡 bbox + 10px padding
+     *  解決：全螢幕簽名後筆跡只佔小區，整張圖含大量留白導致回填不置中、PDF 變小 */
+    trimmedDataURL() {
+      if (!this.hasInk) return '';
+      const w = this.canvas.width;
+      const h = this.canvas.height;
+      const pixels = this.ctx.getImageData(0, 0, w, h).data;
+      let minX = w, minY = h, maxX = -1, maxY = -1;
+      for (let y = 0; y < h; y++) {
+        for (let x = 0; x < w; x++) {
+          if (pixels[(y * w + x) * 4 + 3] > 0) {
+            if (x < minX) minX = x;
+            if (x > maxX) maxX = x;
+            if (y < minY) minY = y;
+            if (y > maxY) maxY = y;
+          }
+        }
+      }
+      if (maxX < 0) return this.canvas.toDataURL('image/png');
+      const pad = 16;
+      minX = Math.max(0, minX - pad);
+      minY = Math.max(0, minY - pad);
+      maxX = Math.min(w, maxX + pad);
+      maxY = Math.min(h, maxY + pad);
+      const tw = maxX - minX, th = maxY - minY;
+      const tmp = document.createElement('canvas');
+      tmp.width = tw;
+      tmp.height = th;
+      tmp.getContext('2d').drawImage(this.canvas, minX, minY, tw, th, 0, 0, tw, th);
+      return tmp.toDataURL('image/png');
+    }
+
     /** 把外部 dataURL 載入到此 canvas（用於從全螢幕回填）
      *  等比例縮放 + 置中（避免變形或集中左上）*/
     loadFromDataURL(dataUrl) {
@@ -202,7 +234,8 @@
 
     const onDone = () => {
       if (fullPad && !fullPad.isEmpty()) {
-        mainPad.loadFromDataURL(fullPad.toDataURL());
+        // 用 trimmed 版本，避開大量留白導致主 canvas 顯示偏小
+        mainPad.loadFromDataURL(fullPad.trimmedDataURL());
       }
       cleanup();
     };
