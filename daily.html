@@ -150,7 +150,8 @@
 
       const sigHint = document.createElement('div');
       sigHint.className = 'signature-hint';
-      sigHint.textContent = '可直接在下方簽名，或點「展開大畫面簽名」獲得更大空間';
+      // 內容會由 SignaturePad 依手機方向動態更新
+      sigHint.textContent = '可將手機橫向旋轉以獲得更大的簽名空間';
       sigWrap.appendChild(sigHint);
 
       const canvas = document.createElement('canvas');
@@ -166,20 +167,13 @@
       sigActions.appendChild(clearBtn);
       sigWrap.appendChild(sigActions);
 
-      const fsBtn = document.createElement('button');
-      fsBtn.type = 'button';
-      fsBtn.className = 'btn-fullscreen-sig';
-      fsBtn.textContent = '展開大畫面簽名（建議手機橫向）';
-      sigWrap.appendChild(fsBtn);
-
       sigCard.body.appendChild(sigWrap);
       root.appendChild(sigCard.card);
 
       // 必須等 canvas 加進 DOM 才能 init（要拿 boundingClientRect）
       setTimeout(() => {
-        sigPad = new SignaturePad(canvas);
+        sigPad = new SignaturePad(canvas, { hintElement: sigHint });
         clearBtn.onclick = () => sigPad.clear();
-        fsBtn.onclick = () => openFullscreenSignature(sigPad);
       }, 0);
 
       // ----- 送出 -----

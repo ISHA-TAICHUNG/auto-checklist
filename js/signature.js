@@ -15,20 +15,35 @@
  */
 (function () {
   class SignaturePad {
-    constructor(canvas) {
+    constructor(canvas, opts) {
       this.canvas = canvas;
       this.ctx = canvas.getContext('2d');
       this.isDrawing = false;
       this.hasInk = false;
+      this._hintEl = (opts && opts.hintElement) || null;
       this._resize();
       this._bind();
-      window.addEventListener('resize', () => this._resize());
+      this._updateOrientationHint();
+      window.addEventListener('resize', () => {
+        this._resize();
+        this._updateOrientationHint();
+      });
+      window.addEventListener('orientationchange', () => this._updateOrientationHint());
+    }
+
+    _updateOrientationHint() {
+      if (!this._hintEl) return;
+      const landscape = window.innerWidth > window.innerHeight;
+      this._hintEl.textContent = landscape
+        ? '✓ 已橫向 — 簽名空間最大化，直接簽即可'
+        : '💡 可將手機橫向旋轉以獲得更大的簽名空間';
     }
 
     _resize() {
       const ratio = window.devicePixelRatio || 1;
       const rect = this.canvas.getBoundingClientRect();
-      const prev = this.hasInk ? this.canvas.toDataURL() : null;
+      // 只在 portrait/landscape 之間切換時保留筆跡（用 trim 後置中）
+      const prev = this.hasInk ? this.trimmedDataURL() : null;
       this.canvas.width = rect.width * ratio;
       this.canvas.height = rect.height * ratio;
       this.ctx.scale(ratio, ratio);
@@ -37,8 +52,18 @@
       this.ctx.lineJoin = 'round';
       this.ctx.strokeStyle = '#111';
       if (prev) {
+        // 等比例置中重畫（避免橫向→直向或反向時變形）
         const img = new Image();
-        img.onload = () => this.ctx.drawImage(img, 0, 0, rect.width, rect.height);
+        img.onload = () => {
+          const imgRatio = img.width / img.height;
+          const cR = rect.width / rect.height;
+          let dw, dh;
+          if (imgRatio > cR) { dw = rect.width; dh = rect.width / imgRatio; }
+          else { dh = rect.height; dw = rect.height * imgRatio; }
+          const dx = (rect.width - dw) / 2;
+          const dy = (rect.height - dh) / 2;
+          this.ctx.drawImage(img, dx, dy, dw, dh);
+        };
         img.src = prev;
       }
     }
@@ -151,103 +176,5 @@
     }
   }
 
-  /**
-   * 開啟全螢幕簽名 overlay
-   * @param {SignaturePad} mainPad - 主 canvas pad，完成後內容回填到這
-   */
-  function openFullscreenSignature(mainPad) {
-    const overlay = document.createElement('div');
-    overlay.className = 'sig-overlay show';
-
-    const header = document.createElement('div');
-    header.className = 'sig-overlay-header';
-
-    const cancelLink = document.createElement('span');
-    cancelLink.textContent = '✕ 取消';
-    cancelLink.style.cursor = 'pointer';
-    cancelLink.style.padding = '6px 10px';
-    cancelLink.style.fontSize = '16px';
-    cancelLink.onclick = () => cleanup();
-
-    const title = document.createElement('span');
-    title.textContent = '簽名';
-
-    const doneTopBtn = document.createElement('span');
-    doneTopBtn.textContent = '✓ 完成';
-    doneTopBtn.style.cursor = 'pointer';
-    doneTopBtn.style.padding = '8px 14px';
-    doneTopBtn.style.background = '#fff';
-    doneTopBtn.style.color = '#1a73e8';
-    doneTopBtn.style.borderRadius = '6px';
-    doneTopBtn.style.fontSize = '16px';
-    doneTopBtn.style.fontWeight = '700';
-
-    header.appendChild(cancelLink);
-    header.appendChild(title);
-    header.appendChild(doneTopBtn);
-
-    const wrap = document.createElement('div');
-    wrap.className = 'sig-overlay-canvas-wrap';
-    const fullCanvas = document.createElement('canvas');
-    wrap.appendChild(fullCanvas);
-
-    // 旋轉提示（portrait 時顯示，landscape 時 CSS 隱藏）
-    const hint = document.createElement('div');
-    hint.className = 'sig-overlay-rotate-hint';
-    const hintLine1 = document.createElement('div');
-    hintLine1.textContent = '請將手機橫向旋轉';
-    const hintLine2 = document.createElement('div');
-    hintLine2.textContent = '以獲得更大的簽名空間';
-    hintLine2.style.marginTop = '6px';
-    hint.appendChild(hintLine1);
-    hint.appendChild(hintLine2);
-    wrap.appendChild(hint);
-
-    const footer = document.createElement('div');
-    footer.className = 'sig-overlay-footer';
-    const clearBtn = document.createElement('button');
-    clearBtn.className = 'btn-danger';
-    clearBtn.textContent = '清除重簽';
-    const doneBtn = document.createElement('button');
-    doneBtn.className = 'btn-primary';
-    doneBtn.textContent = '✓ 完成';
-    footer.appendChild(clearBtn);
-    footer.appendChild(doneBtn);
-
-    overlay.appendChild(header);
-    overlay.appendChild(wrap);
-    overlay.appendChild(footer);
-    document.body.appendChild(overlay);
-
-    const prevOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-
-    let fullPad;
-    setTimeout(() => {
-      fullPad = new SignaturePad(fullCanvas);
-      if (!mainPad.isEmpty()) {
-        fullPad.loadFromDataURL(mainPad.toDataURL());
-      }
-    }, 50);
-
-    clearBtn.onclick = () => fullPad && fullPad.clear();
-
-    const onDone = () => {
-      if (fullPad && !fullPad.isEmpty()) {
-        // 用 trimmed 版本，避開大量留白導致主 canvas 顯示偏小
-        mainPad.loadFromDataURL(fullPad.trimmedDataURL());
-      }
-      cleanup();
-    };
-    doneBtn.onclick = onDone;
-    doneTopBtn.onclick = onDone;
-
-    function cleanup() {
-      if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
-      document.body.style.overflow = prevOverflow;
-    }
-  }
-
   window.SignaturePad = SignaturePad;
-  window.openFullscreenSignature = openFullscreenSignature;
 })();

@@ -149,6 +149,23 @@ function setWebAppUrlFromCurrent() {
  *
  * 從 admin endpoint 呼叫，讓 source code 不用寫死具體機構資訊
  */
+/**
+ * 觸發所有所需 OAuth scope 的 consent dialog
+ *
+ * 何時跑：appsscript.json 新增 oauthScope 後，使用者要手動在編輯器
+ * 執行此函數一次，跳出新的 consent dialog 同意（含 Google Docs 權限）。
+ * Web App 的部署不會自動 prompt 使用者授權新 scope，必須由編輯器觸發。
+ */
+function triggerScopesConsent() {
+  // 逐一呼叫各 API 觸發 scope check
+  SpreadsheetApp.openById(CONFIG.DB_SHEET_ID).getName();
+  DriveApp.getRootFolder().getName();
+  MailApp.getRemainingDailyQuota();
+  const doc = DocumentApp.create('_temp_oauth_trigger_' + new Date().getTime());
+  DriveApp.getFileById(doc.getId()).setTrashed(true);
+  Logger.log('所有 OAuth scope 已授權成功');
+}
+
 function setBrandingSettings_(settings) {
   const ss = SpreadsheetApp.openById(CONFIG.DB_SHEET_ID);
   const sheet = ss.getSheetByName('系統設定');

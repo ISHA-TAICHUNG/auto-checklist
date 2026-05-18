@@ -61,6 +61,31 @@ function doGet(e) {
             result = { ok: true, action, written: ok };
             break;
           }
+          case 'testPdf': {
+            // debug 用：直接跑一個簡單的 PDF 產生流程，回傳 stack（不經 friendlyError）
+            try {
+              const equipment = getEquipmentList_()[0];
+              if (!equipment) throw new Error('沒有設備');
+              const full = getEquipmentById_(equipment.equipmentId);
+              const ctx = {
+                recordId: 'test-' + new Date().getTime(),
+                submittedAt: new Date(),
+                checkDate: new Date(),
+                rocDateStr: formatROCDate_(new Date()),
+                equipment: full,
+                payload: {
+                  signature: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkAAIAAAoAAv/lxKUAAAAASUVORK5CYII=',
+                  inspector: 'debug',
+                  items: [{ order: 1, name: 'test', result: 'V', note: '' }],
+                },
+              };
+              const pdf = buildPdf_('daily', ctx);
+              result = { ok: true, action, pdfSize: pdf.getBytes().length };
+            } catch (err) {
+              result = { ok: false, action, error: String(err.message || err), stack: String(err.stack || '') };
+            }
+            break;
+          }
           default:
             throw new Error('未知 admin action: ' + action);
         }
