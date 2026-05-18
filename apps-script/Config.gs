@@ -55,6 +55,10 @@ const CONFIG = {
 
   ORGANIZATION_HEADER: '<機構名稱>',
 
+  // ------ GitHub Pages 前端 URL（提醒信「前往填寫」按鈕用）------
+  // 如果 DB「系統設定」有設定 webFrontendUrl，會優先用 DB 的值
+  DEFAULT_WEB_FRONTEND_URL: 'https://<your-github-username>.github.io/auto-checklist',
+
   // ------ 預設設備（系統啟用時自動建立第一筆設備）------
 
   DEFAULT_EQUIPMENT: {
