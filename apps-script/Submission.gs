@@ -148,16 +148,20 @@ function handleSubmission_(payload) {
       const file = folder.createFile(pdfBlob);
       const fileUrl = file.getUrl();
 
-      // 3. 寫入填報紀錄（含 fileUrl + clientSubmissionId + 異常事件數）
-      const incidentCount = countIncidents_(payload);
-      writeRecord_({ recordId, submittedAt, checkDate, formType: payload.formType,
-                     equipment, payload, fileUrl, incidentCount });
-
-      // 4. 對每個 bad value 項目，append 一列到「異常事件」表（Layer 1 追蹤）
-      writeIncidents_({ recordId, submittedAt, checkDate, formType: payload.formType,
-                        equipment, payload, fileUrl, tplMeta });
-
-      return { ok: true, recordId, fileName, fileUrl, incidentCount };
+      // 3-4. 寫紀錄 + 異常事件（codex P1: 失敗時清理孤兒 PDF）
+      try {
+        const incidentCount = countIncidents_(payload);
+        writeRecord_({ recordId, submittedAt, checkDate, formType: payload.formType,
+                       equipment, payload, fileUrl, incidentCount });
+        writeIncidents_({ recordId, submittedAt, checkDate, formType: payload.formType,
+                          equipment, payload, fileUrl, tplMeta });
+        return { ok: true, recordId, fileName, fileUrl, incidentCount };
+      } catch (writeErr) {
+        // 寫紀錄失敗 → PDF 已在 Drive，是孤兒，清理避免累積
+        Logger.log('寫紀錄失敗，清理孤兒 PDF: ' + writeErr + '\n' + (writeErr.stack || ''));
+        try { file.setTrashed(true); } catch (_) {}
+        throw writeErr;
+      }
 
     } finally {
       lock.releaseLock();

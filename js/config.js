@@ -16,7 +16,7 @@ window.SYSTEM_CONFIG = {
   API_BASE: 'https://script.google.com/macros/s/AKfycbwrAgEXjxRfvQtpGVFqRrHRmr-i5itZZSH9DmrvVl48YWlxFhdxJvEIwQYpR7rv6SkTrQ/exec',
 
   // 必填：共享 token（與後端 Config.gs 的 API_TOKEN 一致）
-  API_TOKEN: '089da735a8fd6a1f4aea4eab0e74af3e62f1b2801cb3b69d',
+  API_TOKEN: '246dc615455a79d4b2437c8d48047d15622d282d175c0494',
 
   // 機構抬頭 — 由前端啟動時 fetch API_BASE?api=branding 動態載入
   // 實際機構名稱存在後端 DB「系統設定」的 organizationName，不寫死在 source code
