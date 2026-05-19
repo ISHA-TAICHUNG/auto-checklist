@@ -38,3 +38,26 @@ function getOrCreateSubFolder_(parent, name) {
   if (it.hasNext()) return it.next();
   return parent.createFolder(name);
 }
+
+/**
+ * 驗證一個 file 是否在 ARCHIVE_ROOT_FOLDER_ID 之下（含深層子資料夾）
+ * 用於 admin fetchPdf 限制範圍（防止讀其他 Drive 檔案）
+ */
+function isUnderArchiveRoot_(fileId) {
+  const rootId = CONFIG.ARCHIVE_ROOT_FOLDER_ID;
+  if (!rootId || rootId.startsWith('REPLACE_')) return false;
+  let file;
+  try { file = DriveApp.getFileById(fileId); } catch (_) { return false; }
+  // 遞迴往上找 parent；最多 5 層（年/月/類別/根）
+  const seen = new Set();
+  let parents = file.getParents();
+  for (let depth = 0; depth < 10; depth++) {
+    if (!parents.hasNext()) return false;
+    const p = parents.next();
+    if (p.getId() === rootId) return true;
+    if (seen.has(p.getId())) return false;  // 避免迴圈
+    seen.add(p.getId());
+    parents = p.getParents();
+  }
+  return false;
+}

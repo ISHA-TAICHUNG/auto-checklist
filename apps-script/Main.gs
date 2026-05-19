@@ -54,15 +54,28 @@ function doGet(e) {
         result = { ok: true, organizationName: getOrgHeader_() };
         break;
 
-      // 移除 web admin endpoint（codex P1）
-      //
-      // 原本 admin&action=fixWebAppUrl / setBranding 與前端共用 API_TOKEN，
-      // 任何看過前端 source 的人都能改提醒收件人。
-      //
-      // 改為「維護動作只在 Apps Script editor 手動執行」：
-      //   - setBrandingSettings_({ organizationName, reminderEmailTo })
-      //   - setWebAppUrlFromCurrent()
-      // 上述函數仍在 Setup.gs，編輯器內可呼叫。
+      case 'admin': {
+        // 維護動作 — 需 token
+        // 注意：寫入類動作（setBranding / fixWebAppUrl）已移除，請在 Apps Script editor 手動執行
+        // 只保留唯讀類 + 安全範圍受限的動作
+        if (e.parameter.token !== CONFIG.API_TOKEN) throw new Error('未授權');
+        const action = e.parameter.action;
+        switch (action) {
+          case 'fetchPdf': {
+            // 唯讀，且只允許讀 ARCHIVE_ROOT_FOLDER_ID 之下的檔案
+            // (解 codex P1：原版接受任意 fileId 可下載部署帳號能存取的任何 Drive 檔)
+            const fid = e.parameter.fileId;
+            if (!fid) throw new Error('需要 fileId');
+            if (!isUnderArchiveRoot_(fid)) throw new Error('該檔案非系統歸檔範圍');
+            const blob = DriveApp.getFileById(fid).getBlob();
+            result = { ok: true, base64: Utilities.base64Encode(blob.getBytes()) };
+            break;
+          }
+          default:
+            throw new Error('未知 admin action: ' + action);
+        }
+        break;
+      }
 
       default:
         throw new Error('未知的 api: ' + api);
