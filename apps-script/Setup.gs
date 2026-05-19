@@ -483,10 +483,14 @@ function addForkliftEquipments() {
       .forEach(r => existing.add(String(r[0])));
   }
 
+  // 部署時可改：codePrefix / locationName / venueTab
+  const codePrefix = 'FORK-LJ-';
+  const locationName = '<位置>';
+  const venueTab = '<場地表分頁名稱>';
   const letters = ['A', 'B', 'C', 'D', 'E', 'F'];
   const newRows = [];
   letters.forEach(l => {
-    const code = 'FORK-LJ-' + l;
+    const code = codePrefix + l;
     if (existing.has(code)) return;
     const row = new Array(headers.length).fill('');
     const setCol = (name, v) => { const i = idx(name); if (i >= 0) row[i] = v; };
@@ -495,8 +499,8 @@ function addForkliftEquipments() {
     setCol('機械編號', 'FORK-' + l);
     setCol('型式規格', '');
     setCol('設備類別', '堆高機');
-    setCol('所在位置', '<位置>');
-    setCol('場地表分頁', '內外場-堆高機、移動式、危運、吊籠、一壓');
+    setCol('所在位置', locationName);
+    setCol('場地表分頁', venueTab);
     setCol('啟用', true);
     newRows.push(row);
   });

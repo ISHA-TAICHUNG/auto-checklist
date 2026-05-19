@@ -19,9 +19,9 @@
 
 - **GitHub repo**：`<your-github-username>/auto-checklist` (public)
 - **GitHub Pages**：`https://<your-github-username>.github.io/auto-checklist/`
-- **Apps Script scriptId**：`1eYLXFv6vy508We5j9ks7-BmO0ui09yPRC_7BoOkfDlRteqW3THA2OPO1`
+- **Apps Script scriptId**：`<YOUR_SCRIPT_ID>`
 - **Status endpoint**（無 token 可呼叫看系統狀態）：
-  `https://script.google.com/macros/s/AKfycbwrAgEXjxRfvQtpGVFqRrHRmr-i5itZZSH9DmrvVl48YWlxFhdxJvEIwQYpR7rv6SkTrQ/exec?api=status`
+  `https://script.google.com/macros/s/<YOUR_WEBAPP_DEPLOYMENT_ID>/exec?api=status`
 
 ## 2. 架構
 
