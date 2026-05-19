@@ -61,6 +61,14 @@ function doGet(e) {
         if (e.parameter.token !== CONFIG.API_TOKEN) throw new Error('未授權');
         const action = e.parameter.action;
         switch (action) {
+          case 'runInit': {
+            // Schema migration helper — 從外部觸發 initializeDatabase
+            // 安全性：受 token 限制 + initializeDatabase 是 idempotent
+            // (重複跑不會破壞既有資料，setupSheet_ 對既有表只補缺欄位)
+            initializeDatabase();
+            result = { ok: true, action, message: 'initializeDatabase 執行完成' };
+            break;
+          }
           case 'openIssues': {
             // 唯讀：列出狀態 != 已完成 & != 不處理 的異常事件
             result = { ok: true, ...listOpenIncidents_() };

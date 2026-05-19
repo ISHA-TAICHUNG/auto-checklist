@@ -244,12 +244,20 @@ function listOpenIncidents_() {
   const idx = n => headers.indexOf(n);
   const closedStates = new Set(['已完成', '不處理']);
   const incidents = [];
+
+  // 日期欄正規化：Sheets 自動把「2026-05-19」字串辨識成 Date 物件
+  // 讀出來時要轉回 ISO 字串，否則 API 回傳會是 "Tue May 19 2026..." 之類
+  const toISO = v => {
+    if (v instanceof Date) return formatISODate_(v);
+    return String(v || '');
+  };
+
   for (let i = 0; i < data.length; i++) {
     const status = String(data[i][idx('狀態')] || '待處理');
     if (closedStates.has(status)) continue;
     incidents.push({
       incidentId: data[i][idx('事件ID')],
-      reportDate: String(data[i][idx('通報日期')] || ''),
+      reportDate: toISO(data[i][idx('通報日期')]),
       equipmentId: data[i][idx('設備代號')],
       equipmentName: data[i][idx('設備名稱')],
       category: data[i][idx('設備類別')],
@@ -260,11 +268,11 @@ function listOpenIncidents_() {
       description: data[i][idx('異常說明')],
       photoCount: data[i][idx('照片數')],
       status,
-      dueDate: String(data[i][idx('預計完成日')] || ''),
+      dueDate: toISO(data[i][idx('預計完成日')]),
       assignee: data[i][idx('負責人')],
     });
   }
-  // 依通報日期降冪（最新在前）
+  // 依通報日期降冪（最新在前）— ISO 字串排序正確對應時間
   incidents.sort((a, b) => (b.reportDate || '').localeCompare(a.reportDate || ''));
   return { count: incidents.length, incidents };
 }
