@@ -61,6 +61,12 @@ function doGet(e) {
         if (e.parameter.token !== CONFIG.API_TOKEN) throw new Error('未授權');
         const action = e.parameter.action;
         switch (action) {
+          case 'reminderStatus': {
+            // 唯讀：跑 dailyReminderJob 的 dry-run，看當日各設備狀態（不寄信）
+            const results = dailyReminderJob({ dryRun: true });
+            result = { ok: true, dryRun: true, count: results.length, results };
+            break;
+          }
           case 'fetchPdf': {
             // 唯讀，且只允許讀 ARCHIVE_ROOT_FOLDER_ID 之下的檔案
             // (解 codex P1：原版接受任意 fileId 可下載部署帳號能存取的任何 Drive 檔)

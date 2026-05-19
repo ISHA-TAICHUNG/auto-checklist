@@ -14,7 +14,8 @@
  * 不必每台單獨填。否則 6 台堆高機 / 5 台衝剪機械都會誤寄多封信。
  */
 
-function dailyReminderJob() {
+function dailyReminderJob(opts) {
+  const dryRun = !!(opts && opts.dryRun);
   const today = todayStart_();
   const equipments = getEquipmentList_();
   const results = [];
@@ -43,13 +44,14 @@ function dailyReminderJob() {
       continue;
     }
 
-    sendUnfilledReminder_(full, today, usage);
+    if (!dryRun) sendUnfilledReminder_(full, today, usage);
     sentCategories.add(full.category);
-    results.push({ equipmentId: full.equipmentId, category: full.category, action: 'mailed',
+    results.push({ equipmentId: full.equipmentId, category: full.category,
+                   action: dryRun ? 'wouldMail' : 'mailed',
                    usage: usage.content });
   }
 
-  Logger.log('dailyReminderJob 結果：' + JSON.stringify(results));
+  Logger.log((dryRun ? 'dryRun ' : '') + 'dailyReminderJob 結果：' + JSON.stringify(results));
   return results;
 }
 
