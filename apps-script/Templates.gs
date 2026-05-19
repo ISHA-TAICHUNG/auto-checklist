@@ -22,6 +22,9 @@ function getEquipmentById_(equipmentId) {
 
   for (let i = 1; i < data.length; i++) {
     if (data[i][idx('設備代號')] === equipmentId) {
+      // 嚴格判斷：boolean true / 字串 "TRUE" 才算啟用
+      const activeRaw = data[i][idx('啟用')];
+      const isActive = activeRaw === true || String(activeRaw).toUpperCase() === 'TRUE';
       return {
         equipmentId: data[i][idx('設備代號')],
         equipmentName: data[i][idx('設備名稱')],
@@ -30,7 +33,7 @@ function getEquipmentById_(equipmentId) {
         category: data[i][idx('設備類別')],
         location: data[i][idx('所在位置')],
         venueSheetTab: data[i][idx('場地表分頁')],
-        active: data[i][idx('啟用')] !== false,
+        active: isActive,
       };
     }
   }
@@ -73,7 +76,11 @@ function getEquipmentList_() {
  *   }
  */
 function getFormMeta_(formType, equipmentId) {
-  const equipment = getEquipmentById_(equipmentId) || CONFIG.DEFAULT_EQUIPMENT;
+  // 不再 fallback 到 DEFAULT_EQUIPMENT（codex P1）
+  // production 找不到 / 停用設備 → 直接拒絕，避免用 placeholder 跑生產
+  const equipment = getEquipmentById_(equipmentId);
+  if (!equipment) throw new Error('找不到設備：' + equipmentId);
+  if (equipment.active === false) throw new Error('設備已停用：' + equipmentId);
 
   const ss = SpreadsheetApp.openById(CONFIG.DB_SHEET_ID);
 

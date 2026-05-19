@@ -48,7 +48,7 @@
 2. 進入後左上角專案名稱改成「自動檢查表-API」
 3. **設定時區**：左側「專案設定」→ 勾選「在編輯器中顯示『appsscript.json』資訊清單檔案」
 4. 回到編輯器，點開 `appsscript.json`，把內容換成 `apps-script/appsscript.json` 的內容（含 `"timeZone": "Asia/Taipei"`）
-5. 把 `apps-script/` 資料夾內**所有 10 個 .gs + 2 個 HTML 檔**逐一貼進去：
+5. 把 `apps-script/` 資料夾內**所有 10 個 .gs 檔**逐一貼進去（PDF 已改用 DocumentApp，不再需要 HTML 模板）：
 
 | 在 Apps Script 編輯器點「＋」→ | 選 | 命名 | 貼上對應檔內容 |
 |---|---|---|---|
@@ -62,8 +62,6 @@
 | Calendar.gs | 指令碼 | `Calendar` | `apps-script/Calendar.gs` |
 | Reminder.gs | 指令碼 | `Reminder` | `apps-script/Reminder.gs` |
 | Setup.gs | 指令碼 | `Setup` | `apps-script/Setup.gs` |
-| pdf-daily.html | HTML | `pdf-daily` | `apps-script/pdf-daily.html` |
-| pdf-monthly.html | HTML | `pdf-monthly` | `apps-script/pdf-monthly.html` |
 
 （預設那個 `Code.gs` 可以刪掉）
 

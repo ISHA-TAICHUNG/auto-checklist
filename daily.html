@@ -282,7 +282,11 @@
 
       if (!sigPad || sigPad.isEmpty()) return alert('請簽名');
 
+      // codex P1: idempotency — 產 UUID v4，後端用此判斷是否重複送出
+      // 同一筆 submit 重試會用同一個 ID，後端會回原紀錄而不是建新的
+      if (!window._submissionId) window._submissionId = crypto.randomUUID();
       const payload = {
+        clientSubmissionId: window._submissionId,
         formType: 'daily',
         equipmentId: eqp,
         checkDate: checkDate,

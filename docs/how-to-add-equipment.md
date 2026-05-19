@@ -130,7 +130,7 @@
 | 情境 | 為什麼要找我 |
 |---|---|
 | 新機具的場地分頁結構不同 | 要改 `Calendar.gs` |
-| PDF 樣式要客製（換 logo、加印章區） | 要改 `pdf-daily.html` / `pdf-monthly.html` |
+| PDF 樣式要客製（換 logo、加印章區） | 要改 `apps-script/Pdf.gs` |
 | 某設備異常要 Line 通知 | 要加 Line Notify 整合 |
 | 多人簽核（操作員 + 主管） | 要改 schema 與表單 |
 | 報表 / 統計頁面 | 全新功能 |

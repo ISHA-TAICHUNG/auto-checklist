@@ -31,7 +31,9 @@ function buildPdf_(formType, ctx) {
     body.setMarginTop(36).setMarginBottom(36).setMarginLeft(36).setMarginRight(36);
 
     // ----- 標題 -----
-    const titleText = isDaily ? '固定式起重機每日作業前檢點表' : '固定式起重機每月定期檢查紀錄';
+    // codex P2: 用 DB 模板的 templateName，未來新增機具不會錯
+    const fallbackTitle = isDaily ? '每日作業前檢點表' : '每月定期檢查紀錄';
+    const titleText = (ctx.template && ctx.template.templateName) || fallbackTitle;
     const titleP = body.appendParagraph(titleText);
     titleP.setHeading(DocumentApp.ParagraphHeading.TITLE);
     titleP.setAlignment(DocumentApp.HorizontalAlignment.CENTER);
@@ -88,10 +90,19 @@ function buildPdf_(formType, ctx) {
 
     body.appendParagraph('');
 
-    // ----- 填寫規則 -----
-    const ruleText = isDaily
-      ? '填寫規則：良好「V」/ 無此項「/」/ 不良「X」（不良需於記事欄註明）。\n依據「職業安全衛生管理辦法」第五十二條規定，發現異常應立即檢修或採取必要措施。'
-      : '注意事項：檢查結果應詳細紀錄。風險評估：嚴重性危害「V」/ 可能性危害「?」/ 無危害「—」';
+    // ----- 填寫規則（優先用 DB 模板的 rule + legalBasis）-----
+    const tpl = ctx.template || {};
+    const tplRule = tpl.rule;
+    const tplLegal = tpl.legalBasis;
+    let ruleText;
+    if (tplRule) {
+      ruleText = '填寫規則：' + tplRule;
+      if (tplLegal) ruleText += '\n依據：' + tplLegal;
+    } else {
+      ruleText = isDaily
+        ? '填寫規則：良好「V」/ 無此項「/」/ 不良「X」（不良需於記事欄註明）。\n依據「職業安全衛生管理辦法」第五十二條規定，發現異常應立即檢修或採取必要措施。'
+        : '注意事項：檢查結果應詳細紀錄。風險評估：嚴重性危害「V」/ 可能性危害「?」/ 無危害「—」';
+    }
     const ruleP = body.appendParagraph(ruleText);
     ruleP.editAsText().setFontSize(9).setForegroundColor('#555555');
 

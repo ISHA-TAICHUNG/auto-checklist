@@ -40,37 +40,29 @@ function doGet(e) {
       }
 
       case 'status':
-        result = { ok: true, status: getSystemStatus_() };
+        // 公開版只回最小資訊（避免 codex P2: 洩漏內部 ID）
+        // 完整診斷請在 Apps Script 編輯器執行 getSystemStatus_() 查看
+        result = {
+          ok: true,
+          version: '1.0',
+          timeZone: tz_(),
+          name: 'auto-checklist-api',
+        };
         break;
 
       case 'branding':
         result = { ok: true, organizationName: getOrgHeader_() };
         break;
 
-      case 'admin': {
-        // 管理用：需要 token；只允許「無副作用 / 受限副作用」的維護動作
-        // 不開放 fetchPdf / testSubmit / testPdf（codex review P1/P2 反饋）
-        if (e.parameter.token !== CONFIG.API_TOKEN) throw new Error('未授權');
-        const action = e.parameter.action;
-        switch (action) {
-          case 'fixWebAppUrl':
-            // 寫回 production /exec URL 到 DB（從 doGet context 拿得到正確 URL）
-            result = { ok: true, action, url: setWebAppUrlFromCurrent() };
-            break;
-          case 'setBranding': {
-            // 把機構名稱與承辦 email 寫入 DB 系統設定
-            const written = setBrandingSettings_({
-              organizationName: e.parameter.orgName || '',
-              reminderEmailTo: e.parameter.email || '',
-            });
-            result = { ok: true, action, written };
-            break;
-          }
-          default:
-            throw new Error('未知 admin action: ' + action);
-        }
-        break;
-      }
+      // 移除 web admin endpoint（codex P1）
+      //
+      // 原本 admin&action=fixWebAppUrl / setBranding 與前端共用 API_TOKEN，
+      // 任何看過前端 source 的人都能改提醒收件人。
+      //
+      // 改為「維護動作只在 Apps Script editor 手動執行」：
+      //   - setBrandingSettings_({ organizationName, reminderEmailTo })
+      //   - setWebAppUrlFromCurrent()
+      // 上述函數仍在 Setup.gs，編輯器內可呼叫。
 
       default:
         throw new Error('未知的 api: ' + api);

@@ -336,7 +336,10 @@
       if (problem) return alert(problem);
       if (!sigPad || sigPad.isEmpty()) return alert('請簽名');
 
+      // codex P1: idempotency — 產 UUID v4，後端用此判斷是否重複送出
+      if (!window._submissionId) window._submissionId = crypto.randomUUID();
       const payload = {
+        clientSubmissionId: window._submissionId,
         formType: 'monthly',
         equipmentId: eqp,
         checkDate: checkDate,

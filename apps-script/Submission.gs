@@ -85,20 +85,32 @@ function handleSubmission_(payload) {
 
     const equipment = getEquipmentById_(payload.equipmentId);
     if (!equipment) throw new Error('找不到設備：' + payload.equipmentId);
+    // codex P1: 拒絕停用設備
+    if (!equipment.active) throw new Error('設備已停用：' + payload.equipmentId);
 
     // 鎖：避免同設備同日重複寫 / 並發 race
     const lock = LockService.getScriptLock();
     if (!lock.tryLock(30000)) throw new Error('系統忙碌，請稍後再試');
 
     try {
+      // codex P1: idempotency — 若前端帶 clientSubmissionId 且已存在 → 回原紀錄
+      if (payload.clientSubmissionId) {
+        const existing = findRecordByClientId_(payload.clientSubmissionId);
+        if (existing) {
+          return Object.assign({ ok: true, idempotent: true }, existing);
+        }
+      }
+
       const recordId = uuid_();
       const submittedAt = new Date();
-      // daily 和 monthly 都用 payload.checkDate
       const checkDate = parseISODate_(payload.checkDate);
+
+      // 取對應檢查表模板（codex P2: PDF 動態抓 templateName / legalBasis / rule）
+      const tplMeta = getTemplateForCategoryCycle_(equipment.category, payload.formType);
 
       // 1. 先產 PDF
       const pdfBlob = buildPdf_(payload.formType, {
-        recordId, submittedAt, checkDate, equipment, payload,
+        recordId, submittedAt, checkDate, equipment, payload, template: tplMeta,
       });
       const fileName = buildPdfFilename_(payload.formType, checkDate, equipment);
       pdfBlob.setName(fileName);
@@ -108,7 +120,7 @@ function handleSubmission_(payload) {
       const file = folder.createFile(pdfBlob);
       const fileUrl = file.getUrl();
 
-      // 3. 最後一次寫入紀錄（含 fileUrl）— 一次完成、無回填、無髒資料
+      // 3. 最後一次寫入紀錄（含 fileUrl + clientSubmissionId）
       writeRecord_({ recordId, submittedAt, checkDate, formType: payload.formType,
                      equipment, payload, fileUrl });
 
@@ -156,8 +168,66 @@ function writeRecord_({ recordId, submittedAt, checkDate, formType, equipment, p
   setCol('完整資料JSON', jsonStr);
 
   setCol('PDF連結', fileUrl);
+  // codex P1: idempotency 用
+  setCol('clientSubmissionId', payload.clientSubmissionId || '');
 
   sheet.appendRow(row);
+}
+
+/**
+ * 用 clientSubmissionId 查既有紀錄（idempotency）
+ * 找到回 { recordId, fileName, fileUrl }；找不到回 null
+ */
+function findRecordByClientId_(clientId) {
+  if (!clientId) return null;
+  const ss = SpreadsheetApp.openById(CONFIG.DB_SHEET_ID);
+  const sheet = ss.getSheetByName('填報紀錄');
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 2) return null;
+  const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  const idIdx = headers.indexOf('clientSubmissionId');
+  if (idIdx < 0) return null;  // 此 DB 尚未 migrate 此欄位，視為無 idempotency
+  const data = sheet.getRange(2, 1, lastRow - 1, headers.length).getValues();
+  for (let i = 0; i < data.length; i++) {
+    if (data[i][idIdx] === clientId) {
+      return {
+        recordId: data[i][headers.indexOf('紀錄ID')],
+        fileUrl: data[i][headers.indexOf('PDF連結')] || '',
+      };
+    }
+  }
+  return null;
+}
+
+/**
+ * 取得指定機具類別 + 週期的檢查表模板（給 PDF 動態載入 templateName 等）
+ */
+function getTemplateForCategoryCycle_(category, formType) {
+  const cycleMap = { daily: '每日', monthly: '每月' };
+  const targetCycle = cycleMap[formType];
+
+  const ss = SpreadsheetApp.openById(CONFIG.DB_SHEET_ID);
+  const sheet = ss.getSheetByName('檢查表模板');
+  const data = sheet.getDataRange().getValues();
+  const headers = data[0];
+  const idx = n => headers.indexOf(n);
+
+  for (let i = 1; i < data.length; i++) {
+    const activeRaw = data[i][idx('啟用')];
+    const isActive = activeRaw === true || String(activeRaw).toUpperCase() === 'TRUE';
+    if (!isActive) continue;
+    if (data[i][idx('設備類別')] === category && data[i][idx('週期')] === targetCycle) {
+      return {
+        templateId: data[i][idx('表單ID')],
+        templateName: data[i][idx('表單名稱')],
+        category: data[i][idx('設備類別')],
+        cycle: data[i][idx('週期')],
+        legalBasis: data[i][idx('法規依據')],
+        rule: data[i][idx('填寫規則')],
+      };
+    }
+  }
+  return null;
 }
 
 /**

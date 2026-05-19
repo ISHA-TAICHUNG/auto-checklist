@@ -72,9 +72,10 @@ function initializeDatabase() {
   );
 
   // 填報紀錄（只建欄位、不塞資料）
+  // 新增 clientSubmissionId（codex P1: idempotency 防重複送出）
   setupSheet_(ss, '填報紀錄',
     ['紀錄ID', '送出時間', '檢查日期', '表單類型', '設備代號', '設備名稱',
-     '設備類別', '檢點人員', '完整資料JSON', 'PDF連結', '備註'],
+     '設備類別', '檢點人員', '完整資料JSON', 'PDF連結', 'clientSubmissionId', '備註'],
     []
   );
 
@@ -82,11 +83,13 @@ function initializeDatabase() {
 }
 
 /**
- * 建立或更新工作表（已存在則不覆蓋資料、只補欄位）
+ * 建立或更新工作表（支援 schema migration）
  *
- * 修法重點：
- *   - 新建表預設只有 26 欄；若 headers.length > 26 要 insertColumns
- *   - 既存表的欄數可能 < headers.length，setValues 前先確保欄夠
+ * 行為：
+ *   - 新表：寫全部 headers + 樣式 + 初始資料
+ *   - 既存表：補上「缺少的 headers」到最後幾欄，不動既有資料
+ *   - 用 header 名稱比對（不依賴順序），所以下次 initializeDatabase
+ *     就能自動補 schema 變更（例如新增 clientSubmissionId 欄位）
  */
 function setupSheet_(ss, sheetName, headers, initialRows) {
   let sheet = ss.getSheetByName(sheetName);
@@ -94,30 +97,46 @@ function setupSheet_(ss, sheetName, headers, initialRows) {
     sheet = ss.insertSheet(sheetName);
   }
 
-  // 確保欄數足夠
+  // 確保 max columns 足夠
   const currentMaxCol = sheet.getMaxColumns();
   if (currentMaxCol < headers.length) {
     sheet.insertColumnsAfter(currentMaxCol, headers.length - currentMaxCol);
   }
 
-  // 判斷第一列是否為空（沒寫過 header）
-  const firstRow = sheet.getRange(1, 1, 1, headers.length).getValues()[0];
-  const firstRowEmpty = firstRow.every(v => v === '' || v === null);
+  // 讀現有 headers（trim、過濾空）
+  const lastCol = Math.max(sheet.getLastColumn(), 1);
+  const existingRow = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+  const existingHeaders = existingRow.map(v => String(v || '').trim()).filter(Boolean);
 
-  if (firstRowEmpty) {
+  if (existingHeaders.length === 0) {
+    // 完全新表
     sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
     sheet.getRange(1, 1, 1, headers.length)
       .setBackground('#1a73e8').setFontColor('#ffffff').setFontWeight('bold');
     sheet.setFrozenRows(1);
+  } else {
+    // 既存表：補上缺少的 headers（在最後）
+    const missing = headers.filter(h => existingHeaders.indexOf(h) < 0);
+    if (missing.length > 0) {
+      const startCol = existingHeaders.length + 1;
+      // 確保欄數夠（可能 maxColumns 沒到 startCol + missing.length - 1）
+      const needed = startCol + missing.length - 1;
+      if (sheet.getMaxColumns() < needed) {
+        sheet.insertColumnsAfter(sheet.getMaxColumns(), needed - sheet.getMaxColumns());
+      }
+      sheet.getRange(1, startCol, 1, missing.length).setValues([missing]);
+      sheet.getRange(1, startCol, 1, missing.length)
+        .setBackground('#1a73e8').setFontColor('#ffffff').setFontWeight('bold');
+      Logger.log('Sheet「' + sheetName + '」補上欄位：' + missing.join(', '));
+    }
   }
 
-  // 寫入初始資料（如果只有標題列、沒有任何資料列）
+  // 寫初始資料（只在表空時，且 initialRows 依 headers 順序）
   if (initialRows.length > 0 && sheet.getLastRow() < 2) {
     sheet.getRange(2, 1, initialRows.length, headers.length).setValues(initialRows);
   }
 
-  // 自動調整欄寬
-  for (let c = 1; c <= headers.length; c++) {
+  for (let c = 1; c <= Math.min(headers.length, 26); c++) {
     sheet.autoResizeColumn(c);
   }
 }
