@@ -291,6 +291,12 @@
       if (!checkDate) return alert('請選擇檢查日期');
       if (!inspector)  return alert('請填寫檢點人員姓名');
 
+      // onSubmit 是獨立 function、看不到 renderForm 內的 badValue，在此重取
+      const resultOptions = (formMeta.template.resultOptions && formMeta.template.resultOptions.length)
+        ? formMeta.template.resultOptions
+        : ['V', 'X', '/'];
+      const badValue = resultOptions[resultOptions.length - 1];
+
       // 蒐集每一項的結果（含異常照片）
       const results = [];
       let missing = -1;
