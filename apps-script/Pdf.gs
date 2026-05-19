@@ -197,18 +197,27 @@ function buildPdf_(formType, ctx) {
             if (photoBlob) {
               body.appendParagraph('');
               const photoImg = body.appendImage(photoBlob);
-              const maxW = 480;
-              if (photoImg.getWidth() > maxW) {
-                const ratio = photoImg.getHeight() / photoImg.getWidth();
-                photoImg.setWidth(maxW);
-                photoImg.setHeight(Math.round(maxW * ratio));
+              // 限制寬度 480 + 高度 600（A4 可用高度 ~750，留空間給 heading/desc/caption）
+              // 直拍照片若高度過高會被裁，這裡用「等比例縮放到較緊的那一邊」
+              const maxW = 480, maxH = 600;
+              const w = photoImg.getWidth(), h = photoImg.getHeight();
+              if (w > maxW || h > maxH) {
+                const scale = Math.min(maxW / w, maxH / h);
+                photoImg.setWidth(Math.round(w * scale));
+                photoImg.setHeight(Math.round(h * scale));
               }
               const cap = body.appendParagraph(`照片 ${pi + 1} / ${it.photos.length}`);
               cap.editAsText().setFontSize(9).setForegroundColor('#888888');
               cap.setAlignment(DocumentApp.HorizontalAlignment.CENTER);
+            } else {
+              // dataUrlToBlob_ 回 null（dataURL 損壞）→ 至少給個 placeholder
+              const errP = body.appendParagraph('（照片載入失敗，原始資料請查詢 DB 完整資料JSON）');
+              errP.editAsText().setFontSize(10).setForegroundColor('#c5221f');
             }
           } catch (e) {
             Logger.log(`第 ${it.order} 項照片 ${pi + 1} 嵌入失敗：` + e);
+            const errP = body.appendParagraph('（照片嵌入時發生錯誤）');
+            errP.editAsText().setFontSize(10).setForegroundColor('#c5221f');
           }
         });
       });
