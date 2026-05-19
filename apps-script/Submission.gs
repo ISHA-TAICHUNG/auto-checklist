@@ -148,11 +148,16 @@ function handleSubmission_(payload) {
       const file = folder.createFile(pdfBlob);
       const fileUrl = file.getUrl();
 
-      // 3. 最後一次寫入紀錄（含 fileUrl + clientSubmissionId）
+      // 3. 寫入填報紀錄（含 fileUrl + clientSubmissionId + 異常事件數）
+      const incidentCount = countIncidents_(payload);
       writeRecord_({ recordId, submittedAt, checkDate, formType: payload.formType,
-                     equipment, payload, fileUrl });
+                     equipment, payload, fileUrl, incidentCount });
 
-      return { ok: true, recordId, fileName, fileUrl };
+      // 4. 對每個 bad value 項目，append 一列到「異常事件」表（Layer 1 追蹤）
+      writeIncidents_({ recordId, submittedAt, checkDate, formType: payload.formType,
+                        equipment, payload, fileUrl, tplMeta });
+
+      return { ok: true, recordId, fileName, fileUrl, incidentCount };
 
     } finally {
       lock.releaseLock();
@@ -165,7 +170,7 @@ function handleSubmission_(payload) {
  * 為避免單 cell 超過 50000 字元上限，這裡不存 signature dataURL，
  * 只存 payload 結構（items, inspector）。簽名仍隨 PDF 一起存到 Drive。
  */
-function writeRecord_({ recordId, submittedAt, checkDate, formType, equipment, payload, fileUrl }) {
+function writeRecord_({ recordId, submittedAt, checkDate, formType, equipment, payload, fileUrl, incidentCount }) {
   const ss = SpreadsheetApp.openById(CONFIG.DB_SHEET_ID);
   const sheet = ss.getSheetByName('填報紀錄');
 
@@ -186,6 +191,7 @@ function writeRecord_({ recordId, submittedAt, checkDate, formType, equipment, p
   setCol('設備名稱', equipment.equipmentName);
   setCol('設備類別', equipment.category);
   setCol('檢點人員', payload.inspector || '');
+  setCol('異常事件數', typeof incidentCount === 'number' ? incidentCount : 0);
 
   // payload 不含 signature dataURL，photos 也改成只記數量（避免 cell 超 50000）
   const payloadForLog = Object.assign({}, payload, { signature: '[stored in PDF]' });
@@ -205,6 +211,83 @@ function writeRecord_({ recordId, submittedAt, checkDate, formType, equipment, p
   setCol('clientSubmissionId', payload.clientSubmissionId || '');
 
   sheet.appendRow(row);
+}
+
+/**
+ * 計算 payload 中的異常事件數
+ * 依機具類別取對應的「bad value」(daily/monthly 不同)
+ */
+function countIncidents_(payload) {
+  if (!Array.isArray(payload.items)) return 0;
+  let count = 0;
+  for (const it of payload.items) {
+    if (isBadResult_(payload.formType, it.result)) count++;
+  }
+  return count;
+}
+
+/**
+ * 判斷一個 result 值是不是「bad」（依 formType）
+ * daily: bad = X
+ * monthly: bad = abnormal 或 X（堆高機 simple schema 用 X）
+ */
+function isBadResult_(formType, result) {
+  if (!result) return false;
+  if (formType === 'daily') return result === 'X';
+  if (formType === 'monthly') return result === 'abnormal' || result === 'X';
+  return false;
+}
+
+/**
+ * 把 payload 內每個「結果=bad」項目寫入「異常事件」工作表
+ *
+ * 一筆檢查表可能產生多筆異常事件（例如 3 項 X）
+ * 每筆都有獨立的事件ID、初始狀態 = 待處理
+ */
+function writeIncidents_({ recordId, submittedAt, checkDate, formType, equipment, payload, fileUrl }) {
+  if (!Array.isArray(payload.items) || !payload.items.length) return;
+
+  const ss = SpreadsheetApp.openById(CONFIG.DB_SHEET_ID);
+  const sheet = ss.getSheetByName('異常事件');
+  if (!sheet) {
+    Logger.log('「異常事件」表不存在，跳過異常追蹤寫入');
+    return;
+  }
+  const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  const submittedAtStr = Utilities.formatDate(submittedAt, tz_(), 'HH:mm:ss');
+  const checkDateStr = formatISODate_(checkDate);
+
+  const rowsToAppend = [];
+  for (const it of payload.items) {
+    if (!isBadResult_(formType, it.result)) continue;
+    const row = new Array(headers.length).fill('');
+    const setCol = (name, value) => {
+      const i = headers.indexOf(name);
+      if (i >= 0) row[i] = value;
+    };
+    setCol('事件ID', uuid_());
+    setCol('通報日期', checkDateStr);
+    setCol('通報時間', submittedAtStr);
+    setCol('設備代號', equipment.equipmentId);
+    setCol('設備名稱', equipment.equipmentName);
+    setCol('設備類別', equipment.category);
+    setCol('表單類型', formType === 'daily' ? '每日' : '每月');
+    setCol('項次', it.order);
+    setCol('項目名稱', it.name);
+    setCol('結果代號', it.result);
+    // monthly 用 abnormalDesc，daily 用 note
+    setCol('異常說明', it.abnormalDesc || it.note || '');
+    setCol('照片數', Array.isArray(it.photos) ? it.photos.length : 0);
+    setCol('PDF連結', fileUrl);
+    setCol('紀錄ID', recordId);
+    setCol('狀態', '待處理');
+    rowsToAppend.push(row);
+  }
+
+  if (rowsToAppend.length > 0) {
+    sheet.getRange(sheet.getLastRow() + 1, 1, rowsToAppend.length, headers.length).setValues(rowsToAppend);
+    Logger.log(`寫入 ${rowsToAppend.length} 筆異常事件`);
+  }
 }
 
 /**

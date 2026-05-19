@@ -106,12 +106,24 @@ function initializeDatabase() {
   );
 
   // 填報紀錄（只建欄位、不塞資料）
-  // 新增 clientSubmissionId（codex P1: idempotency 防重複送出）
+  // 加 clientSubmissionId（idempotency）+ 異常事件數（方便快速辨識哪天有異常）
   setupSheet_(ss, '填報紀錄',
     ['紀錄ID', '送出時間', '檢查日期', '表單類型', '設備代號', '設備名稱',
-     '設備類別', '檢點人員', '完整資料JSON', 'PDF連結', 'clientSubmissionId', '備註'],
+     '設備類別', '檢點人員', '異常事件數', '完整資料JSON', 'PDF連結', 'clientSubmissionId', '備註'],
     []
   );
+
+  // 異常事件追蹤（Layer 1）
+  // 每填一張表的每個「結果=bad」項目，自動寫一列到這
+  setupSheet_(ss, '異常事件',
+    ['事件ID', '通報日期', '通報時間', '設備代號', '設備名稱', '設備類別',
+     '表單類型', '項次', '項目名稱', '結果代號', '異常說明', '照片數',
+     'PDF連結', '紀錄ID',
+     '狀態', '預計完成日', '實際完成日', '負責人', '備註'],
+    []
+  );
+  // 對「狀態」欄加下拉資料驗證
+  setupIncidentStatusValidation_(ss);
 
   Logger.log('資料庫初始化完成。請接著到 Sheets 確認 → 回 Apps Script 執行 installDailyReminderTrigger');
 }
@@ -217,6 +229,65 @@ function triggerScopesConsent() {
   const doc = DocumentApp.create('_temp_oauth_trigger_' + new Date().getTime());
   DriveApp.getFileById(doc.getId()).setTrashed(true);
   Logger.log('所有 OAuth scope 已授權成功');
+}
+
+/**
+ * 列出「待處理 / 處理中 / 待重檢」異常事件
+ * （讓承辦人 / 主管能從外部 API 查目前累積未完成的事件）
+ */
+function listOpenIncidents_() {
+  const ss = SpreadsheetApp.openById(CONFIG.DB_SHEET_ID);
+  const sheet = ss.getSheetByName('異常事件');
+  if (!sheet || sheet.getLastRow() < 2) return { count: 0, incidents: [] };
+  const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  const data = sheet.getRange(2, 1, sheet.getLastRow() - 1, headers.length).getValues();
+  const idx = n => headers.indexOf(n);
+  const closedStates = new Set(['已完成', '不處理']);
+  const incidents = [];
+  for (let i = 0; i < data.length; i++) {
+    const status = String(data[i][idx('狀態')] || '待處理');
+    if (closedStates.has(status)) continue;
+    incidents.push({
+      incidentId: data[i][idx('事件ID')],
+      reportDate: String(data[i][idx('通報日期')] || ''),
+      equipmentId: data[i][idx('設備代號')],
+      equipmentName: data[i][idx('設備名稱')],
+      category: data[i][idx('設備類別')],
+      formType: data[i][idx('表單類型')],
+      order: data[i][idx('項次')],
+      itemName: data[i][idx('項目名稱')],
+      result: data[i][idx('結果代號')],
+      description: data[i][idx('異常說明')],
+      photoCount: data[i][idx('照片數')],
+      status,
+      dueDate: String(data[i][idx('預計完成日')] || ''),
+      assignee: data[i][idx('負責人')],
+    });
+  }
+  // 依通報日期降冪（最新在前）
+  incidents.sort((a, b) => (b.reportDate || '').localeCompare(a.reportDate || ''));
+  return { count: incidents.length, incidents };
+}
+
+/**
+ * 對「異常事件」表的「狀態」欄加下拉資料驗證
+ * 5 個值：待處理 / 處理中 / 已完成 / 待重檢 / 不處理
+ */
+function setupIncidentStatusValidation_(ss) {
+  const sheet = ss.getSheetByName('異常事件');
+  if (!sheet) return;
+  const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  const statusCol = headers.indexOf('狀態') + 1;
+  if (statusCol < 1) return;
+  // 整欄從第 2 列起加 validation
+  const range = sheet.getRange(2, statusCol, sheet.getMaxRows() - 1, 1);
+  const rule = SpreadsheetApp.newDataValidation()
+    .requireValueInList(['待處理', '處理中', '已完成', '待重檢', '不處理'], true)
+    .setAllowInvalid(false)
+    .setHelpText('請從下拉選單選擇狀態')
+    .build();
+  range.setDataValidation(rule);
+  Logger.log('「異常事件」狀態欄已加下拉驗證');
 }
 
 /**

@@ -61,6 +61,11 @@ function doGet(e) {
         if (e.parameter.token !== CONFIG.API_TOKEN) throw new Error('未授權');
         const action = e.parameter.action;
         switch (action) {
+          case 'openIssues': {
+            // 唯讀：列出狀態 != 已完成 & != 不處理 的異常事件
+            result = { ok: true, ...listOpenIncidents_() };
+            break;
+          }
           case 'reminderStatus': {
             // 唯讀：跑 dailyReminderJob 的 dry-run，看當日各設備狀態（不寄信）
             const results = dailyReminderJob({ dryRun: true });
