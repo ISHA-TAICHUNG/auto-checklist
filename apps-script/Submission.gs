@@ -148,20 +148,35 @@ function handleSubmission_(payload) {
       const file = folder.createFile(pdfBlob);
       const fileUrl = file.getUrl();
 
-      // 3-4. 寫紀錄 + 異常事件（codex P1: 失敗時清理孤兒 PDF）
+      // 3-4. 寫紀錄 + 異常事件
+      //
+      // 寫入順序與失敗策略（codex P1 + Claude review partial failure）：
+      //   a) writeRecord_ 是主紀錄（audit trail），必須成功
+      //   b) writeIncidents_ 是輔助追蹤，失敗不阻塞主流程
+      //      (異常項目可從「填報紀錄.完整資料JSON」事後重建)
+      //
+      // 失敗情境：
+      //   - writeRecord 失敗 → 整個流程 fail，setTrashed PDF（孤兒清理）
+      //   - writeRecord 成功 + writeIncidents 失敗 → log 後仍回 ok（避免主紀錄與 PDF 已寫但回錯誤的 partial state）
+      const incidentCount = countIncidents_(payload);
       try {
-        const incidentCount = countIncidents_(payload);
         writeRecord_({ recordId, submittedAt, checkDate, formType: payload.formType,
                        equipment, payload, fileUrl, incidentCount });
-        writeIncidents_({ recordId, submittedAt, checkDate, formType: payload.formType,
-                          equipment, payload, fileUrl, tplMeta });
-        return { ok: true, recordId, fileName, fileUrl, incidentCount };
       } catch (writeErr) {
-        // 寫紀錄失敗 → PDF 已在 Drive，是孤兒，清理避免累積
-        Logger.log('寫紀錄失敗，清理孤兒 PDF: ' + writeErr + '\n' + (writeErr.stack || ''));
+        // 主紀錄寫失敗 → PDF 是孤兒，清理
+        Logger.log('writeRecord_ 失敗，清理孤兒 PDF: ' + writeErr + '\n' + (writeErr.stack || ''));
         try { file.setTrashed(true); } catch (_) {}
         throw writeErr;
       }
+      // 主紀錄已成功，異常追蹤失敗時只 log（不影響使用者結果）
+      try {
+        writeIncidents_({ recordId, submittedAt, checkDate, formType: payload.formType,
+                          equipment, payload, fileUrl, tplMeta });
+      } catch (incidentErr) {
+        Logger.log('writeIncidents_ 失敗（主紀錄已寫，異常追蹤可從 JSON 重建）: ' +
+                   incidentErr + '\n' + (incidentErr.stack || ''));
+      }
+      return { ok: true, recordId, fileName, fileUrl, incidentCount };
 
     } finally {
       lock.releaseLock();
