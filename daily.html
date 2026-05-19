@@ -104,9 +104,10 @@
       const itemsCard = makeCard('檢查項目（' + formMeta.items.length + ' 項）');
 
       // 動態取得結果選項與規則文字（不同機具不同）
+      // 慣例：第 1 個 = 良好（綠）/ 最後 = 不良（紅）/ 中間 = 無此項（灰）
       const resultOptions = (formMeta.template.resultOptions && formMeta.template.resultOptions.length)
         ? formMeta.template.resultOptions
-        : ['V', 'X', '/'];
+        : ['V', '/', 'X'];
       const badValue = resultOptions[resultOptions.length - 1];  // 最後一個 = bad
 
       const rule = document.createElement('div');
@@ -134,9 +135,10 @@
 
         // 動態 result radio：依 template.resultOptions
         // 第 1 個 = good（綠）、最後 = bad（紅）、中間 = na（灰）
+        // label = 中文標籤 + 換行 + 原代號（後端仍存原代號以保證 PDF 一致）
         const radioOpts = resultOptions.map((v, i) => ({
           value: v,
-          label: v,
+          label: window.resultLabel(v),
           cls: i === 0
             ? 'checked-good'
             : (i === resultOptions.length - 1 ? 'checked-bad' : 'checked-na'),
@@ -294,7 +296,7 @@
       // onSubmit 是獨立 function、看不到 renderForm 內的 badValue，在此重取
       const resultOptions = (formMeta.template.resultOptions && formMeta.template.resultOptions.length)
         ? formMeta.template.resultOptions
-        : ['V', 'X', '/'];
+        : ['V', '/', 'X'];
       const badValue = resultOptions[resultOptions.length - 1];
 
       // 蒐集每一項的結果（含異常照片）

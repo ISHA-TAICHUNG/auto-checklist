@@ -54,8 +54,10 @@ function handleSubmission_(payload) {
     if (equipmentForTpl) {
       tplForValidation = getTemplateForCategoryCycle_(equipmentForTpl.category, payload.formType);
     }
+    // 順序按「第一個=良好、中間=N/A、最後=不良」的前端慣例
+    // （前端 daily.html / monthly.html 用 resultOptions[length-1] 判斷 bad）
     const fallbackResult = {
-      daily: ['V', 'X', '/'],
+      daily: ['V', '/', 'X'],
       monthly: ['normal', 'abnormal'],
     };
     const allowedResults = (tplForValidation && tplForValidation.resultOptions && tplForValidation.resultOptions.length)

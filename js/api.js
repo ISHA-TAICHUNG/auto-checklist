@@ -91,6 +91,22 @@
     branding: () => apiGet({ api: 'branding' }),
   };
 
+  // 結果代號中文標籤（按鈕顯示用，傳回後端仍是原代號以維持 PDF 一致性）
+  window.RESULT_LABELS = {
+    // daily 天車（V good / 無此項 / 不良）
+    'V': '良好',  '/': '無此項',  'X': '不良',
+    // daily 堆高機
+    '○': '良好',  '△': '尚可',
+    // monthly 堆高機 simple
+    'ˇ': '良好',
+    // monthly 天車 crane_full
+    'normal': '正常',  'abnormal': '異常',
+  };
+  window.resultLabel = function(code) {
+    const zh = window.RESULT_LABELS[code];
+    return zh ? `${zh}\n${code}` : code;
+  };
+
   // 啟動時自動 fetch 機構名稱、更新所有 .org-name 元素
   async function loadBranding() {
     try {

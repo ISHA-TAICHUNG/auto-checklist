@@ -159,15 +159,16 @@
         }
 
         // 結果 radio（動態 resultOptions）
+        // label 用 resultLabel() 提供中文 + 原代號（兩行顯示）
         const radioOpts = isSimple
           ? resultOptions.map((v, i) => ({
               value: v,
-              label: v,
+              label: window.resultLabel(v),
               cls: i === 0 ? 'checked-good' : 'checked-bad',
             }))
           : [
-              { value: 'normal',   label: '正常', cls: 'checked-good' },
-              { value: 'abnormal', label: '異常', cls: 'checked-bad' },
+              { value: 'normal',   label: '正常',     cls: 'checked-good' },
+              { value: 'abnormal', label: '異常',     cls: 'checked-bad' },
             ];
         const resultGroup = makeRadioGroup('result_' + idx, radioOpts);
         row.appendChild(resultGroup.el);
