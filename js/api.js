@@ -1,4 +1,33 @@
 /**
+ * Polyfill: crypto.randomUUID（iOS 15.4+ / Chrome 92+ 才原生支援）
+ * 在較舊瀏覽器掛 polyfill，確保 idempotency UUID 仍能產生
+ */
+(function () {
+  if (window.crypto && typeof window.crypto.randomUUID === 'function') return;
+  const cryptoObj = window.crypto || window.msCrypto || {};
+  cryptoObj.randomUUID = function () {
+    // RFC 4122 v4 UUID
+    const rand = cryptoObj.getRandomValues
+      ? () => {
+          const buf = new Uint8Array(16);
+          cryptoObj.getRandomValues(buf);
+          return buf;
+        }
+      : () => {
+          const buf = new Uint8Array(16);
+          for (let i = 0; i < 16; i++) buf[i] = Math.floor(Math.random() * 256);
+          return buf;
+        };
+    const b = rand();
+    b[6] = (b[6] & 0x0f) | 0x40;  // version 4
+    b[8] = (b[8] & 0x3f) | 0x80;  // variant
+    const h = i => b[i].toString(16).padStart(2, '0');
+    return `${h(0)}${h(1)}${h(2)}${h(3)}-${h(4)}${h(5)}-${h(6)}${h(7)}-${h(8)}${h(9)}-${h(10)}${h(11)}${h(12)}${h(13)}${h(14)}${h(15)}`;
+  };
+  window.crypto = cryptoObj;
+})();
+
+/**
  * ===== 與 Apps Script Web App 溝通的 client =====
  *
  * Apps Script 限制：
