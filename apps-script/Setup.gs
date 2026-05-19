@@ -220,6 +220,105 @@ function triggerScopesConsent() {
 }
 
 /**
+ * 加堆高機檢查表模板 + 18 項檢查項目（既有 DB upsert）
+ *
+ * 何時跑：第一次加堆高機（或新機具）時，從 source code 把模板與項目寫到 DB。
+ * setupSheet_ 對既有 data 不會追加，所以 initializeDatabase 不會新增這些列。
+ * 此函數做「表單ID」唯一性檢查，已存在就略過。
+ */
+function addForkliftTemplatesAndItems() {
+  const ss = SpreadsheetApp.openById(CONFIG.DB_SHEET_ID);
+  const out = { templates: 0, items: 0 };
+
+  // 1. 檢查表模板
+  const tplSheet = ss.getSheetByName('檢查表模板');
+  const tplHeaders = tplSheet.getRange(1, 1, 1, tplSheet.getLastColumn()).getValues()[0];
+  const tplIdx = n => tplHeaders.indexOf(n);
+  const tplLastRow = tplSheet.getLastRow();
+  const existingTplIds = new Set();
+  if (tplLastRow > 1) {
+    tplSheet.getRange(2, tplIdx('表單ID') + 1, tplLastRow - 1, 1).getValues()
+      .forEach(r => existingTplIds.add(String(r[0])));
+  }
+
+  const newTemplates = [
+    ['F-FORK-D', '堆高機', '堆高機每日使用前檢點表', '每日',
+     '職業安全衛生管理辦法 §50', '良好「○」/ 尚可「△」/ 不良待修「X」（由授課教師檢查）',
+     '○,△,X', '', true],
+    ['F-FORK-M', '堆高機', '堆高機每月定期檢查表', '每月',
+     '起重升降機具安全規則 §128', '正常打「ˇ」/ 異常打「X」',
+     'ˇ,X', 'simple', true],
+  ];
+  const tplColMap = ['表單ID', '設備類別', '表單名稱', '週期', '法規依據', '填寫規則', 'resultOptions', 'monthlySchema', '啟用'];
+  newTemplates.forEach(tplRow => {
+    const id = tplRow[0];
+    if (existingTplIds.has(id)) { Logger.log('模板已存在：' + id); return; }
+    const row = new Array(tplHeaders.length).fill('');
+    tplColMap.forEach((col, i) => {
+      const ci = tplIdx(col);
+      if (ci >= 0) row[ci] = tplRow[i];
+    });
+    tplSheet.appendRow(row);
+    out.templates++;
+  });
+
+  // 2. 檢查項目
+  const itemSheet = ss.getSheetByName('檢查項目');
+  const itemHeaders = itemSheet.getRange(1, 1, 1, itemSheet.getLastColumn()).getValues()[0];
+  const itemIdx = n => itemHeaders.indexOf(n);
+  const itemLastRow = itemSheet.getLastRow();
+  const existingItems = new Set();
+  if (itemLastRow > 1) {
+    const data = itemSheet.getRange(2, 1, itemLastRow - 1, itemHeaders.length).getValues();
+    data.forEach(r => {
+      existingItems.add(r[itemIdx('表單ID')] + '|' + r[itemIdx('項目順序')]);
+    });
+  }
+
+  const newItems = [
+    // 堆高機日檢 11 項
+    ['F-FORK-D', 1, '水箱、副水箱水是否足夠', '', true],
+    ['F-FORK-D', 2, '機油是否足夠', '', true],
+    ['F-FORK-D', 3, '煞車油是否足夠', '', true],
+    ['F-FORK-D', 4, '燃料油（高級柴油）是否足夠', '', true],
+    ['F-FORK-D', 5, '儀表、燈光是否故障', '', true],
+    ['F-FORK-D', 6, '煞車踏板間隙是否過大', '', true],
+    ['F-FORK-D', 7, '輪胎螺絲是否鬆動', '', true],
+    ['F-FORK-D', 8, '方向盤、喇叭功能是否正常', '', true],
+    ['F-FORK-D', 9, '液壓油是否足夠(油量尺上下限)', '', true],
+    ['F-FORK-D', 10, '油管是否漏油', '', true],
+    ['F-FORK-D', 11, '電瓶水（上下限）', '', true],
+    // 堆高機月檢 7 項
+    ['F-FORK-M', 1, '頂蓬及桅桿有無損傷', '目視', true],
+    ['F-FORK-M', 2, '積載裝置之性能', '測試', true],
+    ['F-FORK-M', 3, '油壓設備之性能', '檢點', true],
+    ['F-FORK-M', 4, '制動裝置、剎車之性能', '測試', true],
+    ['F-FORK-M', 5, '離合器', '測試', true],
+    ['F-FORK-M', 6, '方向盤', '檢點', true],
+    ['F-FORK-M', 7, '其他各部份有無損傷', '檢點', true],
+  ];
+  const itemColMap = ['表單ID', '項目順序', '項目名稱', '檢查方法', '啟用'];
+  const rowsToAppend = [];
+  newItems.forEach(item => {
+    const key = item[0] + '|' + item[1];
+    if (existingItems.has(key)) return;
+    const row = new Array(itemHeaders.length).fill('');
+    itemColMap.forEach((col, i) => {
+      const ci = itemIdx(col);
+      if (ci >= 0) row[ci] = item[i];
+    });
+    rowsToAppend.push(row);
+  });
+  if (rowsToAppend.length > 0) {
+    itemSheet.getRange(itemSheet.getLastRow() + 1, 1, rowsToAppend.length, itemHeaders.length).setValues(rowsToAppend);
+    out.items = rowsToAppend.length;
+  }
+
+  Logger.log('addForkliftTemplatesAndItems 完成：' + JSON.stringify(out));
+  return out;
+}
+
+/**
  * 加入堆高機 6 台 A-F 到「設備清單」
  *
  * 用法：在 Apps Script 編輯器選此函數 → 執行（一次即可，重複跑會略過已存在的）

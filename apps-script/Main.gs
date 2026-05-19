@@ -88,6 +88,7 @@ function doGet(e) {
 }
 
 function doPost(e) {
+  let authed = false;  // 通過 token 驗證才打開 debug 模式（不在驗證前洩漏 stack）
   try {
     const raw = (e && e.postData && e.postData.contents) || '';
     if (!raw) throw new Error('空白 payload');
@@ -108,10 +109,19 @@ function doPost(e) {
     if (payload.apiToken !== CONFIG.API_TOKEN) {
       throw new Error('未授權');
     }
+    authed = true;
     delete payload.apiToken;
 
-    const result = handleSubmission_(payload);
-    return jsonResponse_(result);
+    const debug = !!payload._debug;
+    try {
+      const result = handleSubmission_(payload);
+      return jsonResponse_(result);
+    } catch (err) {
+      if (debug) {
+        return jsonResponse_({ ok: false, error: String(err.message || err), stack: String(err.stack || '') });
+      }
+      throw err;
+    }
 
   } catch (err) {
     Logger.log('doPost 失敗：' + err + '\n' + (err.stack || ''));
