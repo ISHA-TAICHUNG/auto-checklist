@@ -73,12 +73,18 @@ function doGet(e) {
             break;
           }
           case 'fetchPdf': {
-            // 唯讀，且只允許讀 ARCHIVE_ROOT_FOLDER_ID 之下的檔案
-            // (解 codex P1：原版接受任意 fileId 可下載部署帳號能存取的任何 Drive 檔)
+            // 唯讀，且只允許讀「archive root 之下 + mimeType=PDF」的檔案
+            // 雙重限制（codex P1 + DB Sheet 移入歸檔資料夾後的延伸保護）：
+            //   - isUnderArchiveRoot_：限制範圍只能歸檔資料夾
+            //   - mimeType 檢查：避免下載 DB Sheet / 其他非 PDF 檔
             const fid = e.parameter.fileId;
             if (!fid) throw new Error('需要 fileId');
             if (!isUnderArchiveRoot_(fid)) throw new Error('該檔案非系統歸檔範圍');
-            const blob = DriveApp.getFileById(fid).getBlob();
+            const file = DriveApp.getFileById(fid);
+            if (file.getMimeType() !== 'application/pdf') {
+              throw new Error('該檔案非 PDF（mimeType: ' + file.getMimeType() + '）');
+            }
+            const blob = file.getBlob();
             result = { ok: true, base64: Utilities.base64Encode(blob.getBytes()) };
             break;
           }
@@ -147,7 +153,9 @@ function friendlyError_(err) {
   const msg = String((err && err.message) || err);
   const businessErrors = ['未授權', 'payload 過大', 'payload 不是合法 JSON',
     '簽名格式錯誤', '簽名圖太大', '空白 payload', '系統忙碌，請稍後再試',
-    '找不到設備', '需提供', '缺少'];
+    '找不到設備', '需提供', '缺少',
+    // admin 用錯誤訊息
+    '該檔案非', '需要 fileId', '未知 admin action', '未知的 api'];
   if (businessErrors.some(k => msg.indexOf(k) >= 0)) return msg;
   return '系統處理失敗，請聯絡管理員';
 }
