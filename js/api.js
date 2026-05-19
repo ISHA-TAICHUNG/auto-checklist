@@ -40,8 +40,9 @@
   async function apiPost(payload) {
     ensureConfigured(true);
     const body = JSON.stringify(Object.assign({ apiToken: C.API_TOKEN }, payload));
-    if (body.length > 500 * 1024) {
-      throw new Error('資料太大（>500KB），請檢查簽名圖大小');
+    // 5MB 上限（含多張異常照片）；和後端 Config.gs MAX_PAYLOAD_BYTES 一致
+    if (body.length > 5 * 1024 * 1024) {
+      throw new Error('資料太大（>5MB），請減少照片張數或縮小簽名');
     }
     const res = await fetch(C.API_BASE, {
       method: 'POST',

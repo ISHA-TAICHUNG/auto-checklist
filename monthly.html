@@ -25,7 +25,13 @@
   </main>
 
   <script>
-    // 機構名稱由 api.js 啟動時動態載入到 [data-org-name] 元素
+    // 全域錯誤捕捉：避免「點送出沒反應」這種 silent failure
+    window.addEventListener('error', (e) => {
+      alert('JS 錯誤：' + (e.message || e) + '\n' + (e.filename || '') + ':' + (e.lineno || ''));
+    });
+    window.addEventListener('unhandledrejection', (e) => {
+      alert('Promise 錯誤：' + (e.reason && e.reason.message ? e.reason.message : e.reason));
+    });
 
     const urlParams = new URLSearchParams(location.search);
     const eqp = urlParams.get('eqp');
