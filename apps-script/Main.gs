@@ -61,6 +61,12 @@ function doGet(e) {
         if (e.parameter.token !== CONFIG.API_TOKEN) throw new Error('未授權');
         const action = e.parameter.action;
         switch (action) {
+          case 'formatSheets': {
+            // 重新套用欄寬與換行設定（idempotent）
+            applyColumnWidthsAndWrap_();
+            result = { ok: true, action, message: 'column widths applied' };
+            break;
+          }
           case 'runInit': {
             // Schema migration helper — 從外部觸發 initializeDatabase
             // 安全性：受 token 限制 + initializeDatabase 是 idempotent

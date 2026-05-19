@@ -125,6 +125,9 @@ function initializeDatabase() {
   // 對「狀態」欄加下拉資料驗證
   setupIncidentStatusValidation_(ss);
 
+  // 套用欄寬與文字換行（讓 Sheet 視覺更舒適）
+  try { applyColumnWidthsAndWrap_(); } catch (e) { Logger.log('套用欄寬失敗：' + e); }
+
   Logger.log('資料庫初始化完成。請接著到 Sheets 確認 → 回 Apps Script 執行 installDailyReminderTrigger');
 }
 
@@ -275,6 +278,69 @@ function listOpenIncidents_() {
   // 依通報日期降冪（最新在前）— ISO 字串排序正確對應時間
   incidents.sort((a, b) => (b.reportDate || '').localeCompare(a.reportDate || ''));
   return { count: incidents.length, incidents };
+}
+
+/**
+ * 套用各工作表的「欄寬」與「文字換行」設定
+ *
+ * 每張表依 header 名稱動態定位欄位（不依賴順序）。
+ * 找不到的 header 略過（保持舊版相容性）。
+ */
+function applyColumnWidthsAndWrap_() {
+  const ss = SpreadsheetApp.openById(CONFIG.DB_SHEET_ID);
+  // 欄寬 profile（pixel）
+  const profiles = {
+    '異常事件': {
+      '事件ID': 90, '通報日期': 100, '通報時間': 80,
+      '設備代號': 110, '設備名稱': 140, '設備類別': 90,
+      '表單類型': 80, '項次': 55, '項目名稱': 240, '結果代號': 80,
+      '異常說明': 260, '照片數': 60, 'PDF連結': 140, '紀錄ID': 90,
+      '狀態': 100, '預計完成日': 110, '實際完成日': 110, '負責人': 90, '備註': 200,
+    },
+    '填報紀錄': {
+      '紀錄ID': 90, '送出時間': 140, '檢查日期': 100, '表單類型': 80,
+      '設備代號': 110, '設備名稱': 140, '設備類別': 90, '檢點人員': 100,
+      '異常事件數': 90, '完整資料JSON': 200, 'PDF連結': 140,
+      'clientSubmissionId': 100, '備註': 150,
+    },
+    '檢查表模板': {
+      '表單ID': 100, '設備類別': 100, '表單名稱': 240, '週期': 70,
+      '法規依據': 180, '填寫規則': 280, 'resultOptions': 100, 'monthlySchema': 110, '啟用': 60,
+    },
+    '檢查項目': {
+      '表單ID': 100, '項目順序': 80, '項目名稱': 320, '檢查方法': 110, '啟用': 60,
+    },
+    '設備清單': {
+      '設備代號': 110, '設備名稱': 140, '機械編號': 130, '型式規格': 180,
+      '設備類別': 100, '所在位置': 100, '場地表分頁': 280, '啟用': 60,
+    },
+    '系統設定': { '鍵': 140, '值': 320, '備註': 280 },
+    '節假日關鍵字': { '關鍵字': 120, '備註': 200 },
+  };
+  // 這些欄位文字較長，要開「自動換行」
+  const wrapCols = ['項目名稱', '表單名稱', '異常說明', '填寫規則', '法規依據',
+                    '完整資料JSON', '備註', '型式規格', '場地表分頁', '值'];
+
+  Object.keys(profiles).forEach(sheetName => {
+    const sheet = ss.getSheetByName(sheetName);
+    if (!sheet) return;
+    const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+
+    Object.keys(profiles[sheetName]).forEach(col => {
+      const i = headers.indexOf(col) + 1;
+      if (i > 0) sheet.setColumnWidth(i, profiles[sheetName][col]);
+    });
+
+    wrapCols.forEach(col => {
+      const i = headers.indexOf(col) + 1;
+      if (i > 0) sheet.getRange(1, i, Math.max(sheet.getMaxRows(), 100), 1).setWrap(true);
+    });
+
+    // 凍結第 1 列已在 setupSheet_ 設過（freezeRows: 1）
+    // 列高自動依內容（Sheets 預設行為，無需 setRowHeight）
+  });
+
+  Logger.log('column widths + wrap applied to ' + Object.keys(profiles).length + ' sheets');
 }
 
 /**
