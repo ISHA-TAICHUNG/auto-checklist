@@ -23,3 +23,11 @@ build/
 # 測試/實際填表產出的 PDF 不上 git（含具體機構/位置/設備資訊）
 *.pdf
 .claude/
+
+# clasp 本機設定（含 scriptId，每個開發者各自設定不上 git）
+.clasp.json
+
+# clasp 同步的 .js 檔 — 是 live production 版本（Config.js 含真實 token、Setup.js 含機構資訊）
+# .gs 才是 git 上的 source of truth（redacted with placeholders）
+# 工作流程見 docs/deployment-guide.md 的 clasp 章節
+apps-script/*.js

@@ -1,0 +1,7 @@
+# 不要 push .gs 檔到 Apps Script — 它們是 github 用的 redacted source-of-truth
+# .js 才是 live production 版本（含真實 token / 機構資訊）
+**/*.gs
+
+# 系統檔
+**/.DS_Store
+**/node_modules/**
