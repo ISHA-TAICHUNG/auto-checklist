@@ -16,9 +16,11 @@ const CONFIG = {
   // 主要目的是擋掉不知道網址直接打 API 的機器人。要更嚴的話需要登入機制。
   API_TOKEN: 'REPLACE_WITH_RANDOM_TOKEN_AT_LEAST_32_CHARS',
 
-  // ------ 防 DoS：payload 大小與簽名長度上限 ------
-  MAX_PAYLOAD_BYTES: 500 * 1024,     // 整個 JSON 上限 500KB
-  MAX_SIGNATURE_BYTES: 300 * 1024,   // 簽名 base64 上限 300KB
+  // ------ 防 DoS：payload 大小與圖片上限 ------
+  MAX_PAYLOAD_BYTES: 5 * 1024 * 1024, // 整個 JSON 上限 5MB（含多張異常照片）
+  MAX_SIGNATURE_BYTES: 300 * 1024,    // 簽名 base64 上限 300KB
+  MAX_PHOTO_BYTES: 600 * 1024,        // 單張異常照片 base64 上限 600KB（已壓縮版）
+  MAX_PHOTOS_PER_ITEM: 4,             // 單一檢查項目最多 4 張異常照片
   MAX_TEXT_FIELD_LENGTH: 500,         // 任一文字欄位上限（inspector/note/desc/action/review）
 
   // ------ 資料來源 ------

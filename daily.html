@@ -9,6 +9,7 @@
   <script src="js/config.js"></script>
   <script src="js/api.js"></script>
   <script src="js/signature.js"></script>
+  <script src="js/photos.js"></script>
 </head>
 <body>
   <header class="header">
@@ -137,13 +138,21 @@
         const group = makeRadioGroup('item_' + idx, radioOpts);
         row.appendChild(group.el);
 
-        // 異常說明（選 bad 才出現）
+        // 異常說明 + 照片上傳（選 bad 才出現）
         const abnormalWrap = document.createElement('div');
         abnormalWrap.className = 'abnormal-input';
         const ta = document.createElement('textarea');
         ta.placeholder = '請填寫異常情形 / 處理方式';
         ta.dataset.itemIdx = idx;
         abnormalWrap.appendChild(ta);
+
+        // 異常照片 manager（拍照 / 上傳 / 自動壓縮）
+        const photoWrap = document.createElement('div');
+        abnormalWrap.appendChild(photoWrap);
+        const photoMgr = new PhotoManager(photoWrap, { max: 4 });
+        // 存到 item，送出時收集
+        it._photoMgr = photoMgr;
+
         row.appendChild(abnormalWrap);
 
         group.onChange = (v) => {
@@ -276,18 +285,22 @@
       if (!checkDate) return alert('請選擇檢查日期');
       if (!inspector)  return alert('請填寫檢點人員姓名');
 
-      // 蒐集每一項的結果
+      // 蒐集每一項的結果（含異常照片）
       const results = [];
       let missing = -1;
       formMeta.items.forEach((it, idx) => {
         const checked = document.querySelector(`input[name="item_${idx}"]:checked`);
         if (!checked) { if (missing < 0) missing = idx + 1; return; }
         const note = document.querySelector(`textarea[data-item-idx="${idx}"]`).value.trim();
+        const photos = (it._photoMgr && checked.value === badValue)
+          ? it._photoMgr.toDataURLs()
+          : [];
         results.push({
           order: it.order,
           name: it.name,
           result: checked.value,
           note: note,
+          photos,
         });
       });
       if (missing > 0) return alert('第 ' + missing + ' 項尚未勾選');

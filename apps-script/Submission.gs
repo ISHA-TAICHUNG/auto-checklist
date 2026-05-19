@@ -79,6 +79,23 @@ function handleSubmission_(payload) {
           .map(m => sanitizeText_(m, 20))
           .filter(m => METHODS_WHITELIST.indexOf(m) >= 0);
       }
+      // 異常照片：驗證 + 限制數量
+      let photos = [];
+      if (Array.isArray(it.photos)) {
+        if (it.photos.length > CONFIG.MAX_PHOTOS_PER_ITEM) {
+          throw new Error(`第 ${idx + 1} 項照片超過 ${CONFIG.MAX_PHOTOS_PER_ITEM} 張上限`);
+        }
+        photos = it.photos.filter(p => p && typeof p === 'string').map((p, pi) => {
+          if (p.length > CONFIG.MAX_PHOTO_BYTES) {
+            throw new Error(`第 ${idx + 1} 項第 ${pi + 1} 張照片過大`);
+          }
+          if (!/^data:image\/(jpeg|jpg|png);base64,[A-Za-z0-9+/=]+$/.test(p)) {
+            throw new Error(`第 ${idx + 1} 項第 ${pi + 1} 張照片格式錯誤`);
+          }
+          return p;
+        });
+      }
+
       return {
         order: Number(it.order) || 0,
         name: sanitizeText_(it.name, 200),
@@ -90,6 +107,7 @@ function handleSubmission_(payload) {
         risk,
         action: sanitizeText_(it.action),
         review: sanitizeText_(it.review),
+        photos,
       };
     });
 
@@ -169,8 +187,13 @@ function writeRecord_({ recordId, submittedAt, checkDate, formType, equipment, p
   setCol('設備類別', equipment.category);
   setCol('檢點人員', payload.inspector || '');
 
-  // payload 不含 signature dataURL（避免 cell 超長），並截斷以防超過 50000 上限
+  // payload 不含 signature dataURL，photos 也改成只記數量（避免 cell 超 50000）
   const payloadForLog = Object.assign({}, payload, { signature: '[stored in PDF]' });
+  if (Array.isArray(payloadForLog.items)) {
+    payloadForLog.items = payloadForLog.items.map(it => Object.assign({}, it, {
+      photos: Array.isArray(it.photos) ? `[${it.photos.length} 張照片，已嵌入 PDF]` : undefined,
+    }));
+  }
   let jsonStr = JSON.stringify(payloadForLog);
   if (jsonStr.length > 49000) {
     jsonStr = jsonStr.substring(0, 49000) + '...[truncated]';

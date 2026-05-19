@@ -160,6 +160,49 @@ function buildPdf_(formType, ctx) {
     submitP.editAsText().setFontSize(9).setForegroundColor('#888888');
     submitP.setAlignment(DocumentApp.HorizontalAlignment.RIGHT);
 
+    // ----- 異常照片附件（如果有任何項目附了照片）-----
+    const itemsWithPhotos = (ctx.payload.items || []).filter(
+      it => Array.isArray(it.photos) && it.photos.length > 0
+    );
+    if (itemsWithPhotos.length > 0) {
+      body.appendPageBreak();
+      const attachTitle = body.appendParagraph('異常照片附件');
+      attachTitle.setHeading(DocumentApp.ParagraphHeading.HEADING1);
+      attachTitle.setAlignment(DocumentApp.HorizontalAlignment.CENTER);
+
+      itemsWithPhotos.forEach(it => {
+        body.appendParagraph('');                                                                  // 間距
+        const labelP = body.appendParagraph(`第 ${it.order} 項：${it.name}`);
+        labelP.editAsText().setFontSize(12).setBold(true).setForegroundColor('#1a73e8');
+
+        if (it.abnormalDesc || it.note) {
+          const descP = body.appendParagraph('異常說明：' + (it.abnormalDesc || it.note));
+          descP.editAsText().setFontSize(10).setForegroundColor('#c5221f');
+        }
+
+        it.photos.forEach((p, pi) => {
+          try {
+            const photoBlob = dataUrlToBlob_(p, `item${it.order}_photo${pi + 1}.jpg`);
+            if (photoBlob) {
+              body.appendParagraph('');
+              const photoImg = body.appendImage(photoBlob);
+              const maxW = 480;
+              if (photoImg.getWidth() > maxW) {
+                const ratio = photoImg.getHeight() / photoImg.getWidth();
+                photoImg.setWidth(maxW);
+                photoImg.setHeight(Math.round(maxW * ratio));
+              }
+              const cap = body.appendParagraph(`照片 ${pi + 1} / ${it.photos.length}`);
+              cap.editAsText().setFontSize(9).setForegroundColor('#888888');
+              cap.setAlignment(DocumentApp.HorizontalAlignment.CENTER);
+            }
+          } catch (e) {
+            Logger.log(`第 ${it.order} 項照片 ${pi + 1} 嵌入失敗：` + e);
+          }
+        });
+      });
+    }
+
     doc.saveAndClose();
 
     // ----- 匯出 PDF -----

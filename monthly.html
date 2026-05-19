@@ -9,6 +9,7 @@
   <script src="js/config.js"></script>
   <script src="js/api.js"></script>
   <script src="js/signature.js"></script>
+  <script src="js/photos.js"></script>
 </head>
 <body>
   <header class="header">
@@ -165,7 +166,7 @@
         const resultGroup = makeRadioGroup('result_' + idx, radioOpts);
         row.appendChild(resultGroup.el);
 
-        // 異常說明（選 bad 才出現）
+        // 異常說明 + 照片上傳（選 bad 才出現）
         const abnormalWrap = document.createElement('div');
         abnormalWrap.className = 'abnormal-input';
         const ta = document.createElement('textarea');
@@ -173,6 +174,13 @@
         ta.dataset.itemIdx = idx;
         ta.dataset.field = 'abnormalDesc';
         abnormalWrap.appendChild(ta);
+
+        // 異常照片 manager
+        const photoWrap = document.createElement('div');
+        abnormalWrap.appendChild(photoWrap);
+        const photoMgr = new PhotoManager(photoWrap, { max: 4 });
+        it._photoMgr = photoMgr;
+
         row.appendChild(abnormalWrap);
 
         // 風險評估、定期檢討 — 僅 crane_full
@@ -362,6 +370,9 @@
         if (result === badValue && !abnormalDesc.trim() && !problem)
           problem = '第 ' + it.order + ' 項：異常請填說明';
 
+        const photos = (it._photoMgr && result === badValue)
+          ? it._photoMgr.toDataURLs()
+          : [];
         items.push({
           order: it.order,
           name: it.name,
@@ -372,6 +383,7 @@
           risk,
           action: action.trim(),
           review: review.trim(),
+          photos,
         });
       });
 
