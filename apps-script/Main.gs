@@ -82,6 +82,17 @@ function doGet(e) {
             result = { ok: true, action, summary };
             break;
           }
+          case 'cleanupDate': {
+            // 清掉指定日期的所有測試資料（填報紀錄 + 異常事件 + Drive PDF）
+            // ⚠ 一旦執行不可逆，PDF 進回收桶可救回 30 天
+            // 用 dryRun=1 預覽會刪掉什麼，dryRun=0 才實刪
+            const dateStr = e.parameter.date;
+            const dryRun = e.parameter.dryRun === '1';
+            if (!dateStr) throw new Error('需提供 date 參數 (YYYY-MM-DD)');
+            const summary = cleanupTestDataForDate_(dateStr, { dryRun });
+            result = { ok: true, action, date: dateStr, dryRun, summary };
+            break;
+          }
           case 'openIssues': {
             // 唯讀：列出狀態 != 已完成 & != 不處理 的異常事件
             result = { ok: true, ...listOpenIncidents_() };

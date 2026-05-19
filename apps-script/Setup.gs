@@ -238,6 +238,96 @@ function triggerScopesConsent() {
 }
 
 /**
+ * 清掉指定日期的所有測試 / 紀錄資料
+ *
+ * 用途：清掉某天的測試資料，含填報紀錄 / 異常事件 / Drive PDF
+ *
+ * 參數：dateStr = 'YYYY-MM-DD'（西元年月日）
+ * 回傳：summary 字串（人類可讀的執行報告）
+ *
+ * ⚠ 一旦執行不可逆（PDF setTrashed 可救回 30 天，sheet row 刪掉就沒了）
+ *   只應由 admin endpoint 觸發 + 帶 token
+ */
+function cleanupTestDataForDate_(dateStr, opts) {
+  opts = opts || {};
+  const dryRun = !!opts.dryRun;
+  if (!dateStr || !/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+    throw new Error('dateStr 必須為 YYYY-MM-DD');
+  }
+  const ss = SpreadsheetApp.openById(CONFIG.DB_SHEET_ID);
+  const report = [];
+  let trashedPdfs = 0;
+  let pdfErrors = 0;
+
+  // === 1. 清填報紀錄 ===
+  const recSheet = ss.getSheetByName('填報紀錄');
+  let recRowsToDelete = [];
+  let recPdfsToTrash = [];
+  if (recSheet && recSheet.getLastRow() >= 2) {
+    const data = recSheet.getDataRange().getValues();
+    const headers = data[0];
+    const idxDate = headers.indexOf('檢查日期');
+    const idxPdf = headers.indexOf('PDF連結');
+    for (let i = 1; i < data.length; i++) {
+      const cellDate = data[i][idxDate];
+      let iso = '';
+      if (cellDate instanceof Date) {
+        iso = Utilities.formatDate(cellDate, tz_(), 'yyyy-MM-dd');
+      } else {
+        iso = String(cellDate).trim();
+      }
+      if (iso === dateStr) {
+        recRowsToDelete.push(i + 1);
+        const url = String(data[i][idxPdf] || '');
+        const m = url.match(/\/d\/([A-Za-z0-9_-]+)/);
+        if (m) recPdfsToTrash.push(m[1]);
+      }
+    }
+    if (!dryRun) {
+      // PDF 先 trash（trash 失敗也繼續，至少 sheet 刪掉）
+      recPdfsToTrash.forEach(fid => {
+        try { DriveApp.getFileById(fid).setTrashed(true); trashedPdfs++; }
+        catch (e) { pdfErrors++; Logger.log(`Trash PDF 失敗 (${fid}): ${e}`); }
+      });
+      // 由下往上刪 row（避免 index 變動）
+      for (let r = recRowsToDelete.length - 1; r >= 0; r--) {
+        recSheet.deleteRow(recRowsToDelete[r]);
+      }
+    }
+    report.push(`${dryRun ? '[DRY-RUN]' : '✓'} 填報紀錄：${dryRun ? '會刪' : '刪除'} ${recRowsToDelete.length} 列、${dryRun ? '會 trash' : 'trashed'} ${dryRun ? recPdfsToTrash.length : trashedPdfs} PDF${pdfErrors ? `（失敗 ${pdfErrors}）` : ''}`);
+  }
+
+  // === 2. 清異常事件 ===
+  const incSheet = ss.getSheetByName('異常事件');
+  let incRowsToDelete = [];
+  if (incSheet && incSheet.getLastRow() >= 2) {
+    const data = incSheet.getDataRange().getValues();
+    const headers = data[0];
+    const idxDate = headers.indexOf('通報日期');
+    for (let i = 1; i < data.length; i++) {
+      const cellDate = data[i][idxDate];
+      let iso = '';
+      if (cellDate instanceof Date) {
+        iso = Utilities.formatDate(cellDate, tz_(), 'yyyy-MM-dd');
+      } else {
+        iso = String(cellDate).trim();
+      }
+      if (iso === dateStr) incRowsToDelete.push(i + 1);
+    }
+    if (!dryRun) {
+      for (let r = incRowsToDelete.length - 1; r >= 0; r--) {
+        incSheet.deleteRow(incRowsToDelete[r]);
+      }
+    }
+    report.push(`${dryRun ? '[DRY-RUN]' : '✓'} 異常事件：${dryRun ? '會刪' : '刪除'} ${incRowsToDelete.length} 列`);
+  }
+
+  const summary = report.join('\n');
+  Logger.log(summary);
+  return summary;
+}
+
+/**
  * 列出「待處理 / 處理中 / 待重檢」異常事件
  * （讓承辦人 / 主管能從外部 API 查目前累積未完成的事件）
  */
