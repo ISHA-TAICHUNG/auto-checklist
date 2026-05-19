@@ -23,8 +23,7 @@ function getEquipmentById_(equipmentId) {
   for (let i = 1; i < data.length; i++) {
     if (data[i][idx('設備代號')] === equipmentId) {
       // 嚴格判斷：boolean true / 字串 "TRUE" 才算啟用
-      const activeRaw = data[i][idx('啟用')];
-      const isActive = activeRaw === true || String(activeRaw).toUpperCase() === 'TRUE';
+      const isActive = isActiveValue_(data[i][idx('啟用')]);
       return {
         equipmentId: data[i][idx('設備代號')],
         equipmentName: data[i][idx('設備名稱')],
@@ -52,10 +51,8 @@ function getEquipmentList_() {
 
   const list = [];
   for (let i = 1; i < data.length; i++) {
-    // 嚴格判斷：boolean true 或字串 "TRUE" 才算啟用（與 getEquipmentById_ 一致）
-    const activeRaw = data[i][idx('啟用')];
-    const isActive = activeRaw === true || String(activeRaw).toUpperCase() === 'TRUE';
-    if (!isActive) continue;
+    // 與 getEquipmentById_ 一致：支援 boolean true / 'TRUE' / '是' / '啟用'
+    if (!isActiveValue_(data[i][idx('啟用')])) continue;
     list.push({
       equipmentId: data[i][idx('設備代號')],
       equipmentName: data[i][idx('設備名稱')],
@@ -101,7 +98,7 @@ function getFormMeta_(formType, equipmentId) {
     if (
       tplData[i][tplIdx('設備類別')] === equipment.category &&
       tplData[i][tplIdx('週期')] === targetCycle &&
-      tplData[i][tplIdx('啟用')] !== false
+      isActiveValue_(tplData[i][tplIdx('啟用')])
     ) {
       // resultOptions：comma-separated 結果代號（依各機具表單不同）
       const ropRaw = tplIdx('resultOptions') >= 0 ? String(tplData[i][tplIdx('resultOptions')] || '') : '';
@@ -132,7 +129,7 @@ function getFormMeta_(formType, equipmentId) {
   const items = [];
   for (let i = 1; i < itemData.length; i++) {
     if (itemData[i][itemIdx('表單ID')] !== template.templateId) continue;
-    if (itemData[i][itemIdx('啟用')] === false) continue;
+    if (!isActiveValue_(itemData[i][itemIdx('啟用')])) continue;
     items.push({
       order: itemData[i][itemIdx('項目順序')],
       name: itemData[i][itemIdx('項目名稱')],

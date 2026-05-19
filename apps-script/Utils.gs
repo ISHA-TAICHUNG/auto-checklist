@@ -13,6 +13,19 @@ function tz_() {
 }
 
 /**
+ * 判斷「啟用」欄位是否為「啟用中」狀態
+ * 支援多種格式（向下相容）：
+ *   - boolean true
+ *   - 'TRUE' / 'true'
+ *   - '是' / '啟用'
+ */
+function isActiveValue_(v) {
+  if (v === true) return true;
+  const s = String(v == null ? '' : v).trim().toUpperCase();
+  return s === 'TRUE' || s === '是' || s === '啟用';
+}
+
+/**
  * 取得指定日期在台北時區的「年、月、日」三個整數
  */
 function dateParts_(date) {

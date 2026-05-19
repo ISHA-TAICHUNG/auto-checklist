@@ -350,9 +350,7 @@ function getTemplateForCategoryCycle_(category, formType) {
   const idx = n => headers.indexOf(n);
 
   for (let i = 1; i < data.length; i++) {
-    const activeRaw = data[i][idx('啟用')];
-    const isActive = activeRaw === true || String(activeRaw).toUpperCase() === 'TRUE';
-    if (!isActive) continue;
+    if (!isActiveValue_(data[i][idx('啟用')])) continue;
     if (data[i][idx('設備類別')] === category && data[i][idx('週期')] === targetCycle) {
       const ropRaw = idx('resultOptions') >= 0 ? String(data[i][idx('resultOptions')] || '') : '';
       const resultOptions = ropRaw.split(',').map(s => s.trim()).filter(Boolean);

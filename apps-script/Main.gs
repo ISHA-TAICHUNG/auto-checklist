@@ -75,6 +75,13 @@ function doGet(e) {
             result = { ok: true, action, message: 'initializeDatabase 執行完成' };
             break;
           }
+          case 'applyDropdowns': {
+            // 統一各設定表的選項欄位下拉 + 把 TRUE/FALSE 改成 是/否
+            // idempotent，重複跑無害
+            const summary = applyChineseSettingsAndDropdowns();
+            result = { ok: true, action, summary };
+            break;
+          }
           case 'openIssues': {
             // 唯讀：列出狀態 != 已完成 & != 不處理 的異常事件
             result = { ok: true, ...listOpenIncidents_() };

@@ -128,6 +128,9 @@ function initializeDatabase() {
   // 套用欄寬與文字換行（讓 Sheet 視覺更舒適）
   try { applyColumnWidthsAndWrap_(); } catch (e) { Logger.log('套用欄寬失敗：' + e); }
 
+  // 中文化 + 下拉驗證（把初始 seed 的 true/false 轉成 是/否、加各選項下拉）
+  try { applyChineseSettingsAndDropdowns(); } catch (e) { Logger.log('套用下拉驗證失敗：' + e); }
+
   Logger.log('資料庫初始化完成。請接著到 Sheets 確認 → 回 Apps Script 執行 installDailyReminderTrigger');
 }
 
@@ -365,6 +368,118 @@ function setupIncidentStatusValidation_(ss) {
 }
 
 /**
+ * 對所有設定表的選項欄位加下拉驗證 + 把 TRUE/FALSE 遷移為「是/否」
+ *
+ * 影響欄位：
+ *   - 設備清單.啟用 / 設備類別
+ *   - 檢查表模板.啟用 / 週期 / 設備類別 / monthlySchema
+ *   - 檢查項目.啟用 / 表單ID
+ *
+ * 何時跑：DB 從早期 TRUE/FALSE 版本升級時 / 想統一管理選項時
+ * 安全性：idempotent（重複跑無害），不會誤刪資料
+ */
+function applyChineseSettingsAndDropdowns() {
+  const ss = SpreadsheetApp.openById(CONFIG.DB_SHEET_ID);
+  const report = [];
+
+  // ===== 1. 收集動態下拉清單來源 =====
+  const tplSheet = ss.getSheetByName('檢查表模板');
+  const tplData = tplSheet ? tplSheet.getDataRange().getValues() : [[]];
+  const tplHeaders = tplData[0];
+  const catIdx = tplHeaders.indexOf('設備類別');
+  const idIdx = tplHeaders.indexOf('表單ID');
+  const categories = catIdx >= 0
+    ? [...new Set(tplData.slice(1).map(r => r[catIdx]).filter(v => v && String(v).trim()))]
+    : [];
+  const templateIds = idIdx >= 0
+    ? [...new Set(tplData.slice(1).map(r => r[idIdx]).filter(v => v && String(v).trim()))]
+    : [];
+
+  // 加進「設備清單.設備類別」可能有的設備類別（避免新類別還沒在模板就被擋）
+  const eqSheet = ss.getSheetByName('設備清單');
+  if (eqSheet) {
+    const eqData = eqSheet.getDataRange().getValues();
+    const eqHeaders = eqData[0];
+    const eqCatIdx = eqHeaders.indexOf('設備類別');
+    if (eqCatIdx >= 0) {
+      eqData.slice(1).map(r => r[eqCatIdx]).filter(v => v && String(v).trim())
+        .forEach(c => { if (!categories.includes(c)) categories.push(c); });
+    }
+  }
+  report.push(`收集到設備類別：${categories.join(', ')}`);
+  report.push(`收集到表單ID：${templateIds.join(', ')}`);
+
+  // ===== 2. 套用各表 dropdown + 中文化 =====
+  const SHEET_PROFILES = {
+    '設備清單': [
+      { col: '啟用',     options: ['是', '否'],       migrate: { TRUE: '是', FALSE: '否' } },
+      { col: '設備類別', options: categories,         strict: false },
+    ],
+    '檢查表模板': [
+      { col: '啟用',     options: ['是', '否'],       migrate: { TRUE: '是', FALSE: '否' } },
+      { col: '週期',     options: ['每日', '每月'],   strict: true },
+      { col: '設備類別', options: categories,         strict: false },
+      { col: 'monthlySchema', options: ['', 'simple', 'crane_full'], strict: false },
+    ],
+    '檢查項目': [
+      { col: '啟用',     options: ['是', '否'],       migrate: { TRUE: '是', FALSE: '否' } },
+      { col: '表單ID',   options: templateIds,        strict: false },
+    ],
+  };
+
+  Object.keys(SHEET_PROFILES).forEach(sheetName => {
+    const sheet = ss.getSheetByName(sheetName);
+    if (!sheet) { report.push(`⚠ 工作表「${sheetName}」不存在，略過`); return; }
+
+    const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+    const lastRow = sheet.getLastRow();
+
+    SHEET_PROFILES[sheetName].forEach(({ col, options, migrate, strict }) => {
+      const colIdx = headers.indexOf(col) + 1;  // 1-based
+      if (colIdx < 1) { report.push(`⚠ 「${sheetName}」找不到欄位「${col}」，略過`); return; }
+      if (!options || options.length === 0) {
+        report.push(`⚠ 「${sheetName}.${col}」沒有可用選項，略過`); return;
+      }
+
+      // 2a. 遷移既有資料（TRUE → 是 等）
+      let migratedCount = 0;
+      if (migrate && lastRow >= 2) {
+        const range = sheet.getRange(2, colIdx, lastRow - 1, 1);
+        const vals = range.getValues();
+        for (let i = 0; i < vals.length; i++) {
+          const v = vals[i][0];
+          const key = v === true ? 'TRUE' : v === false ? 'FALSE' : String(v).toUpperCase();
+          if (migrate[key]) {
+            vals[i][0] = migrate[key];
+            migratedCount++;
+          }
+        }
+        if (migratedCount > 0) range.setValues(vals);
+      }
+
+      // 2b. 加 data validation（從第 2 列到 maxRows，含未來新增的列）
+      const validationRange = sheet.getRange(2, colIdx, Math.max(sheet.getMaxRows() - 1, 100), 1);
+      const rule = SpreadsheetApp.newDataValidation()
+        .requireValueInList(options, true)
+        .setAllowInvalid(strict === false)   // strict=true 時禁止無效值
+        .setHelpText('從下拉選單選擇')
+        .build();
+      validationRange.setDataValidation(rule);
+
+      report.push(`✓ 「${sheetName}.${col}」加下拉（${options.length} 個選項）${migratedCount > 0 ? ` + 遷移 ${migratedCount} 列` : ''}`);
+    });
+  });
+
+  // ===== 3. 異常事件.狀態（沿用既有設定） =====
+  setupIncidentStatusValidation_(ss);
+  report.push('✓ 「異常事件.狀態」下拉已套用');
+
+  const summary = report.join('\n');
+  Logger.log(summary);
+  return summary;
+}
+
+/**
  * 加堆高機檢查表模板 + 18 項檢查項目（既有 DB upsert）
  *
  * 何時跑：第一次加堆高機（或新機具）時，從 source code 把模板與項目寫到 DB。
@@ -501,7 +616,7 @@ function addForkliftEquipments() {
     setCol('設備類別', '堆高機');
     setCol('所在位置', locationName);
     setCol('場地表分頁', venueTab);
-    setCol('啟用', true);
+    setCol('啟用', '是');
     newRows.push(row);
   });
 
