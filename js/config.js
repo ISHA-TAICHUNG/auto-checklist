@@ -22,6 +22,8 @@ window.SYSTEM_CONFIG = {
   // 實際機構名稱存在後端 DB「系統設定」的 organizationName，不寫死在 source code
   ORG_NAME: '',
 
-  // 系統版本
-  VERSION: 'v1.0',
+  // 系統版本（顯示在首頁 footer，給操作員看的版本號）
+  // 慣例：major UX / feature 改才 bump（例如加新機具類別、改 PDF 排版、改填表流程）
+  // 純後端修 bug 不用動（後端有自己的部署版本 v8.x）
+  VERSION: 'v1.1',
 };

@@ -60,9 +60,11 @@ function buildPdf_(formType, ctx) {
     // ----- 檢查項目表 -----
     let rows, colWidths;
     const tplOptions = (ctx.template && ctx.template.resultOptions) || [];
+    // A4 可用寬度 = 595pt - 2×36pt margin = 523pt
+    // colWidths 總和不可超過 523，否則 DocumentApp 會自動壓縮造成「跑版」
     if (isDaily) {
       rows = [['項次', '檢查項目', '結果', '記事 / 異常說明']];
-      colWidths = [40, 280, 60, 140];
+      colWidths = [30, 240, 55, 130];   // 共 455
       ctx.payload.items.forEach(it => {
         rows.push([String(it.order), it.name, it.result, it.note || '']);
       });
@@ -72,7 +74,7 @@ function buildPdf_(formType, ctx) {
       if (schema === 'simple') {
         // 堆高機月檢樣式：項次/檢查部份/檢查方法/檢查結果/改善措施
         rows = [['項次', '檢查部份', '檢查方法', '檢查結果', '改善措施']];
-        colWidths = [40, 200, 80, 100, 180];
+        colWidths = [30, 160, 55, 90, 125];   // 共 460
         ctx.payload.items.forEach(it => {
           rows.push([
             String(it.order),
@@ -85,7 +87,7 @@ function buildPdf_(formType, ctx) {
       } else {
         // crane_full：固定式起重機月檢 7 欄
         rows = [['項次', '檢查部份', '檢查方法', '檢查結果', '風險評估', '改善措施', '定期檢討']];
-        colWidths = [30, 130, 60, 120, 50, 90, 90];
+        colWidths = [25, 120, 45, 90, 60, 60, 60];   // 共 460
         ctx.payload.items.forEach(it => {
           const methods = (it.methods || []).join('/');
           const resultText = it.result === 'abnormal'
@@ -170,17 +172,26 @@ function buildPdf_(formType, ctx) {
       attachTitle.setHeading(DocumentApp.ParagraphHeading.HEADING1);
       attachTitle.setAlignment(DocumentApp.HorizontalAlignment.CENTER);
 
+      // 每張異常照片獨立一頁（避免項次與照片跨頁錯位）
+      // 結構：每頁 = 異常照片附件 title（首頁）+ 第 N 項標題 + 異常說明 + 照片 + 計數
+      let photoPageIdx = 0;
       itemsWithPhotos.forEach(it => {
-        body.appendParagraph('');                                                                  // 間距
-        const labelP = body.appendParagraph(`第 ${it.order} 項：${it.name}`);
-        labelP.editAsText().setFontSize(12).setBold(true).setForegroundColor('#1a73e8');
-
-        if (it.abnormalDesc || it.note) {
-          const descP = body.appendParagraph('異常說明：' + (it.abnormalDesc || it.note));
-          descP.editAsText().setFontSize(10).setForegroundColor('#c5221f');
-        }
-
         it.photos.forEach((p, pi) => {
+          // 第 2 張起每張前面加 page break（第 1 張共用「異常照片附件」title 那一頁）
+          if (photoPageIdx > 0) body.appendPageBreak();
+          photoPageIdx++;
+
+          // 項次 + 名稱
+          const labelP = body.appendParagraph(`第 ${it.order} 項：${it.name}`);
+          labelP.editAsText().setFontSize(12).setBold(true).setForegroundColor('#1a73e8');
+
+          // 異常說明
+          if (it.abnormalDesc || it.note) {
+            const descP = body.appendParagraph('異常說明：' + (it.abnormalDesc || it.note));
+            descP.editAsText().setFontSize(10).setForegroundColor('#c5221f');
+          }
+
+          // 照片
           try {
             const photoBlob = dataUrlToBlob_(p, `item${it.order}_photo${pi + 1}.jpg`);
             if (photoBlob) {
