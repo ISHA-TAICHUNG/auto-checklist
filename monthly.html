@@ -97,9 +97,18 @@
       const itemsCard = makeCard('檢查項目（' + formMeta.items.length + ' 項）');
       const rule = document.createElement('div');
       rule.className = 'alert alert-info';
+      // 取 schema 與動態結果選項
+      const schema = formMeta.template.monthlySchema || 'crane_full';
+      const isSimple = schema === 'simple';
+
+      const resultOptions = (formMeta.template.resultOptions && formMeta.template.resultOptions.length)
+        ? formMeta.template.resultOptions
+        : (isSimple ? ['ˇ', 'X'] : ['normal', 'abnormal']);
+      const badValue = resultOptions[resultOptions.length - 1];
+
       rule.style.margin = '0 0 12px';
       rule.style.fontSize = '13px';
-      rule.textContent = '勾選檢查方法（可多選）、結果（正常 / 異常）、風險與改善措施';
+      rule.textContent = formMeta.template.rule || '請依規則勾選結果';
       itemsCard.body.appendChild(rule);
 
       formMeta.items.forEach((it, idx) => {
@@ -118,74 +127,91 @@
         title.appendChild(text);
         row.appendChild(title);
 
-        // 檢查方法（複選）
-        const methodGroup = document.createElement('div');
-        methodGroup.className = 'method-group';
-        ['目視', '測試'].forEach(m => {
-          const lbl = document.createElement('label');
-          const cb = document.createElement('input');
-          cb.type = 'checkbox';
-          cb.dataset.itemIdx = idx;
-          cb.dataset.method = m;
-          lbl.appendChild(cb);
-          lbl.appendChild(document.createTextNode(m));
-          methodGroup.appendChild(lbl);
-        });
-        row.appendChild(methodGroup);
+        // 檢查方法
+        if (isSimple) {
+          // simple schema：method 是固定的字串（DB 預設），顯示給使用者看不可改
+          const methodLabel = document.createElement('div');
+          methodLabel.className = 'item-method';
+          methodLabel.textContent = '檢查方法：' + (it.method || '—');
+          row.appendChild(methodLabel);
+        } else {
+          // crane_full：方法多選
+          const methodGroup = document.createElement('div');
+          methodGroup.className = 'method-group';
+          ['目視', '測試'].forEach(m => {
+            const lbl = document.createElement('label');
+            const cb = document.createElement('input');
+            cb.type = 'checkbox';
+            cb.dataset.itemIdx = idx;
+            cb.dataset.method = m;
+            lbl.appendChild(cb);
+            lbl.appendChild(document.createTextNode(m));
+            methodGroup.appendChild(lbl);
+          });
+          row.appendChild(methodGroup);
+        }
 
-        // 結果 radio
-        const resultGroup = makeRadioGroup('result_' + idx, [
-          { value: 'normal',   label: '正常', cls: 'checked-good' },
-          { value: 'abnormal', label: '異常', cls: 'checked-bad' },
-        ]);
+        // 結果 radio（動態 resultOptions）
+        const radioOpts = isSimple
+          ? resultOptions.map((v, i) => ({
+              value: v,
+              label: v,
+              cls: i === 0 ? 'checked-good' : 'checked-bad',
+            }))
+          : [
+              { value: 'normal',   label: '正常', cls: 'checked-good' },
+              { value: 'abnormal', label: '異常', cls: 'checked-bad' },
+            ];
+        const resultGroup = makeRadioGroup('result_' + idx, radioOpts);
         row.appendChild(resultGroup.el);
 
-        // 異常說明
+        // 異常說明（選 bad 才出現）
         const abnormalWrap = document.createElement('div');
         abnormalWrap.className = 'abnormal-input';
         const ta = document.createElement('textarea');
-        ta.placeholder = '請填寫異常情形（必填）';
+        ta.placeholder = '請填寫異常情形';
         ta.dataset.itemIdx = idx;
         ta.dataset.field = 'abnormalDesc';
         abnormalWrap.appendChild(ta);
         row.appendChild(abnormalWrap);
 
-        // 風險評估
-        const riskRow = document.createElement('div');
-        riskRow.className = 'risk-row';
-        const riskLabel = document.createElement('label');
-        riskLabel.className = 'field-label';
-        riskLabel.style.display = 'block';
-        riskLabel.style.marginBottom = '6px';
-        riskLabel.textContent = '風險評估';
-        riskRow.appendChild(riskLabel);
+        // 風險評估、定期檢討 — 僅 crane_full
+        if (!isSimple) {
+          const riskRow = document.createElement('div');
+          riskRow.className = 'risk-row';
+          const riskLabel = document.createElement('label');
+          riskLabel.className = 'field-label';
+          riskLabel.style.display = 'block';
+          riskLabel.style.marginBottom = '6px';
+          riskLabel.textContent = '風險評估';
+          riskRow.appendChild(riskLabel);
 
-        const riskGroup = makeRadioGroup('risk_' + idx, [
-          { value: 'severe',   label: 'V 嚴重',  cls: 'checked-bad' },
-          { value: 'possible', label: '? 可能',  cls: 'checked-na' },
-          { value: 'none',     label: '— 無危害', cls: 'checked-good' },
-        ]);
-        riskRow.appendChild(riskGroup.el);
-        row.appendChild(riskRow);
+          const riskGroup = makeRadioGroup('risk_' + idx, [
+            { value: 'severe',   label: 'V 嚴重',  cls: 'checked-bad' },
+            { value: 'possible', label: '? 可能',  cls: 'checked-na' },
+            { value: 'none',     label: '— 無危害', cls: 'checked-good' },
+          ]);
+          riskRow.appendChild(riskGroup.el);
+          row.appendChild(riskRow);
 
-        // 改善措施
-        const actField = makeField('依檢查及風險評估結果採取改善措施', 'text', '');
+          const reviewField = makeField('定期性檢討改善措施合宜性之情形', 'text', '');
+          reviewField.field.style.marginLeft = '34px';
+          reviewField.input.dataset.itemIdx = idx;
+          reviewField.input.dataset.field = 'review';
+          reviewField.input.placeholder = '檢討結果說明';
+          row.appendChild(reviewField.field);
+        }
+
+        // 改善措施（兩種 schema 都有）
+        const actField = makeField('改善措施', 'text', '');
         actField.field.style.marginLeft = '34px';
         actField.input.dataset.itemIdx = idx;
         actField.input.dataset.field = 'action';
         actField.input.placeholder = '無 / 處理方式說明';
         row.appendChild(actField.field);
 
-        // 定期檢討改善措施合宜性
-        const reviewField = makeField('定期性檢討改善措施合宜性之情形', 'text', '');
-        reviewField.field.style.marginLeft = '34px';
-        reviewField.input.dataset.itemIdx = idx;
-        reviewField.input.dataset.field = 'review';
-        reviewField.input.placeholder = '檢討結果說明';
-        row.appendChild(reviewField.field);
-
         resultGroup.onChange = (v) => {
-          if (v === 'abnormal') abnormalWrap.classList.add('show');
+          if (v === badValue) abnormalWrap.classList.add('show');
           else abnormalWrap.classList.remove('show');
         };
 
@@ -305,26 +331,42 @@
       if (!checkDate) return alert('請選擇檢查日期');
       if (!inspector)  return alert('請填寫檢查人員姓名');
 
+      const schema = formMeta.template.monthlySchema || 'crane_full';
+      const isSimple = schema === 'simple';
+      const resultOptions = (formMeta.template.resultOptions && formMeta.template.resultOptions.length)
+        ? formMeta.template.resultOptions
+        : (isSimple ? ['ˇ', 'X'] : ['normal', 'abnormal']);
+      const badValue = resultOptions[resultOptions.length - 1];
+
       const items = [];
       let problem = '';
       formMeta.items.forEach((it, idx) => {
-        const methods = Array.from(document.querySelectorAll(
-          `input[type="checkbox"][data-item-idx="${idx}"]`)).filter(c => c.checked).map(c => c.dataset.method);
+        // simple: method 從 it 取（固定字串）；crane_full: methods 從 checkbox 取
+        let methods, method;
+        if (isSimple) {
+          method = it.method || '';
+          methods = method ? [method] : [];
+        } else {
+          methods = Array.from(document.querySelectorAll(
+            `input[type="checkbox"][data-item-idx="${idx}"]`)).filter(c => c.checked).map(c => c.dataset.method);
+        }
         const result = (document.querySelector(`input[name="result_${idx}"]:checked`) || {}).value;
-        const risk = (document.querySelector(`input[name="risk_${idx}"]:checked`) || {}).value;
+        const risk = isSimple ? '' : ((document.querySelector(`input[name="risk_${idx}"]:checked`) || {}).value || '');
         const abnormalDesc = (document.querySelector(`textarea[data-item-idx="${idx}"][data-field="abnormalDesc"]`) || {}).value || '';
         const action = (document.querySelector(`input[data-item-idx="${idx}"][data-field="action"]`) || {}).value || '';
-        const review = (document.querySelector(`input[data-item-idx="${idx}"][data-field="review"]`) || {}).value || '';
+        const review = isSimple ? '' : ((document.querySelector(`input[data-item-idx="${idx}"][data-field="review"]`) || {}).value || '');
 
-        if (!methods.length && !problem) problem = '第 ' + it.order + ' 項：未勾選檢查方法';
+        // 驗證：simple schema 不要求勾選方法（method 是固定的）
+        if (!isSimple && !methods.length && !problem) problem = '第 ' + it.order + ' 項：未勾選檢查方法';
         if (!result && !problem)        problem = '第 ' + it.order + ' 項：未選擇結果';
-        if (result === 'abnormal' && !abnormalDesc.trim() && !problem)
+        if (result === badValue && !abnormalDesc.trim() && !problem)
           problem = '第 ' + it.order + ' 項：異常請填說明';
 
         items.push({
           order: it.order,
           name: it.name,
           methods,
+          method,                                                 // simple schema 用
           result,
           abnormalDesc: abnormalDesc.trim(),
           risk,

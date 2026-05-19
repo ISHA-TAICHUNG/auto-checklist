@@ -46,14 +46,23 @@ function handleSubmission_(payload) {
     payload.inspector = sanitizeText_(payload.inspector);
     if (!payload.inspector) throw new Error('缺少 inspector');
 
-    // result / risk / methods 用白名單，不允許任意字串塞進 PDF
-    const RESULT_WHITELIST = {
+    // result / risk / methods 白名單
+    // 先取得這張表的 template，從 template.resultOptions 動態決定 result 白名單
+    // 找不到 template → fallback 到舊的 hard-coded 白名單
+    const equipmentForTpl = getEquipmentById_(payload.equipmentId);
+    let tplForValidation = null;
+    if (equipmentForTpl) {
+      tplForValidation = getTemplateForCategoryCycle_(equipmentForTpl.category, payload.formType);
+    }
+    const fallbackResult = {
       daily: ['V', 'X', '/'],
       monthly: ['normal', 'abnormal'],
     };
+    const allowedResults = (tplForValidation && tplForValidation.resultOptions && tplForValidation.resultOptions.length)
+      ? tplForValidation.resultOptions
+      : (fallbackResult[payload.formType] || []);
     const RISK_WHITELIST = ['', 'severe', 'possible', 'none'];
-    const METHODS_WHITELIST = ['目視', '測試'];
-    const allowedResults = RESULT_WHITELIST[payload.formType] || [];
+    const METHODS_WHITELIST = ['目視', '測試', '檢點'];  // 堆高機月檢用「檢點」
 
     payload.items = payload.items.map((it, idx) => {
       const result = sanitizeText_(it.result, 30);
@@ -76,6 +85,7 @@ function handleSubmission_(payload) {
         result,
         note: sanitizeText_(it.note),
         methods,
+        method: sanitizeText_(it.method, 40),                 // simple schema 用
         abnormalDesc: sanitizeText_(it.abnormalDesc),
         risk,
         action: sanitizeText_(it.action),
@@ -217,6 +227,8 @@ function getTemplateForCategoryCycle_(category, formType) {
     const isActive = activeRaw === true || String(activeRaw).toUpperCase() === 'TRUE';
     if (!isActive) continue;
     if (data[i][idx('設備類別')] === category && data[i][idx('週期')] === targetCycle) {
+      const ropRaw = idx('resultOptions') >= 0 ? String(data[i][idx('resultOptions')] || '') : '';
+      const resultOptions = ropRaw.split(',').map(s => s.trim()).filter(Boolean);
       return {
         templateId: data[i][idx('表單ID')],
         templateName: data[i][idx('表單名稱')],
@@ -224,6 +236,9 @@ function getTemplateForCategoryCycle_(category, formType) {
         cycle: data[i][idx('週期')],
         legalBasis: data[i][idx('法規依據')],
         rule: data[i][idx('填寫規則')],
+        resultOptions,
+        monthlySchema: idx('monthlySchema') >= 0
+          ? String(data[i][idx('monthlySchema')] || '') : '',
       };
     }
   }

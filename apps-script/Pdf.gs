@@ -59,6 +59,7 @@ function buildPdf_(formType, ctx) {
 
     // ----- 檢查項目表 -----
     let rows, colWidths;
+    const tplOptions = (ctx.template && ctx.template.resultOptions) || [];
     if (isDaily) {
       rows = [['項次', '檢查項目', '結果', '記事 / 異常說明']];
       colWidths = [40, 280, 60, 140];
@@ -66,27 +67,45 @@ function buildPdf_(formType, ctx) {
         rows.push([String(it.order), it.name, it.result, it.note || '']);
       });
     } else {
-      rows = [['項次', '檢查部份', '檢查方法', '檢查結果', '風險評估', '改善措施', '定期檢討']];
-      colWidths = [30, 130, 60, 120, 50, 90, 90];
-      ctx.payload.items.forEach(it => {
-        const methods = (it.methods || []).join('/');
-        const resultText = it.result === 'abnormal'
-          ? '異常：' + (it.abnormalDesc || '')
-          : '正常';
-        const riskMap = { severe: 'V 嚴重', possible: '? 可能', none: '— 無' };
-        rows.push([
-          String(it.order),
-          it.name,
-          methods,
-          resultText,
-          riskMap[it.risk] || '',
-          it.action || '',
-          it.review || '',
-        ]);
-      });
+      // 月檢按 monthlySchema 決定欄位
+      const schema = (ctx.template && ctx.template.monthlySchema) || 'crane_full';
+      if (schema === 'simple') {
+        // 堆高機月檢樣式：項次/檢查部份/檢查方法/檢查結果/改善措施
+        rows = [['項次', '檢查部份', '檢查方法', '檢查結果', '改善措施']];
+        colWidths = [40, 200, 80, 100, 180];
+        ctx.payload.items.forEach(it => {
+          rows.push([
+            String(it.order),
+            it.name,
+            it.method || (it.methods || []).join('/'),
+            it.result || '',
+            it.action || '',
+          ]);
+        });
+      } else {
+        // crane_full：固定式起重機月檢 7 欄
+        rows = [['項次', '檢查部份', '檢查方法', '檢查結果', '風險評估', '改善措施', '定期檢討']];
+        colWidths = [30, 130, 60, 120, 50, 90, 90];
+        ctx.payload.items.forEach(it => {
+          const methods = (it.methods || []).join('/');
+          const resultText = it.result === 'abnormal'
+            ? '異常：' + (it.abnormalDesc || '')
+            : '正常';
+          const riskMap = { severe: 'V 嚴重', possible: '? 可能', none: '— 無' };
+          rows.push([
+            String(it.order),
+            it.name,
+            methods,
+            resultText,
+            riskMap[it.risk] || '',
+            it.action || '',
+            it.review || '',
+          ]);
+        });
+      }
     }
     const itemsTable = body.appendTable(rows);
-    styleItemsTable_(itemsTable, colWidths, isDaily);
+    styleItemsTable_(itemsTable, colWidths, isDaily, tplOptions);
 
     body.appendParagraph('');
 
@@ -178,15 +197,26 @@ function styleMetaTable_(table) {
   }
 }
 
-/** 檢查項目表樣式：header 藍底白字、欄寬控制、字 10pt、異常紅字
- *  注意：對齊要用 cell 第一個 paragraph 的 setAlignment（TableCell 本身沒有 setHorizontalAlignment）
+/** 檢查項目表樣式：header 藍底白字、欄寬控制、字 10pt、good/bad 顏色
+ *
+ *  動態結果顏色：根據 resultOptions 陣列位置
+ *    - 第 1 個值 = good（綠）
+ *    - 最後 1 個值 = bad（紅）
+ *    - 中間 = neutral（灰）
+ *  例：['V','/','X'] → V=綠、/=灰、X=紅
+ *      ['○','△','X'] → ○=綠、△=灰、X=紅
+ *      ['ˇ','X']      → ˇ=綠、X=紅
  */
-function styleItemsTable_(table, colWidths, isDaily) {
+function styleItemsTable_(table, colWidths, isDaily, resultOptions) {
   const numRows = table.getNumRows();
   const HCenter = DocumentApp.HorizontalAlignment.CENTER;
   const setCenter = (cell) => {
     try { cell.getChild(0).asParagraph().setAlignment(HCenter); } catch (_) {}
   };
+
+  const opts = (resultOptions && resultOptions.length) ? resultOptions : ['V', '/', 'X'];
+  const goodValue = opts[0];
+  const badValue = opts[opts.length - 1];
 
   for (let r = 0; r < numRows; r++) {
     const row = table.getRow(r);
@@ -208,14 +238,19 @@ function styleItemsTable_(table, colWidths, isDaily) {
         if (isDaily && c === 2) {
           const v = text.getText();
           setCenter(cell);
-          if (v === 'X') text.setForegroundColor('#c5221f').setBold(true);
-          else if (v === 'V') text.setForegroundColor('#137333').setBold(true);
+          if (v === badValue) text.setForegroundColor('#c5221f').setBold(true);
+          else if (v === goodValue) text.setForegroundColor('#137333').setBold(true);
           else text.setForegroundColor('#666666');
         }
+        // 月檢結果欄（crane_full 在 c=3、simple 也在 c=3）
         if (!isDaily && c === 3) {
           const v = text.getText();
+          // crane_full 用「正常 / 異常：xxx」格式
           if (v.indexOf('異常') === 0) text.setForegroundColor('#c5221f').setBold(true);
           else if (v === '正常') text.setForegroundColor('#137333');
+          // simple 用結果代號（ˇ / X）
+          else if (v === badValue) text.setForegroundColor('#c5221f').setBold(true);
+          else if (v === goodValue) text.setForegroundColor('#137333').setBold(true);
         }
       }
     }

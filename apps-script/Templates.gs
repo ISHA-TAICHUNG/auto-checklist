@@ -52,7 +52,10 @@ function getEquipmentList_() {
 
   const list = [];
   for (let i = 1; i < data.length; i++) {
-    if (data[i][idx('啟用')] === false) continue;
+    // 嚴格判斷：boolean true 或字串 "TRUE" 才算啟用（與 getEquipmentById_ 一致）
+    const activeRaw = data[i][idx('啟用')];
+    const isActive = activeRaw === true || String(activeRaw).toUpperCase() === 'TRUE';
+    if (!isActive) continue;
     list.push({
       equipmentId: data[i][idx('設備代號')],
       equipmentName: data[i][idx('設備名稱')],
@@ -100,6 +103,10 @@ function getFormMeta_(formType, equipmentId) {
       tplData[i][tplIdx('週期')] === targetCycle &&
       tplData[i][tplIdx('啟用')] !== false
     ) {
+      // resultOptions：comma-separated 結果代號（依各機具表單不同）
+      const ropRaw = tplIdx('resultOptions') >= 0 ? String(tplData[i][tplIdx('resultOptions')] || '') : '';
+      const resultOptions = ropRaw.split(',').map(s => s.trim()).filter(Boolean);
+
       template = {
         templateId: tplData[i][tplIdx('表單ID')],
         templateName: tplData[i][tplIdx('表單名稱')],
@@ -107,6 +114,9 @@ function getFormMeta_(formType, equipmentId) {
         cycle: tplData[i][tplIdx('週期')],
         legalBasis: tplData[i][tplIdx('法規依據')],
         rule: tplData[i][tplIdx('填寫規則')],
+        resultOptions,                                                          // []  → fallback by formType
+        monthlySchema: tplIdx('monthlySchema') >= 0
+          ? String(tplData[i][tplIdx('monthlySchema')] || '') : '',
       };
       break;
     }

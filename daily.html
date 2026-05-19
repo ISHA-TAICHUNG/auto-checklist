@@ -95,11 +95,18 @@
 
       // ----- 檢查項目 -----
       const itemsCard = makeCard('檢查項目（' + formMeta.items.length + ' 項）');
+
+      // 動態取得結果選項與規則文字（不同機具不同）
+      const resultOptions = (formMeta.template.resultOptions && formMeta.template.resultOptions.length)
+        ? formMeta.template.resultOptions
+        : ['V', 'X', '/'];
+      const badValue = resultOptions[resultOptions.length - 1];  // 最後一個 = bad
+
       const rule = document.createElement('div');
       rule.className = 'alert alert-info';
       rule.style.margin = '0 0 12px';
       rule.style.fontSize = '13px';
-      rule.textContent = '良好「正常」/ 無此項「無」/ 不良「異常」— 不良請填說明';
+      rule.textContent = formMeta.template.rule || '請依規則勾選結果';
       itemsCard.body.appendChild(rule);
 
       formMeta.items.forEach((it, idx) => {
@@ -118,14 +125,19 @@
         title.appendChild(text);
         row.appendChild(title);
 
-        const group = makeRadioGroup('item_' + idx, [
-          { value: 'V', label: '正常',  cls: 'checked-good' },
-          { value: 'X', label: '異常',  cls: 'checked-bad' },
-          { value: '/', label: '無此項', cls: 'checked-na' },
-        ]);
+        // 動態 result radio：依 template.resultOptions
+        // 第 1 個 = good（綠）、最後 = bad（紅）、中間 = na（灰）
+        const radioOpts = resultOptions.map((v, i) => ({
+          value: v,
+          label: v,
+          cls: i === 0
+            ? 'checked-good'
+            : (i === resultOptions.length - 1 ? 'checked-bad' : 'checked-na'),
+        }));
+        const group = makeRadioGroup('item_' + idx, radioOpts);
         row.appendChild(group.el);
 
-        // 異常說明（選 X 才出現）
+        // 異常說明（選 bad 才出現）
         const abnormalWrap = document.createElement('div');
         abnormalWrap.className = 'abnormal-input';
         const ta = document.createElement('textarea');
@@ -135,7 +147,7 @@
         row.appendChild(abnormalWrap);
 
         group.onChange = (v) => {
-          if (v === 'X') abnormalWrap.classList.add('show');
+          if (v === badValue) abnormalWrap.classList.add('show');
           else abnormalWrap.classList.remove('show');
         };
 

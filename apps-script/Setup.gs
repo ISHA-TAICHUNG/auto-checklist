@@ -37,13 +37,25 @@ function initializeDatabase() {
     ]]
   );
 
+  // 檢查表模板：加 resultOptions / monthlySchema 兩欄支援多種機具格式
+  // - resultOptions：結果代號（comma-separated），daily 各機具不同
+  // - monthlySchema：crane_full = 7 欄（部份/方法/結果/風險/改善/檢討）
+  //                  simple    = 4 欄（部份/方法/結果/改善）
   setupSheet_(ss, '檢查表模板',
-    ['表單ID', '設備類別', '表單名稱', '週期', '法規依據', '填寫規則', '啟用'],
+    ['表單ID', '設備類別', '表單名稱', '週期', '法規依據', '填寫規則', 'resultOptions', 'monthlySchema', '啟用'],
     [
       ['F-CRANE-D', '固定式起重機', '固定式起重機每日作業前檢點表', '每日',
-       '職業安全衛生管理辦法 §52', '良好「V」/ 無此項「/」/ 不良「X」（不良需於記事欄註明）', true],
+       '職業安全衛生管理辦法 §52', '良好「V」/ 無此項「/」/ 不良「X」（不良需於記事欄註明）',
+       'V,/,X', '', true],
       ['F-CRANE-M', '固定式起重機', '固定式起重機每月定期檢查紀錄', '每月',
-       '起重升降機具安全規則 §26', '勾選檢查方法、結果（正常/異常）、風險評估（V/?/—）、改善措施、定期檢討', true],
+       '起重升降機具安全規則 §26', '勾選檢查方法、結果（正常/異常）、風險評估（V/?/—）、改善措施、定期檢討',
+       '正常,異常', 'crane_full', true],
+      ['F-FORK-D', '堆高機', '堆高機每日使用前檢點表', '每日',
+       '職業安全衛生管理辦法 §50', '良好「○」/ 尚可「△」/ 不良待修「X」（由授課教師檢查）',
+       '○,△,X', '', true],
+      ['F-FORK-M', '堆高機', '堆高機每月定期檢查表', '每月',
+       '起重升降機具安全規則 §128', '正常打「ˇ」/ 異常打「X」',
+       'ˇ,X', 'simple', true],
     ]
   );
 
@@ -68,6 +80,28 @@ function initializeDatabase() {
       ['F-CRANE-M', 7, '是否標示禁止人員進入吊運物下方及非有關人員不得進入工作區', '目視', true],
       ['F-CRANE-M', 8, '鋼索及剎車裝置有無異常', '目視+測試', true],
       ['F-CRANE-M', 9, '其它', '目視+測試', true],
+
+      // ----- 堆高機日檢 11 項 -----
+      ['F-FORK-D', 1, '水箱、副水箱水是否足夠', '', true],
+      ['F-FORK-D', 2, '機油是否足夠', '', true],
+      ['F-FORK-D', 3, '煞車油是否足夠', '', true],
+      ['F-FORK-D', 4, '燃料油（高級柴油）是否足夠', '', true],
+      ['F-FORK-D', 5, '儀表、燈光是否故障', '', true],
+      ['F-FORK-D', 6, '煞車踏板間隙是否過大', '', true],
+      ['F-FORK-D', 7, '輪胎螺絲是否鬆動', '', true],
+      ['F-FORK-D', 8, '方向盤、喇叭功能是否正常', '', true],
+      ['F-FORK-D', 9, '液壓油是否足夠（油量尺上下限）', '', true],
+      ['F-FORK-D', 10, '油管是否漏油', '', true],
+      ['F-FORK-D', 11, '電瓶水（上下限）', '', true],
+
+      // ----- 堆高機月檢 7 項 -----
+      ['F-FORK-M', 1, '頂蓬及桅桿有無損傷', '目視', true],
+      ['F-FORK-M', 2, '積載裝置之性能', '測試', true],
+      ['F-FORK-M', 3, '油壓設備之性能', '檢點', true],
+      ['F-FORK-M', 4, '制動裝置、剎車之性能', '測試', true],
+      ['F-FORK-M', 5, '離合器', '測試', true],
+      ['F-FORK-M', 6, '方向盤', '檢點', true],
+      ['F-FORK-M', 7, '其他各部份有無損傷', '檢點', true],
     ]
   );
 
@@ -183,6 +217,53 @@ function triggerScopesConsent() {
   const doc = DocumentApp.create('_temp_oauth_trigger_' + new Date().getTime());
   DriveApp.getFileById(doc.getId()).setTrashed(true);
   Logger.log('所有 OAuth scope 已授權成功');
+}
+
+/**
+ * 加入堆高機 6 台 A-F 到「設備清單」
+ *
+ * 用法：在 Apps Script 編輯器選此函數 → 執行（一次即可，重複跑會略過已存在的）
+ * 場地表分頁名稱：「內外場-堆高機、移動式、危運、吊籠、一壓」
+ */
+function addForkliftEquipments() {
+  const ss = SpreadsheetApp.openById(CONFIG.DB_SHEET_ID);
+  const sheet = ss.getSheetByName('設備清單');
+  const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  const idx = n => headers.indexOf(n);
+
+  // 現有的設備代號集合
+  const lastRow = sheet.getLastRow();
+  const existing = new Set();
+  if (lastRow > 1) {
+    sheet.getRange(2, idx('設備代號') + 1, lastRow - 1, 1).getValues()
+      .forEach(r => existing.add(String(r[0])));
+  }
+
+  const letters = ['A', 'B', 'C', 'D', 'E', 'F'];
+  const newRows = [];
+  letters.forEach(l => {
+    const code = 'FORK-LJ-' + l;
+    if (existing.has(code)) return;
+    const row = new Array(headers.length).fill('');
+    const setCol = (name, v) => { const i = idx(name); if (i >= 0) row[i] = v; };
+    setCol('設備代號', code);
+    setCol('設備名稱', '堆高機 ' + l + ' 號');
+    setCol('機械編號', 'FORK-' + l);
+    setCol('型式規格', '');
+    setCol('設備類別', '堆高機');
+    setCol('所在位置', '<位置>');
+    setCol('場地表分頁', '內外場-堆高機、移動式、危運、吊籠、一壓');
+    setCol('啟用', true);
+    newRows.push(row);
+  });
+
+  if (newRows.length === 0) {
+    Logger.log('堆高機設備已存在，無需新增');
+    return { added: 0 };
+  }
+  sheet.getRange(sheet.getLastRow() + 1, 1, newRows.length, headers.length).setValues(newRows);
+  Logger.log('新增 ' + newRows.length + ' 台堆高機：' + letters.slice(0, newRows.length).join(', '));
+  return { added: newRows.length };
 }
 
 function setBrandingSettings_(settings) {

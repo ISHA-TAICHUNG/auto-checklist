@@ -16,7 +16,7 @@
   </header>
 
   <main class="container">
-    <h2 class="card-title">請選擇設備</h2>
+    <h2 class="card-title" id="listTitle">請選擇設備</h2>
     <div id="content">
       <div class="page-loading"><span class="loading"></span>&nbsp;載入中...</div>
     </div>
@@ -28,6 +28,12 @@
   <script>
     // 機構名稱由 api.js 啟動時 fetch /branding 動態填到 [data-org-name] 元素
     document.getElementById('versionTag').textContent = SYSTEM_CONFIG.VERSION;
+
+    // 支援 URL 過濾：?cat=堆高機 → 只列堆高機（方案 C：1 張 QR 進入 group 列表）
+    const urlCat = new URLSearchParams(location.search).get('cat');
+    if (urlCat) {
+      document.getElementById('listTitle').textContent = '請選擇' + urlCat;
+    }
 
     function renderError(msg) {
       const root = document.getElementById('content');
@@ -89,7 +95,12 @@
         const r = await API.listEquipments();
         if (!r.ok) return renderError(r.error || '取得設備清單失敗');
         if (!r.equipments || !r.equipments.length) return renderEmpty();
-        renderList(r.equipments);
+        // 若 URL 有 cat 過濾，只顯示該類別
+        const filtered = urlCat
+          ? r.equipments.filter(e => e.category === urlCat)
+          : r.equipments;
+        if (!filtered.length) return renderError('找不到類別「' + urlCat + '」的設備');
+        renderList(filtered);
       } catch (err) {
         renderError('連線後端失敗：' + err.message);
       }
