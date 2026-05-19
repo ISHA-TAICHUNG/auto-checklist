@@ -47,10 +47,11 @@ GitHub Pages (repo root)       Apps Script (apps-script/)
 
 見 [`docs/sheets-schema.md`](docs/sheets-schema.md)。
 
-## 新增機具 / 檢查表
+## 使用說明
 
-操作指南：[`docs/how-to-add-equipment.md`](docs/how-to-add-equipment.md)。
-**95% 的擴充情境只需要改 Google Sheets，不用改程式、不用重新部署**。
+- **日常使用**（操作員 / 承辦 / 主管）：[`docs/user-guide.md`](docs/user-guide.md)
+- **新增機具 / 檢查表**：[`docs/how-to-add-equipment.md`](docs/how-to-add-equipment.md)
+  95% 的擴充情境只需要改 Google Sheets，不用改程式、不用重新部署。
 
 ## 目錄結構
 
