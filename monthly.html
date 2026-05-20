@@ -37,6 +37,7 @@
     const eqp = urlParams.get('eqp');
 
     let formMeta = null;
+    let lockedItems = [];   // [{ order, itemName, incidentId, reportDate, description, status }]
     let sigPad = null;
 
     if (!eqp) {
@@ -56,9 +57,13 @@
 
     async function loadForm() {
       try {
-        const r = await API.getFormMeta('monthly', eqp);
-        if (!r.ok) return showError(r.error || '取得表單失敗');
-        formMeta = r.meta;
+        const [metaRes, lockedRes] = await Promise.all([
+          API.getFormMeta('monthly', eqp),
+          API.getLockedItems('monthly', eqp),
+        ]);
+        if (!metaRes.ok) return showError(metaRes.error || '取得表單失敗');
+        formMeta = metaRes.meta;
+        lockedItems = (lockedRes && lockedRes.ok) ? (lockedRes.locked || []) : [];
         renderForm();
       } catch (err) {
         showError('連線後端失敗：' + err.message);
@@ -118,9 +123,14 @@
       rule.textContent = formMeta.template.rule || '請依規則勾選結果';
       itemsCard.body.appendChild(rule);
 
+      // 把 lockedItems 轉成 Map by order
+      const lockedByOrder = {};
+      lockedItems.forEach(l => { lockedByOrder[l.order] = l; });
+
       formMeta.items.forEach((it, idx) => {
+        const lock = lockedByOrder[it.order] || null;
         const row = document.createElement('div');
-        row.className = 'item-row';
+        row.className = 'item-row' + (lock ? ' item-locked' : '');
 
         const title = document.createElement('div');
         title.className = 'item-title';
@@ -133,6 +143,13 @@
         text.textContent = it.name;
         title.appendChild(text);
         row.appendChild(title);
+
+        if (lock) {
+          const banner = document.createElement('div');
+          banner.className = 'lock-banner';
+          banner.textContent = `⚠ 此項上次 (${lock.reportDate}) 異常未處理，須先在「異常事件追蹤」表標記為「已完成」才能解鎖。`;
+          row.appendChild(banner);
+        }
 
         // 檢查方法
         if (isSimple) {
@@ -224,6 +241,29 @@
         actField.input.dataset.field = 'action';
         actField.input.placeholder = '無 / 處理方式說明';
         row.appendChild(actField.field);
+
+        // 套用鎖定：自動選 bad、disable 其他選項、預填說明
+        if (lock) {
+          const badForSchema = isSimple ? badValue : 'abnormal';
+          resultGroup.el.querySelectorAll('label').forEach(L => {
+            const v = L.dataset.value;
+            if (v !== badForSchema) {
+              L.style.opacity = '0.4';
+              L.style.cursor = 'not-allowed';
+              const inp = L.querySelector('input');
+              if (inp) inp.disabled = true;
+            } else {
+              const inp = L.querySelector('input');
+              if (inp) {
+                inp.checked = true;
+                L.classList.add(L.dataset.cls);
+              }
+            }
+          });
+          resultGroup.value = badForSchema;
+          ta.value = `[沒改善] ${lock.reportDate} 異常：${lock.description}`;
+          abnormalWrap.classList.add('show');
+        }
 
         resultGroup.onChange = (v) => {
           if (v === badValue) abnormalWrap.classList.add('show');

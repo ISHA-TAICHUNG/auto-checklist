@@ -86,6 +86,7 @@
   window.API = {
     listEquipments: () => apiGet({ api: 'equipments' }),
     getFormMeta: (form, eqp) => apiGet({ api: 'meta', form, eqp }),
+    getLockedItems: (form, eqp) => apiGet({ api: 'lockedItems', form, eqp }),
     submit: (payload) => apiPost(payload),
     health: () => apiGet({ api: 'health' }),
     branding: () => apiGet({ api: 'branding' }),

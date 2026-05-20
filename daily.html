@@ -37,6 +37,7 @@
     const eqp = urlParams.get('eqp');
 
     let formMeta = null;
+    let lockedItems = [];   // [{ order, itemName, incidentId, reportDate, description, status }]
     let sigPad = null;
 
     if (!eqp) {
@@ -56,9 +57,14 @@
 
     async function loadForm() {
       try {
-        const r = await API.getFormMeta('daily', eqp);
-        if (!r.ok) return showError(r.error || '取得表單失敗');
-        formMeta = r.meta;
+        // 並行抓 meta + 鎖定項
+        const [metaRes, lockedRes] = await Promise.all([
+          API.getFormMeta('daily', eqp),
+          API.getLockedItems('daily', eqp),
+        ]);
+        if (!metaRes.ok) return showError(metaRes.error || '取得表單失敗');
+        formMeta = metaRes.meta;
+        lockedItems = (lockedRes && lockedRes.ok) ? (lockedRes.locked || []) : [];
         renderForm();
       } catch (err) {
         showError('連線後端失敗：' + err.message);
@@ -117,9 +123,14 @@
       rule.textContent = formMeta.template.rule || '請依規則勾選結果';
       itemsCard.body.appendChild(rule);
 
+      // 把 lockedItems 轉成 Map by order，方便查找
+      const lockedByOrder = {};
+      lockedItems.forEach(l => { lockedByOrder[l.order] = l; });
+
       formMeta.items.forEach((it, idx) => {
+        const lock = lockedByOrder[it.order] || null;
         const row = document.createElement('div');
-        row.className = 'item-row';
+        row.className = 'item-row' + (lock ? ' item-locked' : '');
 
         const title = document.createElement('div');
         title.className = 'item-title';
@@ -132,6 +143,14 @@
         text.textContent = it.name;
         title.appendChild(text);
         row.appendChild(title);
+
+        // 鎖定警示橫條（只有鎖定項才顯示）
+        if (lock) {
+          const banner = document.createElement('div');
+          banner.className = 'lock-banner';
+          banner.textContent = `⚠ 此項上次 (${lock.reportDate}) 異常未處理，須先在「異常事件追蹤」表標記為「已完成」才能解鎖。`;
+          row.appendChild(banner);
+        }
 
         // 動態 result radio：依 template.resultOptions
         // 第 1 個 = good（綠）、最後 = bad（紅）、中間 = na（灰）
@@ -146,7 +165,7 @@
         const group = makeRadioGroup('item_' + idx, radioOpts);
         row.appendChild(group.el);
 
-        // 異常說明 + 照片上傳（選 bad 才出現）
+        // 異常說明 + 照片上傳（選 bad 才出現；鎖定項一律顯示）
         const abnormalWrap = document.createElement('div');
         abnormalWrap.className = 'abnormal-input';
         const ta = document.createElement('textarea');
@@ -162,6 +181,30 @@
         it._photoMgr = photoMgr;
 
         row.appendChild(abnormalWrap);
+
+        // 套用鎖定：自動選 bad、disable 其他選項、預填說明、強制顯示異常區
+        if (lock) {
+          // disable 所有非 bad 的 radio + 自動選 bad
+          group.el.querySelectorAll('label').forEach(L => {
+            const v = L.dataset.value;
+            if (v !== badValue) {
+              L.style.opacity = '0.4';
+              L.style.cursor = 'not-allowed';
+              const inp = L.querySelector('input');
+              if (inp) inp.disabled = true;
+            } else {
+              const inp = L.querySelector('input');
+              if (inp) {
+                inp.checked = true;
+                L.classList.add(L.dataset.cls);
+              }
+            }
+          });
+          group.value = badValue;
+          // 預填異常說明
+          ta.value = `[沒改善] ${lock.reportDate} 異常：${lock.description}`;
+          abnormalWrap.classList.add('show');
+        }
 
         group.onChange = (v) => {
           if (v === badValue) abnormalWrap.classList.add('show');
@@ -302,10 +345,15 @@
       // 蒐集每一項的結果（含異常照片）
       const results = [];
       let missing = -1;
+      let missingDesc = -1;
       formMeta.items.forEach((it, idx) => {
         const checked = document.querySelector(`input[name="item_${idx}"]:checked`);
         if (!checked) { if (missing < 0) missing = idx + 1; return; }
         const note = document.querySelector(`textarea[data-item-idx="${idx}"]`).value.trim();
+        // 異常必填說明（bug fix：之前可以「異常+照片但沒寫原因」就送出）
+        if (checked.value === badValue && !note) {
+          if (missingDesc < 0) missingDesc = idx + 1;
+        }
         const photos = (it._photoMgr && checked.value === badValue)
           ? it._photoMgr.toDataURLs()
           : [];
@@ -318,6 +366,7 @@
         });
       });
       if (missing > 0) return alert('第 ' + missing + ' 項尚未勾選');
+      if (missingDesc > 0) return alert('第 ' + missingDesc + ' 項標為「異常」但未填寫異常情形說明');
 
       if (!sigPad || sigPad.isEmpty()) return alert('請簽名');
 

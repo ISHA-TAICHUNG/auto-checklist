@@ -39,6 +39,16 @@ function doGet(e) {
         break;
       }
 
+      case 'lockedItems': {
+        // 取「特定設備 + 特定表單類型」尚未處理完成的異常項
+        // 前端用此鎖定 row（只能選異常）+ 帶入上次異常說明
+        const form = e.parameter.form;
+        const eqp = e.parameter.eqp;
+        if (!form || !eqp) throw new Error('需提供 form 與 eqp 參數');
+        result = { ok: true, locked: getLockedItemsForEquipment_(eqp, form) };
+        break;
+      }
+
       case 'status':
         // 公開版只回最小資訊（避免 codex P2: 洩漏內部 ID）
         // 完整診斷請在 Apps Script 編輯器執行 getSystemStatus_() 查看
@@ -186,6 +196,8 @@ function friendlyError_(err) {
   const businessErrors = ['未授權', 'payload 過大', 'payload 不是合法 JSON',
     '簽名格式錯誤', '簽名圖太大', '空白 payload', '系統忙碌，請稍後再試',
     '找不到設備', '需提供', '缺少',
+    // 業務驗證錯誤（v8.10 加）
+    '標為異常但未填', '仍有未處理異常', '無法標為',
     // admin 用錯誤訊息
     '該檔案非', '需要 fileId', '未知 admin action', '未知的 api'];
   if (businessErrors.some(k => msg.indexOf(k) >= 0)) return msg;

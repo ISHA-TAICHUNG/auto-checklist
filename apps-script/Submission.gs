@@ -118,6 +118,30 @@ function handleSubmission_(payload) {
     // codex P1: 拒絕停用設備
     if (!equipment.active) throw new Error('設備已停用：' + payload.equipmentId);
 
+    // ===== 雙重驗證：異常必填 + 鎖定項必須仍標異常 =====
+    // 找出 bad value（最後一個 result option）
+    const badValue = allowedResults[allowedResults.length - 1];
+    // a) 對所有 result === bad 的項目，異常說明 / 記事不能空
+    payload.items.forEach((it, idx) => {
+      if (it.result === badValue) {
+        const desc = (it.abnormalDesc || it.note || '').trim();
+        if (!desc) {
+          throw new Error(`第 ${idx + 1} 項標為異常但未填異常說明 / 記事`);
+        }
+      }
+    });
+    // b) 鎖定項驗證：「異常事件」未完成的 order，本次 result 必須仍為 bad
+    //    (避免使用者繞過前端鎖定送出「良好」)
+    const lockedItems = getLockedItemsForEquipment_(payload.equipmentId, payload.formType);
+    if (lockedItems.length > 0) {
+      const lockedOrders = new Set(lockedItems.map(l => l.order));
+      payload.items.forEach(it => {
+        if (lockedOrders.has(Number(it.order)) && it.result !== badValue) {
+          throw new Error(`第 ${it.order} 項目「${it.name}」仍有未處理異常，無法標為「${it.result}」，需先在『異常事件追蹤』表把狀態改為「已完成」才能解鎖`);
+        }
+      });
+    }
+
     // 鎖：避免同設備同日重複寫 / 並發 race
     const lock = LockService.getScriptLock();
     if (!lock.tryLock(30000)) throw new Error('系統忙碌，請稍後再試');

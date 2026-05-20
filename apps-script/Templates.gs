@@ -64,6 +64,80 @@ function getEquipmentList_() {
 }
 
 /**
+ * 取得「特定設備 + 特定表單類型」尚未處理完成的異常項目（鎖定用）
+ *
+ * 用途：前端載入填表頁時，先 fetch 此函式，把仍在追蹤中的異常項
+ *      鎖死成「只能選異常」，並帶入上次的異常說明作預設值。
+ *
+ * 解鎖條件：異常事件表「狀態」== 「已完成」才視為解除（嚴格模式）
+ *           其他狀態（待處理 / 處理中 / 待重檢 / 不處理 / 空字串）都仍鎖
+ *
+ * 同一項次（order）有多筆 → 取最新一筆（依通報日期 desc）
+ *
+ * 回傳：[ { order, itemName, incidentId, reportDate, description, status } ]
+ */
+function getLockedItemsForEquipment_(equipmentId, formType) {
+  const ss = SpreadsheetApp.openById(CONFIG.DB_SHEET_ID);
+  const sheet = ss.getSheetByName('異常事件');
+  if (!sheet || sheet.getLastRow() < 2) return [];
+
+  const data = sheet.getDataRange().getValues();
+  const headers = data[0];
+  const idx = name => headers.indexOf(name);
+
+  // 欄位防呆：「異常事件」表如果還沒初始化會缺欄位，避免崩潰
+  const REQUIRED = ['設備代號', '表單類型', '項次', '項目名稱', '通報日期', '異常說明', '狀態'];
+  for (const col of REQUIRED) {
+    if (idx(col) < 0) {
+      Logger.log(`getLockedItemsForEquipment_：「異常事件」缺欄位 ${col}，回空陣列`);
+      return [];
+    }
+  }
+
+  // 表單類型對應：daily ↔ 每日、monthly ↔ 每月
+  const targetType = formType === 'daily' ? '每日' : (formType === 'monthly' ? '每月' : '');
+  if (!targetType) return [];
+
+  // 「已完成」才算解鎖（嚴格模式），其他狀態都仍鎖
+  const isLocked = (status) => {
+    const s = String(status || '').trim();
+    return s !== '已完成';
+  };
+
+  // 依 order 聚合，取最新一筆
+  const byOrder = {};
+  for (let i = 1; i < data.length; i++) {
+    if (data[i][idx('設備代號')] !== equipmentId) continue;
+    if (data[i][idx('表單類型')] !== targetType) continue;
+    if (!isLocked(data[i][idx('狀態')])) continue;
+
+    const order = Number(data[i][idx('項次')]) || 0;
+    if (!order) continue;
+
+    const rd = data[i][idx('通報日期')];
+    const rdStr = rd instanceof Date
+      ? Utilities.formatDate(rd, tz_(), 'yyyy-MM-dd')
+      : String(rd || '').trim();
+
+    const candidate = {
+      order,
+      itemName: String(data[i][idx('項目名稱')] || ''),
+      incidentId: String(data[i][idx('事件ID')] || ''),
+      reportDate: rdStr,
+      description: String(data[i][idx('異常說明')] || ''),
+      status: String(data[i][idx('狀態')] || ''),
+    };
+
+    // 取較新的（reportDate 比較 string 排序在 YYYY-MM-DD 格式下等同日期排序）
+    if (!byOrder[order] || candidate.reportDate >= byOrder[order].reportDate) {
+      byOrder[order] = candidate;
+    }
+  }
+
+  return Object.values(byOrder).sort((a, b) => a.order - b.order);
+}
+
+/**
  * 取得指定「檢查表 + 設備」的完整 meta（給前端動態渲染）
  *
  * formType: 'daily' | 'monthly'
