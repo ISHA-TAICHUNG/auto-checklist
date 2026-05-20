@@ -47,9 +47,10 @@ function initializeDatabase() {
       ['F-CRANE-D', '固定式起重機', '固定式起重機每日作業前檢點表', '每日',
        '職業安全衛生管理辦法 §52', '良好「V」/ 無此項「/」/ 不良「X」（不良需於記事欄註明）',
        'V,/,X', '', '是'],
+      // ⚠ F-CRANE-M 的「結果選項」必須留空（crane_full schema 用硬編碼 normal/abnormal）
       ['F-CRANE-M', '固定式起重機', '固定式起重機每月定期檢查紀錄', '每月',
        '起重升降機具安全規則 §26', '勾選檢查方法、結果（正常/異常）、風險評估（V/?/—）、改善措施、定期檢討',
-       '正常,異常', '天車完整版', '是'],
+       '', '天車完整版', '是'],
       ['F-FORK-D', '堆高機', '堆高機每日使用前檢點表', '每日',
        '職業安全衛生管理辦法 §50', '良好「○」/ 尚可「△」/ 不良待修「X」（由授課教師檢查）',
        '○,△,X', '', '是'],
@@ -626,13 +627,21 @@ function applyChineseSettingsAndDropdowns() {
     });
   });
 
-  // ===== 2b. 補填「結果選項」/「月檢樣式」對 F-CRANE-* 預設值 =====
-  // (這兩欄是後期才加，舊資料初始化時沒寫；按 source code 的初始 seed 對齊)
+  // ===== 2b. 補填 / 修正「檢查表模板」的「結果選項」/「月檢樣式」=====
+  //
+  // ⚠ F-CRANE-M 的「結果選項」必須留空（不能寫 '正常,異常'）—
+  //   crane_full schema 前端硬寫 'normal'/'abnormal' 兩個 radio、不讀
+  //   resultOptions。若 sheet 填了 '正常,異常'，後端 validation 會擋掉
+  //   前端送的英文值，造成天車月檢送不出。
   const TEMPLATE_DEFAULTS = {
-    'F-CRANE-D': { '結果選項': 'V,/,X',    '月檢樣式': '' },
-    'F-CRANE-M': { '結果選項': '正常,異常', '月檢樣式': '天車完整版' },
-    'F-FORK-D':  { '結果選項': '○,△,X',   '月檢樣式': '' },
-    'F-FORK-M':  { '結果選項': 'ˇ,X',     '月檢樣式': '簡式月檢' },
+    'F-CRANE-D': { '結果選項': 'V,/,X',  '月檢樣式': '' },
+    'F-CRANE-M': { '結果選項': '',       '月檢樣式': '天車完整版' },  // 結果選項刻意留空
+    'F-FORK-D':  { '結果選項': '○,△,X', '月檢樣式': '' },
+    'F-FORK-M':  { '結果選項': 'ˇ,X',   '月檢樣式': '簡式月檢' },
+  };
+  // 強制清空的特定錯誤值（舊版 bug 殘留 / 使用者誤填）
+  const FORCED_CLEAR = {
+    'F-CRANE-M': { '結果選項': ['正常,異常', '正常, 異常'] },
   };
   if (tplSheet) {
     const tData = tplSheet.getDataRange().getValues();
@@ -640,20 +649,38 @@ function applyChineseSettingsAndDropdowns() {
     const tIdIdx = tHdr.indexOf('表單ID');
     const ropIdx2 = tHdr.indexOf('結果選項');
     const schIdx2 = tHdr.indexOf('月檢樣式');
-    let backfilled = 0;
+    let backfilled = 0, cleared = 0;
+    const colMap = { '結果選項': ropIdx2, '月檢樣式': schIdx2 };
     for (let i = 1; i < tData.length; i++) {
       const id = String(tData[i][tIdIdx] || '').trim();
+      // 先強制清空已知錯誤值
+      const fc = FORCED_CLEAR[id];
+      if (fc) {
+        for (const col of Object.keys(fc)) {
+          const ci = colMap[col];
+          if (ci < 0) continue;
+          const cur = String(tData[i][ci] || '').trim();
+          if (fc[col].includes(cur)) {
+            tplSheet.getRange(i + 1, ci + 1).setValue('');
+            cleared++;
+          }
+        }
+      }
+      // 然後補填空白欄位
       const defaults = TEMPLATE_DEFAULTS[id];
       if (!defaults) continue;
-      if (ropIdx2 >= 0 && !String(tData[i][ropIdx2] || '').trim() && defaults['結果選項']) {
-        tplSheet.getRange(i + 1, ropIdx2 + 1).setValue(defaults['結果選項']);
-        backfilled++;
-      }
-      if (schIdx2 >= 0 && !String(tData[i][schIdx2] || '').trim() && defaults['月檢樣式']) {
-        tplSheet.getRange(i + 1, schIdx2 + 1).setValue(defaults['月檢樣式']);
-        backfilled++;
+      for (const col of Object.keys(defaults)) {
+        const ci = colMap[col];
+        if (ci < 0) continue;
+        const want = defaults[col];
+        if (!want) continue;  // 預設要留空就跳過
+        if (!String(tData[i][ci] || '').trim()) {
+          tplSheet.getRange(i + 1, ci + 1).setValue(want);
+          backfilled++;
+        }
       }
     }
+    if (cleared > 0) report.push(`✓ 修正「檢查表模板」錯誤值 ${cleared} 格`);
     if (backfilled > 0) report.push(`✓ 補填「檢查表模板」空白欄位 ${backfilled} 格`);
   }
 
