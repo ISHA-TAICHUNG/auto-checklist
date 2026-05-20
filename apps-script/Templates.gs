@@ -174,9 +174,14 @@ function getFormMeta_(formType, equipmentId) {
       tplData[i][tplIdx('週期')] === targetCycle &&
       isActiveValue_(tplData[i][tplIdx('啟用')])
     ) {
-      // resultOptions：comma-separated 結果代號（依各機具表單不同）
-      const ropRaw = tplIdx('resultOptions') >= 0 ? String(tplData[i][tplIdx('resultOptions')] || '') : '';
+      // 結果選項：comma-separated 結果代號（依各機具表單不同）
+      // 用 findCol_ 支援中文（結果選項）/ 英文（resultOptions）雙向相容
+      const ropIdx = findCol_(tplHeaders, '結果選項', 'resultOptions');
+      const ropRaw = ropIdx >= 0 ? String(tplData[i][ropIdx] || '') : '';
       const resultOptions = ropRaw.split(',').map(s => s.trim()).filter(Boolean);
+
+      const schIdx = findCol_(tplHeaders, '月檢樣式', 'monthlySchema');
+      const schRaw = schIdx >= 0 ? String(tplData[i][schIdx] || '') : '';
 
       template = {
         templateId: tplData[i][tplIdx('表單ID')],
@@ -186,8 +191,7 @@ function getFormMeta_(formType, equipmentId) {
         legalBasis: tplData[i][tplIdx('法規依據')],
         rule: tplData[i][tplIdx('填寫規則')],
         resultOptions,                                                          // []  → fallback by formType
-        monthlySchema: tplIdx('monthlySchema') >= 0
-          ? String(tplData[i][tplIdx('monthlySchema')] || '') : '',
+        monthlySchema: normalizeMonthlySchema_(schRaw),                         // 內部正規化為 'simple' / 'crane_full' / ''
       };
       break;
     }

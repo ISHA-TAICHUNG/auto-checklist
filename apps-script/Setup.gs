@@ -42,20 +42,20 @@ function initializeDatabase() {
   // - monthlySchema：crane_full = 7 欄（部份/方法/結果/風險/改善/檢討）
   //                  simple    = 4 欄（部份/方法/結果/改善）
   setupSheet_(ss, '檢查表模板',
-    ['表單ID', '設備類別', '表單名稱', '週期', '法規依據', '填寫規則', 'resultOptions', 'monthlySchema', '啟用'],
+    ['表單ID', '設備類別', '表單名稱', '週期', '法規依據', '填寫規則', '結果選項', '月檢樣式', '啟用'],
     [
       ['F-CRANE-D', '固定式起重機', '固定式起重機每日作業前檢點表', '每日',
        '職業安全衛生管理辦法 §52', '良好「V」/ 無此項「/」/ 不良「X」（不良需於記事欄註明）',
-       'V,/,X', '', true],
+       'V,/,X', '', '是'],
       ['F-CRANE-M', '固定式起重機', '固定式起重機每月定期檢查紀錄', '每月',
        '起重升降機具安全規則 §26', '勾選檢查方法、結果（正常/異常）、風險評估（V/?/—）、改善措施、定期檢討',
-       '正常,異常', 'crane_full', true],
+       '正常,異常', '天車完整版', '是'],
       ['F-FORK-D', '堆高機', '堆高機每日使用前檢點表', '每日',
        '職業安全衛生管理辦法 §50', '良好「○」/ 尚可「△」/ 不良待修「X」（由授課教師檢查）',
-       '○,△,X', '', true],
+       '○,△,X', '', '是'],
       ['F-FORK-M', '堆高機', '堆高機每月定期檢查表', '每月',
        '起重升降機具安全規則 §128', '正常打「ˇ」/ 異常打「X」',
-       'ˇ,X', 'simple', true],
+       'ˇ,X', '簡式月檢', '是'],
     ]
   );
 
@@ -328,6 +328,51 @@ function cleanupTestDataForDate_(dateStr, opts) {
 }
 
 /**
+ * 把指定設備的所有未完成異常事件，狀態批次改成「已完成」
+ *
+ * 用途：模擬承辦人在「異常事件」表批次標記，主要給 demo 用
+ *      (實際使用建議在試算表手動下拉改，比較看得到上下文)
+ *
+ * 參數：
+ *   equipmentId   — 設備代號（必填）
+ *   formType      — 'daily' / 'monthly'（選填，不填則兩種都處理）
+ *
+ * 回傳：summary 字串
+ */
+function markIncidentsCompletedForEquipment_(equipmentId, formType) {
+  if (!equipmentId) throw new Error('需提供 equipmentId');
+  const ss = SpreadsheetApp.openById(CONFIG.DB_SHEET_ID);
+  const sheet = ss.getSheetByName('異常事件');
+  if (!sheet || sheet.getLastRow() < 2) return '無異常事件可處理';
+
+  const data = sheet.getDataRange().getValues();
+  const headers = data[0];
+  const idxEqp = headers.indexOf('設備代號');
+  const idxType = headers.indexOf('表單類型');
+  const idxStatus = headers.indexOf('狀態');
+  const idxCompleted = headers.indexOf('實際完成日');
+  if (idxEqp < 0 || idxStatus < 0) throw new Error('異常事件表缺欄位');
+
+  const targetType = formType === 'daily' ? '每日'
+                    : formType === 'monthly' ? '每月' : null;
+  const todayStr = Utilities.formatDate(new Date(), tz_(), 'yyyy-MM-dd');
+  let updated = 0;
+  for (let i = 1; i < data.length; i++) {
+    if (data[i][idxEqp] !== equipmentId) continue;
+    if (targetType && data[i][idxType] !== targetType) continue;
+    const cur = String(data[i][idxStatus] || '').trim();
+    if (cur === '已完成') continue;
+    // 用 setValue 一格一格寫（量小不影響效能；保留欄位 dataValidation）
+    sheet.getRange(i + 1, idxStatus + 1).setValue('已完成');
+    if (idxCompleted >= 0 && !data[i][idxCompleted]) {
+      sheet.getRange(i + 1, idxCompleted + 1).setValue(todayStr);
+    }
+    updated++;
+  }
+  return `✓ 設備「${equipmentId}」更新 ${updated} 筆異常事件為「已完成」`;
+}
+
+/**
  * 列出「待處理 / 處理中 / 待重檢」異常事件
  * （讓承辦人 / 主管能從外部 API 查目前累積未完成的事件）
  */
@@ -398,7 +443,7 @@ function applyColumnWidthsAndWrap_() {
     },
     '檢查表模板': {
       '表單ID': 100, '設備類別': 100, '表單名稱': 240, '週期': 70,
-      '法規依據': 180, '填寫規則': 280, 'resultOptions': 100, 'monthlySchema': 110, '啟用': 60,
+      '法規依據': 180, '填寫規則': 280, '結果選項': 100, '月檢樣式': 110, '啟用': 60,
     },
     '檢查項目': {
       '表單ID': 100, '項目順序': 80, '項目名稱': 320, '檢查方法': 110, '啟用': 60,
@@ -499,6 +544,26 @@ function applyChineseSettingsAndDropdowns() {
   report.push(`收集到設備類別：${categories.join(', ')}`);
   report.push(`收集到表單ID：${templateIds.join(', ')}`);
 
+  // ===== 1b. 先把英文 header 改成中文（idempotent）=====
+  const HEADER_RENAMES = {
+    '檢查表模板': { 'resultOptions': '結果選項', 'monthlySchema': '月檢樣式' },
+  };
+  Object.keys(HEADER_RENAMES).forEach(sheetName => {
+    const sheet = ss.getSheetByName(sheetName);
+    if (!sheet) return;
+    const lastCol = Math.max(sheet.getLastColumn(), 1);
+    const headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+    const rename = HEADER_RENAMES[sheetName];
+    let renamed = 0;
+    headers.forEach((h, i) => {
+      if (rename[h]) {
+        sheet.getRange(1, i + 1).setValue(rename[h]);
+        renamed++;
+      }
+    });
+    if (renamed > 0) report.push(`✓ 「${sheetName}」重新命名 ${renamed} 個英文欄位 → 中文`);
+  });
+
   // ===== 2. 套用各表 dropdown + 中文化 =====
   const SHEET_PROFILES = {
     '設備清單': [
@@ -509,7 +574,8 @@ function applyChineseSettingsAndDropdowns() {
       { col: '啟用',     options: ['是', '否'],       migrate: { TRUE: '是', FALSE: '否' } },
       { col: '週期',     options: ['每日', '每月'],   strict: true },
       { col: '設備類別', options: categories,         strict: false },
-      { col: 'monthlySchema', options: ['', 'simple', 'crane_full'], strict: false },
+      { col: '月檢樣式', options: ['', '簡式月檢', '天車完整版'], strict: false,
+        migrate: { SIMPLE: '簡式月檢', CRANE_FULL: '天車完整版' } },
     ],
     '檢查項目': [
       { col: '啟用',     options: ['是', '否'],       migrate: { TRUE: '是', FALSE: '否' } },
@@ -560,6 +626,37 @@ function applyChineseSettingsAndDropdowns() {
     });
   });
 
+  // ===== 2b. 補填「結果選項」/「月檢樣式」對 F-CRANE-* 預設值 =====
+  // (這兩欄是後期才加，舊資料初始化時沒寫；按 source code 的初始 seed 對齊)
+  const TEMPLATE_DEFAULTS = {
+    'F-CRANE-D': { '結果選項': 'V,/,X',    '月檢樣式': '' },
+    'F-CRANE-M': { '結果選項': '正常,異常', '月檢樣式': '天車完整版' },
+    'F-FORK-D':  { '結果選項': '○,△,X',   '月檢樣式': '' },
+    'F-FORK-M':  { '結果選項': 'ˇ,X',     '月檢樣式': '簡式月檢' },
+  };
+  if (tplSheet) {
+    const tData = tplSheet.getDataRange().getValues();
+    const tHdr = tData[0];
+    const tIdIdx = tHdr.indexOf('表單ID');
+    const ropIdx2 = tHdr.indexOf('結果選項');
+    const schIdx2 = tHdr.indexOf('月檢樣式');
+    let backfilled = 0;
+    for (let i = 1; i < tData.length; i++) {
+      const id = String(tData[i][tIdIdx] || '').trim();
+      const defaults = TEMPLATE_DEFAULTS[id];
+      if (!defaults) continue;
+      if (ropIdx2 >= 0 && !String(tData[i][ropIdx2] || '').trim() && defaults['結果選項']) {
+        tplSheet.getRange(i + 1, ropIdx2 + 1).setValue(defaults['結果選項']);
+        backfilled++;
+      }
+      if (schIdx2 >= 0 && !String(tData[i][schIdx2] || '').trim() && defaults['月檢樣式']) {
+        tplSheet.getRange(i + 1, schIdx2 + 1).setValue(defaults['月檢樣式']);
+        backfilled++;
+      }
+    }
+    if (backfilled > 0) report.push(`✓ 補填「檢查表模板」空白欄位 ${backfilled} 格`);
+  }
+
   // ===== 3. 異常事件.狀態（沿用既有設定） =====
   setupIncidentStatusValidation_(ss);
   report.push('✓ 「異常事件.狀態」下拉已套用');
@@ -594,12 +691,12 @@ function addForkliftTemplatesAndItems() {
   const newTemplates = [
     ['F-FORK-D', '堆高機', '堆高機每日使用前檢點表', '每日',
      '職業安全衛生管理辦法 §50', '良好「○」/ 尚可「△」/ 不良待修「X」（由授課教師檢查）',
-     '○,△,X', '', true],
+     '○,△,X', '', '是'],
     ['F-FORK-M', '堆高機', '堆高機每月定期檢查表', '每月',
      '起重升降機具安全規則 §128', '正常打「ˇ」/ 異常打「X」',
-     'ˇ,X', 'simple', true],
+     'ˇ,X', '簡式月檢', '是'],
   ];
-  const tplColMap = ['表單ID', '設備類別', '表單名稱', '週期', '法規依據', '填寫規則', 'resultOptions', 'monthlySchema', '啟用'];
+  const tplColMap = ['表單ID', '設備類別', '表單名稱', '週期', '法規依據', '填寫規則', '結果選項', '月檢樣式', '啟用'];
   newTemplates.forEach(tplRow => {
     const id = tplRow[0];
     if (existingTplIds.has(id)) { Logger.log('模板已存在：' + id); return; }

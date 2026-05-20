@@ -376,7 +376,9 @@ function getTemplateForCategoryCycle_(category, formType) {
   for (let i = 1; i < data.length; i++) {
     if (!isActiveValue_(data[i][idx('啟用')])) continue;
     if (data[i][idx('設備類別')] === category && data[i][idx('週期')] === targetCycle) {
-      const ropRaw = idx('resultOptions') >= 0 ? String(data[i][idx('resultOptions')] || '') : '';
+      // 中英相容（'結果選項' / 'resultOptions'）
+      const ropIdx = findCol_(headers, '結果選項', 'resultOptions');
+      const ropRaw = ropIdx >= 0 ? String(data[i][ropIdx] || '') : '';
       const resultOptions = ropRaw.split(',').map(s => s.trim()).filter(Boolean);
       return {
         templateId: data[i][idx('表單ID')],
@@ -386,8 +388,10 @@ function getTemplateForCategoryCycle_(category, formType) {
         legalBasis: data[i][idx('法規依據')],
         rule: data[i][idx('填寫規則')],
         resultOptions,
-        monthlySchema: idx('monthlySchema') >= 0
-          ? String(data[i][idx('monthlySchema')] || '') : '',
+        monthlySchema: (() => {
+          const sIdx = findCol_(headers, '月檢樣式', 'monthlySchema');
+          return sIdx >= 0 ? normalizeMonthlySchema_(data[i][sIdx]) : '';
+        })(),
       };
     }
   }

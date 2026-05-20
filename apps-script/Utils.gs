@@ -26,6 +26,34 @@ function isActiveValue_(v) {
 }
 
 /**
+ * 從 headers 找出第一個匹配的欄位 index
+ * 用於支援欄位名稱「中文化遷移」時的向下相容
+ *
+ * 例：findCol_(headers, '結果選項', 'resultOptions')
+ *     → 先找「結果選項」，找不到再找 'resultOptions'，都找不到回 -1
+ */
+function findCol_(headers, ...candidates) {
+  for (const name of candidates) {
+    const i = headers.indexOf(name);
+    if (i >= 0) return i;
+  }
+  return -1;
+}
+
+/**
+ * monthlySchema 值的內部正規化（DB 存中文、code 用英文識別）
+ * '簡式月檢' / 'simple' → 'simple'
+ * '天車完整版' / 'crane_full' → 'crane_full'
+ * '' → '' (預設行為按 crane_full)
+ */
+function normalizeMonthlySchema_(raw) {
+  const v = String(raw == null ? '' : raw).trim();
+  if (v === '簡式月檢' || v === 'simple') return 'simple';
+  if (v === '天車完整版' || v === 'crane_full') return 'crane_full';
+  return v;  // 保留未知值給呼叫者判斷
+}
+
+/**
  * 取得指定日期在台北時區的「年、月、日」三個整數
  */
 function dateParts_(date) {

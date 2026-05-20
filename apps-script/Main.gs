@@ -92,6 +92,15 @@ function doGet(e) {
             result = { ok: true, action, summary };
             break;
           }
+          case 'markCompleted': {
+            // 把指定設備所有未完成異常事件 批次改成「已完成」
+            // (模擬承辦改狀態，主要 demo 用；實務建議在試算表手動改)
+            const eqp = e.parameter.eqp;
+            const form = e.parameter.form;  // 選填
+            const summary = markIncidentsCompletedForEquipment_(eqp, form);
+            result = { ok: true, action, summary };
+            break;
+          }
           case 'cleanupDate': {
             // 清掉指定日期的所有測試資料（填報紀錄 + 異常事件 + Drive PDF）
             // ⚠ 一旦執行不可逆，PDF 進回收桶可救回 30 天
