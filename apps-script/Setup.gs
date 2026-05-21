@@ -927,7 +927,7 @@ function addPpeTemplatesAndEquipments() {
       .forEach(r => existingEqIds.add(String(r[0])));
   }
   const venues = [
-    { id: 'VENUE-CRANE', name: '固定式起重機實習場地', location: '一樓' },
+    { id: 'VENUE-CRANE', name: '固定式起重機實習場地', location: '三樓' },
     { id: 'VENUE-FORK',  name: '堆高機實習場地',       location: '一樓' },
   ];
   const newEqRows = [];

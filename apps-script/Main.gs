@@ -92,6 +92,31 @@ function doGet(e) {
             result = { ok: true, action, summary };
             break;
           }
+          case 'setEquipmentField': {
+            // 改設備清單某列的某欄位
+            // 例：?action=setEquipmentField&eqp=VENUE-CRANE&field=所在位置&value=三樓
+            const eqp = e.parameter.eqp;
+            const field = e.parameter.field;
+            const value = e.parameter.value;
+            if (!eqp || !field) throw new Error('需提供 eqp 與 field');
+            const ss = SpreadsheetApp.openById(CONFIG.DB_SHEET_ID);
+            const sh = ss.getSheetByName('設備清單');
+            const data = sh.getDataRange().getValues();
+            const headers = data[0];
+            const idCol = headers.indexOf('設備代號');
+            const fldCol = headers.indexOf(field);
+            if (idCol < 0) throw new Error('設備清單缺「設備代號」欄');
+            if (fldCol < 0) throw new Error('找不到欄位：' + field);
+            let updated = 0;
+            for (let i = 1; i < data.length; i++) {
+              if (String(data[i][idCol]) === eqp) {
+                sh.getRange(i + 1, fldCol + 1).setValue(value || '');
+                updated++;
+              }
+            }
+            result = { ok: true, action, eqp, field, value, updated };
+            break;
+          }
           case 'addPpe': {
             // 加防護具檢點 template + 2 個項目 + 2 個場地（VENUE-CRANE / VENUE-FORK）
             const summary = addPpeTemplatesAndEquipments();
