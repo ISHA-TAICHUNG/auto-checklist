@@ -25,6 +25,13 @@ function dailyReminderJob(opts) {
     const full = getEquipmentById_(eqp.equipmentId);
     if (!full || !full.active) continue;
 
+    // 防護具檢點：不對場地表（每日 PPE check 由操作員每堂課自行記錄、不發 reminder）
+    if (full.category === '防護具檢點') {
+      results.push({ equipmentId: full.equipmentId, category: full.category, action: 'skip',
+                     reason: '防護具類別不發 reminder' });
+      continue;
+    }
+
     const usage = getVenueUsage_(full, today);
     if (!usage.used) {
       results.push({ equipmentId: full.equipmentId, category: full.category, action: 'skip',

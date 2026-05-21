@@ -92,6 +92,12 @@ function doGet(e) {
             result = { ok: true, action, summary };
             break;
           }
+          case 'addPpe': {
+            // 加防護具檢點 template + 2 個項目 + 2 個場地（VENUE-CRANE / VENUE-FORK）
+            const summary = addPpeTemplatesAndEquipments();
+            result = { ok: true, action, summary };
+            break;
+          }
           case 'markCompleted': {
             // 把指定設備所有未完成異常事件 批次改成「已完成」
             // (模擬承辦改狀態，主要 demo 用；實務建議在試算表手動改)

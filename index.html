@@ -16,6 +16,24 @@
   </header>
 
   <main class="container">
+    <!-- 防護具檢點區（按場地下拉選擇）-->
+    <div id="ppeSection" style="display:none; margin-bottom:24px;">
+      <h2 class="card-title">防護具每日檢點</h2>
+      <div class="equip-card" style="background:#fef7e0; border-left:4px solid #f9ab00;">
+        <div class="equip-name">🦺 安全帽 / 安全背心 等</div>
+        <div class="equip-meta" style="margin-bottom:12px;">每堂課實習結束後檢點</div>
+        <div style="margin-bottom:12px;">
+          <label for="ppeVenue" style="display:block; font-size:14px; color:#5f6368; margin-bottom:6px;">選擇場地：</label>
+          <select id="ppeVenue" style="width:100%; padding:10px; font-size:16px; border:2px solid #dadce0; border-radius:8px; background:#fff;">
+            <option value="">— 請選擇 —</option>
+          </select>
+        </div>
+        <div class="equip-actions">
+          <a id="ppeSubmitBtn" class="btn-daily" href="#" onclick="return goPpe()">填寫今日</a>
+        </div>
+      </div>
+    </div>
+
     <h2 class="card-title" id="listTitle">請選擇設備</h2>
     <div id="content">
       <div class="page-loading"><span class="loading"></span>&nbsp;載入中...</div>
@@ -90,16 +108,41 @@
       });
     }
 
+    function goPpe() {
+      const v = document.getElementById('ppeVenue').value;
+      if (!v) { alert('請先選擇場地'); return false; }
+      location.href = 'daily.html?eqp=' + encodeURIComponent(v);
+      return false;
+    }
+
     (async () => {
       try {
         const r = await API.listEquipments();
         if (!r.ok) return renderError(r.error || '取得設備清單失敗');
         if (!r.equipments || !r.equipments.length) return renderEmpty();
-        // 若 URL 有 cat 過濾，只顯示該類別
+
+        // 防護具檢點區與一般設備分開渲染
+        const ppeVenues = r.equipments.filter(e => e.category === '防護具檢點');
+        const normalEquipments = r.equipments.filter(e => e.category !== '防護具檢點');
+
+        // 顯示防護具區塊（如果有場地）
+        if (ppeVenues.length > 0 && !urlCat) {
+          const sel = document.getElementById('ppeVenue');
+          ppeVenues.forEach(v => {
+            const opt = document.createElement('option');
+            opt.value = v.equipmentId;
+            opt.textContent = v.equipmentName;
+            sel.appendChild(opt);
+          });
+          document.getElementById('ppeSection').style.display = 'block';
+        }
+
+        // 一般設備列表（支援 URL ?cat=xxx 過濾）
         const filtered = urlCat
-          ? r.equipments.filter(e => e.category === urlCat)
-          : r.equipments;
-        if (!filtered.length) return renderError('找不到類別「' + urlCat + '」的設備');
+          ? normalEquipments.filter(e => e.category === urlCat)
+          : normalEquipments;
+        if (!filtered.length && !urlCat && ppeVenues.length === 0) return renderEmpty();
+        if (!filtered.length && urlCat) return renderError('找不到類別「' + urlCat + '」的設備');
         renderList(filtered);
       } catch (err) {
         renderError('連線後端失敗：' + err.message);

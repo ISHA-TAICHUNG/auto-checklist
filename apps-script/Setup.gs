@@ -843,6 +843,121 @@ function addForkliftEquipments() {
   return { added: newRows.length };
 }
 
+/**
+ * 加防護具檢點 — template / items / 場地
+ *
+ * 設計：
+ * - 場地當特殊「設備」處理，category = '防護具檢點'
+ * - 表單共用 daily.html，因為 schema 跟一般 daily 一樣（V/X 二選一）
+ * - 場地名稱跟設備名稱對應：VENUE-CRANE → 固定式起重機實習場地
+ *
+ * 來源：天車安全防護用具檢查表.docx
+ * 法規：職業安全衛生設施規則 §286（雇主供給防護具，並使勞工確實使用）
+ */
+function addPpeTemplatesAndEquipments() {
+  const ss = SpreadsheetApp.openById(CONFIG.DB_SHEET_ID);
+  const result = { templateAdded: 0, itemsAdded: 0, venuesAdded: 0 };
+
+  // ===== 1. 加模板 F-PPE-D =====
+  const tplSheet = ss.getSheetByName('檢查表模板');
+  const tplHeaders = tplSheet.getRange(1, 1, 1, tplSheet.getLastColumn()).getValues()[0];
+  const tplLastRow = tplSheet.getLastRow();
+  const existingTplIds = new Set();
+  if (tplLastRow > 1) {
+    const tplIdCol = tplHeaders.indexOf('表單ID');
+    tplSheet.getRange(2, tplIdCol + 1, tplLastRow - 1, 1).getValues()
+      .forEach(r => existingTplIds.add(String(r[0])));
+  }
+  if (!existingTplIds.has('F-PPE-D')) {
+    const tplRow = new Array(tplHeaders.length).fill('');
+    const setT = (name, v) => { const i = tplHeaders.indexOf(name); if (i >= 0) tplRow[i] = v; };
+    setT('表單ID',   'F-PPE-D');
+    setT('設備類別', '防護具檢點');
+    setT('表單名稱', '防護具每日檢點表');
+    setT('週期',     '每日');
+    setT('法規依據', '職業安全衛生設施規則 §286');
+    setT('填寫規則', '良好打「V」/ 不良打「X」（不良需於記事欄註明）');
+    setT('結果選項', 'V,X');
+    setT('月檢樣式', '');
+    setT('啟用',     '是');
+    tplSheet.getRange(tplSheet.getLastRow() + 1, 1, 1, tplHeaders.length).setValues([tplRow]);
+    result.templateAdded = 1;
+  }
+
+  // ===== 2. 加項目（2 項：安全帽 / 安全背心）=====
+  const itemSheet = ss.getSheetByName('檢查項目');
+  const itemHeaders = itemSheet.getRange(1, 1, 1, itemSheet.getLastColumn()).getValues()[0];
+  const itemLastRow = itemSheet.getLastRow();
+  const existingItems = new Set();
+  if (itemLastRow > 1) {
+    const data = itemSheet.getRange(2, 1, itemLastRow - 1, itemHeaders.length).getValues();
+    const idIdx = itemHeaders.indexOf('表單ID');
+    const orderIdx = itemHeaders.indexOf('項目順序');
+    data.forEach(r => existingItems.add(`${r[idIdx]}|${r[orderIdx]}`));
+  }
+  const ppeItems = [
+    { order: 1, name: '安全帽',   method: '目視（配件完整 / 無破損 / 無髒汙）' },
+    { order: 2, name: '安全背心', method: '目視（無破損 / 無髒汙）' },
+  ];
+  const newItemRows = [];
+  ppeItems.forEach(it => {
+    if (existingItems.has(`F-PPE-D|${it.order}`)) return;
+    const row = new Array(itemHeaders.length).fill('');
+    const setI = (name, v) => { const i = itemHeaders.indexOf(name); if (i >= 0) row[i] = v; };
+    setI('表單ID',   'F-PPE-D');
+    setI('項目順序', it.order);
+    setI('項目名稱', it.name);
+    setI('檢查方法', it.method);
+    setI('啟用',     '是');
+    newItemRows.push(row);
+  });
+  if (newItemRows.length > 0) {
+    itemSheet.getRange(itemSheet.getLastRow() + 1, 1, newItemRows.length, itemHeaders.length).setValues(newItemRows);
+    result.itemsAdded = newItemRows.length;
+  }
+
+  // ===== 3. 加場地（當特殊設備）=====
+  const eqSheet = ss.getSheetByName('設備清單');
+  const eqHeaders = eqSheet.getRange(1, 1, 1, eqSheet.getLastColumn()).getValues()[0];
+  const eqLastRow = eqSheet.getLastRow();
+  const existingEqIds = new Set();
+  if (eqLastRow > 1) {
+    const idCol = eqHeaders.indexOf('設備代號');
+    eqSheet.getRange(2, idCol + 1, eqLastRow - 1, 1).getValues()
+      .forEach(r => existingEqIds.add(String(r[0])));
+  }
+  const venues = [
+    { id: 'VENUE-CRANE', name: '固定式起重機實習場地', location: '一樓' },
+    { id: 'VENUE-FORK',  name: '堆高機實習場地',       location: '一樓' },
+  ];
+  const newEqRows = [];
+  venues.forEach(v => {
+    if (existingEqIds.has(v.id)) return;
+    const row = new Array(eqHeaders.length).fill('');
+    const setE = (name, value) => { const i = eqHeaders.indexOf(name); if (i >= 0) row[i] = value; };
+    setE('設備代號',   v.id);
+    setE('設備名稱',   v.name);
+    setE('機械編號',   '');
+    setE('型式規格',   '');
+    setE('設備類別',   '防護具檢點');
+    setE('所在位置',   v.location);
+    setE('場地表分頁', '');   // 防護具不對場地表（不需要 reminder）
+    setE('啟用',       '是');
+    newEqRows.push(row);
+  });
+  if (newEqRows.length > 0) {
+    eqSheet.getRange(eqSheet.getLastRow() + 1, 1, newEqRows.length, eqHeaders.length).setValues(newEqRows);
+    result.venuesAdded = newEqRows.length;
+  }
+
+  // ===== 4. 重新套用 dropdown（讓「防護具檢點區」進設備類別下拉）=====
+  try { applyChineseSettingsAndDropdowns(); } catch (e) { Logger.log('dropdown 重套失敗：' + e); }
+
+  const summary = `✓ template +${result.templateAdded}、items +${result.itemsAdded}、venues +${result.venuesAdded}`;
+  Logger.log(summary);
+  return summary;
+}
+
 function setBrandingSettings_(settings) {
   const ss = SpreadsheetApp.openById(CONFIG.DB_SHEET_ID);
   const sheet = ss.getSheetByName('系統設定');
