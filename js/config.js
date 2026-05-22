@@ -25,5 +25,5 @@ window.SYSTEM_CONFIG = {
   // 系統版本（顯示在首頁 footer，給操作員看的版本號）
   // 慣例：major UX / feature 改才 bump（例如加新機具類別、改 PDF 排版、改填表流程）
   // 純後端修 bug 不用動（後端有自己的部署版本 v8.x）
-  VERSION: 'v1.1',
+  VERSION: 'v1.2',
 };

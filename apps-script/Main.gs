@@ -123,6 +123,24 @@ function doGet(e) {
             result = { ok: true, action, summary };
             break;
           }
+          case 'setLineProps': {
+            // 設 LINE 推播相關 Properties（從 ISHA-bot 那邊複製過來）
+            // 用 doPost 傳 JSON body 比較安全（不會在 URL 中曝露 token）
+            // 但 admin 一律走 doGet，這裡接受 URL params 也 OK（admin 半公開 trade-off）
+            const props = PropertiesService.getScriptProperties();
+            const updates = {};
+            ['LINE_CHANNEL_ACCESS_TOKEN','LINE_CHANNEL_SECRET',
+             'LINE_TARGET_GROUP_ID','LINE_TARGET_USER_IDS','LINE_ADMIN_USER_IDS',
+             'INCIDENT_SHEET_URL'].forEach(k => {
+              if (e.parameter[k] !== undefined) updates[k] = e.parameter[k];
+            });
+            if (Object.keys(updates).length === 0) {
+              throw new Error('需提供至少一個 LINE_* property');
+            }
+            props.setProperties(updates, false);
+            result = { ok: true, action, set: Object.keys(updates) };
+            break;
+          }
           case 'markCompleted': {
             // 把指定設備所有未完成異常事件 批次改成「已完成」
             // (模擬承辦改狀態，主要 demo 用；實務建議在試算表手動改)
@@ -193,6 +211,16 @@ function doPost(e) {
     if (!raw) throw new Error('空白 payload');
     if (raw.length > CONFIG.MAX_PAYLOAD_BYTES) {
       throw new Error('payload 過大');
+    }
+
+    // === LINE Webhook 偵測（header X-Line-Signature 存在即視為 LINE 進來）===
+    // GAS 的 e.parameter 不含 headers，但 LINE webhook 的 body 結構特定
+    // 用 body 結構 + 簽章 header 二段判斷
+    const lineSig = (e.parameter && e.parameter.lineSignature) ||
+                    (e.parameters && e.parameters['X-Line-Signature']);
+    if (typeof handleLineWebhook_ === 'function' && raw.indexOf('"events"') >= 0 && raw.indexOf('"destination"') >= 0) {
+      const r = handleLineWebhook_(raw, lineSig || '');
+      return jsonResponse_(r);
     }
 
     let payload;

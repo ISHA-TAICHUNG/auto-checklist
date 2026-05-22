@@ -202,6 +202,11 @@ function handleSubmission_(payload) {
         Logger.log('writeIncidents_ 失敗（主紀錄已寫，異常追蹤可從 JSON 重建）: ' +
                    incidentErr + '\n' + (incidentErr.stack || ''));
       }
+      // 有異常時透過 LINE 即時通報（如果 token 已設、沒設就 silently skip）
+      if (incidentCount > 0) {
+        try { notifyLineIncidents_(recordId, submittedAt, checkDate, payload, equipment, fileUrl); }
+        catch (lineErr) { Logger.log('[LINE incident push] 失敗: ' + lineErr); }
+      }
       return { ok: true, recordId, fileName, fileUrl, incidentCount };
 
     } finally {
@@ -281,6 +286,36 @@ function isBadResult_(formType, result) {
   if (formType === 'daily') return result === 'X';
   if (formType === 'monthly') return result === 'abnormal' || result === 'X';
   return false;
+}
+
+/**
+ * 把該次填報的所有異常項，透過 LINE 即時通報
+ * （sendIncidentAlert_ 在 LineNotify.gs，會自動判斷有沒 token 並決定是否真的 push）
+ */
+function notifyLineIncidents_(recordId, submittedAt, checkDate, payload, equipment, fileUrl) {
+  if (typeof sendIncidentAlert_ !== 'function') return;
+  const cfg = (typeof getLineConfig_ === 'function') ? getLineConfig_() : null;
+  if (!cfg || !cfg.token) return;  // 沒設 token 就 silently skip
+
+  const formTypeZh = payload.formType === 'daily' ? '每日' : '每月';
+  const checkDateStr = formatISODate_(checkDate);
+
+  payload.items.forEach(it => {
+    if (!isBadResult_(payload.formType, it.result)) return;
+    sendIncidentAlert_({
+      equipmentName: equipment.equipmentName,
+      category: equipment.category,
+      formType: formTypeZh,
+      order: it.order,
+      itemName: it.name,
+      result: it.result,
+      description: it.abnormalDesc || it.note || '(無說明)',
+      photoCount: Array.isArray(it.photos) ? it.photos.length : 0,
+      status: '待處理',
+      reportDate: checkDateStr,
+      fileUrl: fileUrl,        // 該次填報 PDF URL，用於 LINE 卡片「📄 查看此次 PDF」按鈕
+    });
+  });
 }
 
 /**

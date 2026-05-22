@@ -133,6 +133,19 @@ function sendUnfilledReminder_(equipment, date, usage) {
     </div>
   `;
 
+  // === 通知 channel：優先 LINE (若已設 token)，fallback 到 email ===
+  const lineCfg = (typeof getLineConfig_ === 'function') ? getLineConfig_() : null;
+  const hasLineToken = lineCfg && lineCfg.token;
+
+  if (hasLineToken) {
+    // 抓該類別當日未填的機台清單
+    const allEqps = getEquipmentList_().filter(e => e.category === equipment.category);
+    sendReminder_(equipment.category, allEqps, webFrontendUrl);
+    Logger.log(`[Reminder] 已透過 LINE 通知 ${equipment.category} ${allEqps.length} 台未填`);
+    return;
+  }
+
+  // Fallback：email（既有行為）
   MailApp.sendEmail({
     to: getReminderEmail_(),
     cc: CONFIG.REMINDER_EMAIL_CC,
