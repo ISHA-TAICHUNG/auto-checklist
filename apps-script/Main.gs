@@ -141,6 +141,41 @@ function doGet(e) {
             result = { ok: true, action, set: Object.keys(updates) };
             break;
           }
+          case 'testLineIncident': {
+            // 測試異常通報 LINE 是否正常推（內部 try 包，回傳完整錯誤訊息給 admin）
+            try {
+              const cfg = (typeof getLineConfig_ === 'function') ? getLineConfig_() : null;
+              const diagnose = {
+                hasGetLineConfig: typeof getLineConfig_ === 'function',
+                hasSendIncidentAlert: typeof sendIncidentAlert_ === 'function',
+                token: cfg ? (cfg.token ? '✓ ' + cfg.token.substring(0, 8) + '...' : '✗ 缺') : '✗ cfg null',
+                groupId: cfg ? (cfg.groupId || '(空)') : '?',
+                userIds: cfg ? cfg.userIds : [],
+                userIdsCount: cfg ? cfg.userIds.length : 0,
+                incidentSheetUrl: PropertiesService.getScriptProperties().getProperty('INCIDENT_SHEET_URL') || '(空)',
+              };
+              let pushResult = null;
+              if (cfg && cfg.token && typeof sendIncidentAlert_ === 'function') {
+                pushResult = sendIncidentAlert_({
+                  equipmentName: '【測試】堆高機 A 號',
+                  category: '堆高機',
+                  formType: '每日',
+                  order: 3,
+                  itemName: '【測試】煞車油是否足夠',
+                  result: 'X',
+                  description: '這是 testLineIncident 觸發的測試訊息',
+                  photoCount: 0,
+                  status: '待處理',
+                  reportDate: '2026-05-22',
+                  fileUrl: 'https://drive.google.com/file/d/test-fileid/view',
+                });
+              }
+              result = { ok: true, action, diagnose, pushResult };
+            } catch (innerErr) {
+              result = { ok: false, action, error: String(innerErr.message || innerErr), stack: String(innerErr.stack || '') };
+            }
+            break;
+          }
           case 'markCompleted': {
             // 把指定設備所有未完成異常事件 批次改成「已完成」
             // (模擬承辦改狀態，主要 demo 用；實務建議在試算表手動改)
