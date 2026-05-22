@@ -185,6 +185,17 @@ function doGet(e) {
             result = { ok: true, action, summary };
             break;
           }
+          case 'cleanupAll': {
+            // 清掉所有填報紀錄 + 異常事件 + Drive PDF
+            // ⚠ 不可逆（PDF 可救 30 天）
+            // 必須帶 confirm=YES_DELETE_ALL，否則拒絕
+            // 用 dryRun=1 預覽
+            const dryRun = e.parameter.dryRun === '1';
+            const confirm = e.parameter.confirm || '';
+            const summary = cleanupAllSubmissionsAndIncidents_({ dryRun, confirm });
+            result = { ok: true, action, dryRun, summary };
+            break;
+          }
           case 'cleanupDate': {
             // 清掉指定日期的所有測試資料（填報紀錄 + 異常事件 + Drive PDF）
             // ⚠ 一旦執行不可逆，PDF 進回收桶可救回 30 天

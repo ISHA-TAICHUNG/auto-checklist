@@ -249,6 +249,74 @@ function triggerScopesConsent() {
  * ⚠ 一旦執行不可逆（PDF setTrashed 可救回 30 天，sheet row 刪掉就沒了）
  *   只應由 admin endpoint 觸發 + 帶 token
  */
+/**
+ * 清掉「所有」填報紀錄 / 異常事件 / Drive PDF
+ *
+ * 用途：production launch 前清空所有測試 / 試運轉資料（一次性）
+ *
+ * 安全：
+ *   - 必須帶 confirm='YES_DELETE_ALL'，不然拒絕
+ *   - dryRun 預覽
+ *   - PDF setTrashed 而非永久刪除（Drive 30 天可救）
+ *   - 不動表頭 row、不動 schema、不動 設備清單 / 檢查表模板 / 檢查項目 / 系統設定
+ */
+function cleanupAllSubmissionsAndIncidents_(opts) {
+  opts = opts || {};
+  const dryRun = !!opts.dryRun;
+  const confirm = opts.confirm;
+  if (!dryRun && confirm !== 'YES_DELETE_ALL') {
+    throw new Error('confirm=YES_DELETE_ALL 必填 才能真的清');
+  }
+
+  const ss = SpreadsheetApp.openById(CONFIG.DB_SHEET_ID);
+  const report = [];
+  let trashedPdfs = 0;
+  let pdfErrors = 0;
+
+  // 1. 填報紀錄 — 刪所有 data row + trash PDF
+  const recSheet = ss.getSheetByName('填報紀錄');
+  if (recSheet) {
+    const lastRow = recSheet.getLastRow();
+    const dataRows = lastRow - 1;  // 扣掉 header
+    let pdfsToTrash = [];
+    if (dataRows > 0) {
+      const headers = recSheet.getRange(1, 1, 1, recSheet.getLastColumn()).getValues()[0];
+      const idxPdf = headers.indexOf('PDF連結');
+      if (idxPdf >= 0) {
+        const urls = recSheet.getRange(2, idxPdf + 1, dataRows, 1).getValues().flat();
+        urls.forEach(u => {
+          const m = String(u || '').match(/\/d\/([A-Za-z0-9_-]+)/);
+          if (m) pdfsToTrash.push(m[1]);
+        });
+      }
+      if (!dryRun) {
+        pdfsToTrash.forEach(fid => {
+          try { DriveApp.getFileById(fid).setTrashed(true); trashedPdfs++; }
+          catch (e) { pdfErrors++; Logger.log(`[cleanupAll] PDF ${fid} 失敗: ${e}`); }
+        });
+        // 全部刪除（保留 header）
+        recSheet.deleteRows(2, dataRows);
+      }
+    }
+    report.push(`${dryRun ? '[DRY-RUN]' : '✓'} 填報紀錄：${dryRun ? '會刪' : '刪除'} ${dataRows} 列、${dryRun ? '會 trash' : 'trashed'} ${dryRun ? pdfsToTrash.length : trashedPdfs} PDF${pdfErrors ? `（PDF 失敗 ${pdfErrors}）` : ''}`);
+  }
+
+  // 2. 異常事件 — 刪所有 data row
+  const incSheet = ss.getSheetByName('異常事件');
+  if (incSheet) {
+    const lastRow = incSheet.getLastRow();
+    const dataRows = lastRow - 1;
+    if (dataRows > 0 && !dryRun) {
+      incSheet.deleteRows(2, dataRows);
+    }
+    report.push(`${dryRun ? '[DRY-RUN]' : '✓'} 異常事件：${dryRun ? '會刪' : '刪除'} ${dataRows} 列`);
+  }
+
+  const summary = report.join('\n');
+  Logger.log(summary);
+  return summary;
+}
+
 function cleanupTestDataForDate_(dateStr, opts) {
   opts = opts || {};
   const dryRun = !!opts.dryRun;
