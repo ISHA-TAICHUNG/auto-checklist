@@ -90,7 +90,7 @@ function doGet(e) {
         const WRITE_ACTIONS = ['formatSheets', 'runInit', 'applyDropdowns',
                                'setEquipmentField', 'addPpe', 'setLineProps',
                                'testLineIncident', 'markCompleted', 'fetchPdf',
-                               'addMonthlySafetyPpeForms'];
+                               'addMonthlySafetyPpeForms', 'syncSupervisorIds'];
         // 破壞性 actions — 需 ADMIN_TOKEN + ALLOW_DESTRUCTIVE_HTTP=YES kill switch
         const DESTRUCTIVE_ACTIONS = ['cleanupAll', 'cleanupDate'];
         if (WRITE_ACTIONS.indexOf(action) >= 0 || DESTRUCTIVE_ACTIONS.indexOf(action) >= 0) {
@@ -168,6 +168,7 @@ function doGet(e) {
             const updates = {};
             ['LINE_CHANNEL_ACCESS_TOKEN','LINE_CHANNEL_SECRET',
              'LINE_TARGET_GROUP_ID','LINE_TARGET_USER_IDS','LINE_ADMIN_USER_IDS',
+             'SUPERVISOR_USER_IDS',
              'INCIDENT_SHEET_URL'].forEach(k => {
               if (e.parameter[k] !== undefined) updates[k] = e.parameter[k];
             });
@@ -176,6 +177,26 @@ function doGet(e) {
             }
             props.setProperties(updates, false);
             result = { ok: true, action, set: Object.keys(updates) };
+            break;
+          }
+          case 'syncSupervisorIds': {
+            const props = PropertiesService.getScriptProperties();
+            const ids = (props.getProperty('LINE_TARGET_USER_IDS') || '')
+              .split(',')
+              .map(s => s.trim())
+              .filter(Boolean);
+            const unique = Array.from(new Set(ids));
+            if (unique.length === 0) {
+              throw new Error('LINE_TARGET_USER_IDS 為空，無法同步 SUPERVISOR_USER_IDS');
+            }
+            props.setProperty('SUPERVISOR_USER_IDS', unique.join(','));
+            result = {
+              ok: true,
+              action,
+              source: 'LINE_TARGET_USER_IDS',
+              sourceCount: ids.length,
+              supervisorCount: unique.length,
+            };
             break;
           }
           case 'testLineIncident': {
