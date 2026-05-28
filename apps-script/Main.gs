@@ -91,7 +91,7 @@ function doGet(e) {
                                'setEquipmentField', 'addPpe', 'setLineProps',
                                'testLineIncident', 'markCompleted', 'fetchPdf',
                                'addMonthlySafetyPpeForms', 'syncSupervisorIds',
-                               'supervisorStatus'];
+                               'supervisorStatus', 'updateMonthlySettingNotes'];
         // 破壞性 actions — 需 ADMIN_TOKEN + ALLOW_DESTRUCTIVE_HTTP=YES kill switch
         const DESTRUCTIVE_ACTIONS = ['cleanupAll', 'cleanupDate'];
         if (WRITE_ACTIONS.indexOf(action) >= 0 || DESTRUCTIVE_ACTIONS.indexOf(action) >= 0) {
@@ -193,6 +193,14 @@ function doGet(e) {
               ok: true,
               action,
               ...getSupervisorStatus_(),
+            };
+            break;
+          }
+          case 'updateMonthlySettingNotes': {
+            result = {
+              ok: true,
+              action,
+              ...updateMonthlySettingNotes_(),
             };
             break;
           }

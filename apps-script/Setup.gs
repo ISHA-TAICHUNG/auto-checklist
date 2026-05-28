@@ -268,6 +268,52 @@ function ensureSystemSettingDefaults_(ss, rows) {
   }
 }
 
+function updateMonthlySettingNotes_() {
+  const notes = {
+    monthlyCheckWindowStart: '教室月檢應檢期起始日；應檢期內 LINE「狀態」顯示尚未填，應檢期後到補填日前靜默隱藏，補填日起再次顯示並提醒',
+    monthlyCheckWindowEnd: '教室月檢應檢期結束日；應檢期內 LINE「狀態」顯示尚未填，應檢期後到補填日前靜默隱藏，補填日起再次顯示並提醒',
+    monthlyReminderStartDay: '教室月檢補填提醒起始日；本月未填時，從此日起重新顯示於 LINE「狀態」並推播補填提醒',
+  };
+  const ss = SpreadsheetApp.openById(CONFIG.DB_SHEET_ID);
+  const sheet = ss.getSheetByName('系統設定');
+  if (!sheet) throw new Error('找不到系統設定工作表');
+
+  const data = sheet.getDataRange().getValues();
+  const headers = data[0].map(h => String(h || '').trim());
+  const keyCol = headers.indexOf('鍵');
+  const valueCol = headers.indexOf('值');
+  const noteCol = headers.indexOf('備註');
+  if (keyCol < 0 || valueCol < 0 || noteCol < 0) {
+    throw new Error('系統設定缺必要欄位');
+  }
+
+  const existing = {};
+  for (let i = 1; i < data.length; i++) {
+    const key = String(data[i][keyCol] || '').trim();
+    if (key) existing[key] = i + 1;
+  }
+
+  let updated = 0;
+  let inserted = 0;
+  Object.keys(notes).forEach(key => {
+    const rowNo = existing[key];
+    if (rowNo) {
+      sheet.getRange(rowNo, noteCol + 1).setValue(notes[key]);
+      updated++;
+      return;
+    }
+    const row = new Array(headers.length).fill('');
+    row[keyCol] = key;
+    row[valueCol] = key === 'monthlyReminderStartDay' ? '25' : (key === 'monthlyCheckWindowEnd' ? '5' : '1');
+    row[noteCol] = notes[key];
+    sheet.getRange(sheet.getLastRow() + 1, 1, 1, headers.length).setValues([row]);
+    inserted++;
+  });
+
+  SpreadsheetApp.flush();
+  return { sheetName: '系統設定', updated, inserted, keys: Object.keys(notes) };
+}
+
 function setupSupervisorSheet_(ss) {
   setupSheet_(ss, '主管清單', ['姓名', 'LINE_USER_ID', '是否啟用', '備註'], []);
   return ss.getSheetByName('主管清單');
