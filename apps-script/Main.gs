@@ -180,22 +180,10 @@ function doGet(e) {
             break;
           }
           case 'syncSupervisorIds': {
-            const props = PropertiesService.getScriptProperties();
-            const ids = (props.getProperty('LINE_TARGET_USER_IDS') || '')
-              .split(',')
-              .map(s => s.trim())
-              .filter(Boolean);
-            const unique = Array.from(new Set(ids));
-            if (unique.length === 0) {
-              throw new Error('LINE_TARGET_USER_IDS 為空，無法同步 SUPERVISOR_USER_IDS');
-            }
-            props.setProperty('SUPERVISOR_USER_IDS', unique.join(','));
             result = {
               ok: true,
               action,
-              source: 'LINE_TARGET_USER_IDS',
-              sourceCount: ids.length,
-              supervisorCount: unique.length,
+              ...syncSupervisorIdsToSheet_(),
             };
             break;
           }

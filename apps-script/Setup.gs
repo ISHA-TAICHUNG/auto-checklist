@@ -74,6 +74,8 @@ function initializeDatabase() {
     ['monthlyReminderStartDay', '25', '教室月檢補填提醒起始日'],
   ]);
 
+  setupSupervisorSheet_(ss);
+
   setupSheet_(ss, '節假日關鍵字', ['關鍵字', '備註'],
     CONFIG.HOLIDAY_KEYWORDS_DEFAULT.map(k => [k, '預設'])
   );
@@ -264,6 +266,91 @@ function ensureSystemSettingDefaults_(ss, rows) {
   if (toAppend.length > 0) {
     sheet.getRange(sheet.getLastRow() + 1, 1, toAppend.length, 3).setValues(toAppend);
   }
+}
+
+function setupSupervisorSheet_(ss) {
+  setupSheet_(ss, '主管清單', ['姓名', 'LINE_USER_ID', '是否啟用', '備註'], []);
+  return ss.getSheetByName('主管清單');
+}
+
+function syncSupervisorIdsToSheet_() {
+  const props = PropertiesService.getScriptProperties();
+  const ids = (props.getProperty('LINE_TARGET_USER_IDS') || '')
+    .split(',')
+    .map(s => s.trim())
+    .filter(Boolean);
+  const unique = Array.from(new Set(ids));
+  if (unique.length === 0) {
+    throw new Error('LINE_TARGET_USER_IDS 為空，無法同步 SUPERVISOR_USER_IDS');
+  }
+
+  const ss = SpreadsheetApp.openById(CONFIG.DB_SHEET_ID);
+  const sheet = setupSupervisorSheet_(ss);
+  const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0].map(h => String(h || '').trim());
+  const nameCol = headers.indexOf('姓名');
+  const idCol = headers.indexOf('LINE_USER_ID');
+  const activeCol = headers.indexOf('是否啟用');
+  const noteCol = headers.indexOf('備註');
+  if (idCol < 0 || activeCol < 0) throw new Error('主管清單缺必要欄位');
+
+  const lastRow = sheet.getLastRow();
+  const data = lastRow >= 2 ? sheet.getRange(2, 1, lastRow - 1, headers.length).getValues() : [];
+  const byId = {};
+  data.forEach((row, i) => {
+    const id = String(row[idCol] || '').trim();
+    if (id) byId[id] = { rowNo: i + 2, values: row };
+  });
+
+  const appendRows = [];
+  let updated = 0;
+  unique.forEach((id, i) => {
+    const existing = byId[id];
+    if (existing) {
+      const row = existing.values.slice();
+      let dirty = false;
+      if (nameCol >= 0 && !String(row[nameCol] || '').trim()) {
+        row[nameCol] = '主管' + (i + 1);
+        dirty = true;
+      }
+      if (activeCol >= 0 && !isActiveValue_(row[activeCol])) {
+        row[activeCol] = '是';
+        dirty = true;
+      }
+      if (noteCol >= 0 && !String(row[noteCol] || '').trim()) {
+        row[noteCol] = '由目前訂閱者同步';
+        dirty = true;
+      }
+      if (dirty) {
+        sheet.getRange(existing.rowNo, 1, 1, headers.length).setValues([row]);
+        updated++;
+      }
+      return;
+    }
+
+    const row = new Array(headers.length).fill('');
+    if (nameCol >= 0) row[nameCol] = '主管' + (i + 1);
+    row[idCol] = id;
+    row[activeCol] = '是';
+    if (noteCol >= 0) row[noteCol] = '由目前訂閱者同步';
+    appendRows.push(row);
+  });
+
+  if (appendRows.length > 0) {
+    sheet.getRange(sheet.getLastRow() + 1, 1, appendRows.length, headers.length).setValues(appendRows);
+  }
+
+  props.setProperty('SUPERVISOR_USER_IDS', unique.join(','));
+  try { applyChineseSettingsAndDropdowns(); } catch (e) { Logger.log('主管清單 dropdown 套用失敗：' + e); }
+  SpreadsheetApp.flush();
+
+  return {
+    source: 'LINE_TARGET_USER_IDS',
+    sourceCount: ids.length,
+    supervisorCount: unique.length,
+    inserted: appendRows.length,
+    updated,
+    sheetName: '主管清單',
+  };
 }
 
 /**
@@ -757,6 +844,9 @@ function applyChineseSettingsAndDropdowns() {
     '檢查項目': [
       { col: '啟用',     options: ['是', '否'],       migrate: { TRUE: '是', FALSE: '否' } },
       { col: '表單ID',   options: templateIds,        strict: false },
+    ],
+    '主管清單': [
+      { col: '是否啟用', options: ['是', '否'],       migrate: { TRUE: '是', FALSE: '否' } },
     ],
   };
 

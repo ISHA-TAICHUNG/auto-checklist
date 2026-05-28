@@ -36,6 +36,35 @@ function getLineConfig_() {
   };
 }
 
+function getSupervisorUserIds_() {
+  const fromSheet = getSupervisorUserIdsFromSheet_();
+  if (fromSheet.length > 0) return fromSheet;
+  return getLineConfig_().supervisorIds;
+}
+
+function getSupervisorUserIdsFromSheet_() {
+  try {
+    if (!CONFIG.DB_SHEET_ID || CONFIG.DB_SHEET_ID.startsWith('REPLACE_')) return [];
+    const sheet = SpreadsheetApp.openById(CONFIG.DB_SHEET_ID).getSheetByName('主管清單');
+    if (!sheet || sheet.getLastRow() < 2) return [];
+    const data = sheet.getDataRange().getValues();
+    const headers = data[0].map(h => String(h || '').trim());
+    const idCol = headers.indexOf('LINE_USER_ID');
+    const activeCol = headers.indexOf('是否啟用');
+    if (idCol < 0) return [];
+    const ids = [];
+    data.slice(1).forEach(row => {
+      const id = String(row[idCol] || '').trim();
+      const active = activeCol < 0 ? true : isActiveValue_(row[activeCol]);
+      if (id && active) ids.push(id);
+    });
+    return Array.from(new Set(ids));
+  } catch (err) {
+    Logger.log('[LINE] 讀取主管清單失敗，改用 SUPERVISOR_USER_IDS: ' + err);
+    return [];
+  }
+}
+
 /**
  * 底層 push：依設定優先級選 target
  *   群組 > multicast(多 userId) > 單 userId
@@ -425,10 +454,10 @@ function sendApprovalRequest_(record) {
     return { ok: false, reason: 'invalid_approval_url' };
   }
   const flex = buildApprovalRequestFlex_(record);
-  const cfg = getLineConfig_();
   const messages = withQuickReply_(flex);
-  if (cfg.supervisorIds.length > 1) return lineMulticast_(cfg.supervisorIds, messages);
-  if (cfg.supervisorIds.length === 1) return linePushTo_(cfg.supervisorIds[0], messages, 'push');
+  const supervisorIds = getSupervisorUserIds_();
+  if (supervisorIds.length > 1) return lineMulticast_(supervisorIds, messages);
+  if (supervisorIds.length === 1) return linePushTo_(supervisorIds[0], messages, 'push');
   return linePush_(messages);
 }
 
