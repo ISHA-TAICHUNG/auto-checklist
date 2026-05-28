@@ -56,6 +56,7 @@ function dispatchLineEvent_(ev) {
   // 指令路由
   if (/^(狀態|status)$/i.test(cmd))    return cmdStatus_(replyToken);
   if (/^(異常|open)$/i.test(cmd))      return cmdOpenIncidents_(replyToken);
+  if (/^QR\s*(選單|列表|menu|list)$/i.test(cmd)) return cmdQRList_(replyToken);
   if (/^QR\s*(.+)$/i.test(cmd)) {
     const eqp = cmd.match(/^QR\s*(.+)$/i)[1].trim();
     return cmdQR_(replyToken, eqp);
@@ -73,7 +74,7 @@ function dispatchLineEvent_(ev) {
   if (source.type === 'user') {
     return lineReply_(replyToken, {
       type: 'text',
-      text: '指令清單：\n• 狀態\n• 異常\n• QR <設備代號>\n• 完成 <事件ID>\n• 幫助',
+      text: '指令清單：\n• 狀態\n• 異常\n• QR選單\n• QR <設備代號>\n• 完成 <事件ID>\n• 幫助',
     });
   }
 }
@@ -86,15 +87,33 @@ function cmdHelp_(replyToken) {
     text: [
       '📋 可用指令',
       '',
-      '• 狀態 — 今日填表進度',
+      '• 狀態 — 今日/月檢填表進度',
       '• 異常 — 待處理異常清單',
+      '• QR選單 — 日檢/月檢 QR Code 選單',
       '• QR <設備代號> — 產 QR 圖',
       '• 完成 <事件ID> — 標記異常已完成',
       '• 我的ID — 顯示你的 userId',
       '• 幫助 — 顯示這個清單',
       '',
+      '月檢快捷：',
+      '• QR CLASSROOM-LJ-MEAS-PPE — 龍井教室月檢',
+      '• QR CLASSROOM-FX-MEAS-PPE — 復興教室月檢',
+      '• QR CLASSROOM-ZM-MEAS-PPE — 忠明教室月檢',
+      '• QR PPE-SCBA-MONTHLY — SCBA 月檢',
+      '',
       '（群組內要加 / 或 @ 開頭）',
     ].join('\n'),
+  });
+}
+
+/**
+ * QR 選單：列出所有設備/月檢按鈕讓使用者點。
+ */
+function cmdQRList_(replyToken) {
+  return lineReply_(replyToken, {
+    type: 'text',
+    text: '📷 請選擇要產生 QR 的項目：',
+    quickReply: equipmentQuickReply_(),
   });
 }
 
@@ -142,12 +161,27 @@ function cmdOpenIncidents_(replyToken) {
 function cmdQR_(replyToken, eqp) {
   const url = (CONFIG.webFrontendUrl || getSettingValue_('webFrontendUrl') || '');
   if (!url) return lineReply_(replyToken, { type: 'text', text: '✗ 系統設定 webFrontendUrl 未填' });
-  const dailyUrl = `${url.replace(/\/$/, '')}/daily.html?eqp=${encodeURIComponent(eqp)}`;
-  const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(dailyUrl)}`;
+  const targetUrl = buildChecklistQrTargetUrl_(url, eqp);
+  const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(targetUrl)}`;
   return lineReply_(replyToken, [
     { type: 'image', originalContentUrl: qrUrl, previewImageUrl: qrUrl },
-    { type: 'text', text: `🔗 ${dailyUrl}` },
+    { type: 'text', text: `🔗 ${targetUrl}` },
   ]);
+}
+
+function buildChecklistQrTargetUrl_(baseUrl, eqp) {
+  const normalizedEqp = String(eqp || '').trim().toUpperCase();
+  const page = isMonthlyOnlyQrEquipment_(normalizedEqp) ? 'monthly.html' : 'daily.html';
+  return `${String(baseUrl || '').replace(/\/$/, '')}/${page}?eqp=${encodeURIComponent(normalizedEqp)}`;
+}
+
+function isMonthlyOnlyQrEquipment_(eqp) {
+  return [
+    'CLASSROOM-LJ-MEAS-PPE',
+    'CLASSROOM-FX-MEAS-PPE',
+    'CLASSROOM-ZM-MEAS-PPE',
+    'PPE-SCBA-MONTHLY',
+  ].indexOf(String(eqp || '').trim().toUpperCase()) >= 0;
 }
 
 function cmdComplete_(replyToken, incIdPrefix, byUserId) {
