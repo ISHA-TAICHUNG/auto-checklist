@@ -74,7 +74,7 @@ function dispatchLineEvent_(ev) {
   if (source.type === 'user') {
     return lineReply_(replyToken, {
       type: 'text',
-      text: '指令清單：\n• 狀態\n• 異常\n• QR選單\n• QR <設備代號>\n• 完成 <事件ID>\n• 幫助',
+      text: '看不懂這個指令。請輸入「幫助」查看完整指令，或點下方按鈕操作。',
     });
   }
 }
