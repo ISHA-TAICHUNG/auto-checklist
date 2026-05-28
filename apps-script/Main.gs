@@ -90,7 +90,8 @@ function doGet(e) {
         const WRITE_ACTIONS = ['formatSheets', 'runInit', 'applyDropdowns',
                                'setEquipmentField', 'addPpe', 'setLineProps',
                                'testLineIncident', 'markCompleted', 'fetchPdf',
-                               'addMonthlySafetyPpeForms', 'syncSupervisorIds'];
+                               'addMonthlySafetyPpeForms', 'syncSupervisorIds',
+                               'supervisorStatus'];
         // 破壞性 actions — 需 ADMIN_TOKEN + ALLOW_DESTRUCTIVE_HTTP=YES kill switch
         const DESTRUCTIVE_ACTIONS = ['cleanupAll', 'cleanupDate'];
         if (WRITE_ACTIONS.indexOf(action) >= 0 || DESTRUCTIVE_ACTIONS.indexOf(action) >= 0) {
@@ -184,6 +185,14 @@ function doGet(e) {
               ok: true,
               action,
               ...syncSupervisorIdsToSheet_(),
+            };
+            break;
+          }
+          case 'supervisorStatus': {
+            result = {
+              ok: true,
+              action,
+              ...getSupervisorStatus_(),
             };
             break;
           }

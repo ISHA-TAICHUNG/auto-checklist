@@ -353,6 +353,54 @@ function syncSupervisorIdsToSheet_() {
   };
 }
 
+function getSupervisorStatus_() {
+  const props = PropertiesService.getScriptProperties();
+  const targetIds = new Set((props.getProperty('LINE_TARGET_USER_IDS') || '')
+    .split(',')
+    .map(s => s.trim())
+    .filter(Boolean));
+
+  const ss = SpreadsheetApp.openById(CONFIG.DB_SHEET_ID);
+  const sheet = setupSupervisorSheet_(ss);
+  const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0].map(h => String(h || '').trim());
+  const nameCol = headers.indexOf('姓名');
+  const idCol = headers.indexOf('LINE_USER_ID');
+  const activeCol = headers.indexOf('是否啟用');
+  const noteCol = headers.indexOf('備註');
+  if (idCol < 0 || activeCol < 0) throw new Error('主管清單缺必要欄位');
+
+  const data = sheet.getLastRow() >= 2
+    ? sheet.getRange(2, 1, sheet.getLastRow() - 1, headers.length).getValues()
+    : [];
+  const supervisors = data.map((row, i) => {
+    const id = String(row[idCol] || '').trim();
+    const active = isActiveValue_(row[activeCol]);
+    return {
+      rowNo: i + 2,
+      name: nameCol >= 0 ? String(row[nameCol] || '').trim() : '',
+      userIdMasked: maskLineUserId_(id),
+      active,
+      inGeneralTarget: id ? targetIds.has(id) : false,
+      note: noteCol >= 0 ? String(row[noteCol] || '').trim() : '',
+    };
+  });
+
+  return {
+    sheetName: '主管清單',
+    targetUserCount: targetIds.size,
+    supervisorCount: supervisors.length,
+    activeCount: supervisors.filter(s => s.active).length,
+    activeNotInGeneralTargetCount: supervisors.filter(s => s.active && !s.inGeneralTarget).length,
+    supervisors,
+  };
+}
+
+function maskLineUserId_(id) {
+  const s = String(id || '').trim();
+  if (s.length <= 10) return s ? '(短ID)' : '';
+  return s.substring(0, 4) + '...' + s.substring(s.length - 4);
+}
+
 /**
  * 把目前部署的 Web App URL 寫回 系統設定（部署完後手動執行一次）
  *
