@@ -123,6 +123,72 @@ function getReminderEmail_() {
 }
 
 /**
+ * 取得 admin token（從 Script Properties 讀，與 API_TOKEN 隔離）
+ *
+ * 安全分層（codex review 2026-05-26）：
+ *   - API_TOKEN     寫在 js/config.js → 任何 GitHub Pages 訪客都能拿到，只能用在唯讀類 endpoint
+ *   - ADMIN_TOKEN   存在 Apps Script Script Properties → 只有 admin 知道，用於寫入/破壞性 endpoint
+ *
+ * 若 ADMIN_TOKEN 未設置：寫入/破壞性 endpoint **全部拒絕** HTTP 呼叫（fail-closed）
+ *
+ * 設置方式：Apps Script 編輯器 → ⚙ 專案設定 → Script Properties → 新增 ADMIN_TOKEN
+ */
+function getAdminToken_() {
+  try {
+    return PropertiesService.getScriptProperties().getProperty('ADMIN_TOKEN') || '';
+  } catch (e) {
+    return '';
+  }
+}
+
+/**
+ * 校驗 admin token + 拒絕跟 API_TOKEN 重複（防 admin 誤設成同值）
+ *
+ * @return true 通過；false 拒絕（呼叫端應 throw '未授權'）
+ */
+function checkAdminToken_(provided) {
+  const adminToken = getAdminToken_();
+  // ADMIN_TOKEN 未設 → 一律拒絕（fail-closed）
+  if (!adminToken || adminToken.length < 32) return false;
+  // 嚴禁與 API_TOKEN 共用
+  if (adminToken === CONFIG.API_TOKEN) return false;
+  return provided === adminToken;
+}
+
+/**
+ * 破壞性動作（cleanupAll / cleanupDate）的 HTTP kill switch
+ *
+ * 預設 false → 不允許從公開 Web App 呼叫，只能從 Apps Script 編輯器手動執行函式
+ * 設 true 才允許（仍要 ADMIN_TOKEN + 既有 confirm=YES_DELETE_ALL）
+ *
+ * 設置：Script Properties → ALLOW_DESTRUCTIVE_HTTP = YES
+ */
+function destructiveHttpAllowed_() {
+  try {
+    return String(PropertiesService.getScriptProperties().getProperty('ALLOW_DESTRUCTIVE_HTTP') || '').toUpperCase() === 'YES';
+  } catch (e) {
+    return false;
+  }
+}
+
+/**
+ * LINE webhook 用的 query token（替代 X-Line-Signature header — GAS 讀不到 headers）
+ *
+ * 設置：
+ *   1. Script Properties → LINE_WEBHOOK_QUERY_TOKEN = 隨機 32+ 字串
+ *   2. LINE Developers Console → Webhook URL = exec_url?lineWebhookToken=該字串
+ *
+ * 若 LINE_WEBHOOK_QUERY_TOKEN 未設 → 一律拒絕 webhook（fail-closed，避免匿名觸發完成異常等指令）
+ */
+function getLineWebhookQueryToken_() {
+  try {
+    return PropertiesService.getScriptProperties().getProperty('LINE_WEBHOOK_QUERY_TOKEN') || '';
+  } catch (e) {
+    return '';
+  }
+}
+
+/**
  * 取得當前要用的節假日關鍵字清單（讀 DB「節假日關鍵字」表，沒有就用預設）
  */
 function getHolidayKeywords_() {

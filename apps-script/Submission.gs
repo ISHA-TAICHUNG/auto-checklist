@@ -184,7 +184,8 @@ function handleSubmission_(payload) {
       // 失敗情境：
       //   - writeRecord 失敗 → 整個流程 fail，setTrashed PDF（孤兒清理）
       //   - writeRecord 成功 + writeIncidents 失敗 → log 後仍回 ok（避免主紀錄與 PDF 已寫但回錯誤的 partial state）
-      const incidentCount = countIncidents_(payload);
+      // 修 P1.1: 傳 allowedResults 給 countIncidents_ 動態判定 bad（避免硬編碼漂移）
+      const incidentCount = countIncidents_(payload, allowedResults);
       try {
         writeRecord_({ recordId, submittedAt, checkDate, formType: payload.formType,
                        equipment, payload, fileUrl, incidentCount });
@@ -196,6 +197,7 @@ function handleSubmission_(payload) {
       }
       // 主紀錄已成功，異常追蹤失敗時只 log（不影響使用者結果）
       try {
+        // tplMeta 帶下去，writeIncidents_ 內部會從 tplMeta.resultOptions 算 allowedResults
         writeIncidents_({ recordId, submittedAt, checkDate, formType: payload.formType,
                           equipment, payload, fileUrl, tplMeta });
       } catch (incidentErr) {
@@ -204,8 +206,8 @@ function handleSubmission_(payload) {
       }
       // 有異常時透過 LINE 即時通報（如果 token 已設、沒設就 silently skip）
       if (incidentCount > 0) {
-        try { notifyLineIncidents_(recordId, submittedAt, checkDate, payload, equipment, fileUrl); }
-        catch (lineErr) { Logger.log('[LINE incident push] 失敗: ' + lineErr); }
+        try { notifyLineIncidents_(recordId, submittedAt, checkDate, payload, equipment, fileUrl, allowedResults); }
+        catch (lineErr) { Logger.log('[LINE incident push] 失敗: ' + lineErr + '\n' + (lineErr.stack || '')); }
       }
       return { ok: true, recordId, fileName, fileUrl, incidentCount };
 
@@ -266,23 +268,35 @@ function writeRecord_({ recordId, submittedAt, checkDate, formType, equipment, p
 /**
  * 計算 payload 中的異常事件數
  * 依機具類別取對應的「bad value」(daily/monthly 不同)
+ *
+ * 修 P1.1: 接受 allowedResults 動態判定（避免未來新增結果選項時靜默漏算）
  */
-function countIncidents_(payload) {
+function countIncidents_(payload, allowedResults) {
   if (!Array.isArray(payload.items)) return 0;
   let count = 0;
   for (const it of payload.items) {
-    if (isBadResult_(payload.formType, it.result)) count++;
+    if (isBadResult_(payload.formType, it.result, allowedResults)) count++;
   }
   return count;
 }
 
 /**
- * 判斷一個 result 值是不是「bad」（依 formType）
- * daily: bad = X
- * monthly: bad = abnormal 或 X（堆高機 simple schema 用 X）
+ * 判斷一個 result 值是不是「bad」
+ *
+ * 優先級：
+ *   1) 若 caller 帶了 allowedResults 且非空 → 用最後一個當 bad（前端慣例）
+ *   2) Fallback (allowedResults 缺 / 空，如 F-CRANE-M 留空時) → 硬編碼歷史相容
+ *      - daily: 'X'
+ *      - monthly: 'abnormal' 或 'X'（兼顧 simple + crane_full schema）
+ *
+ * 修 P1.1: 避免 isBadResult_ 跟 handleSubmission_ 動態 badValue 規則不一致
  */
-function isBadResult_(formType, result) {
+function isBadResult_(formType, result, allowedResults) {
   if (!result) return false;
+  if (Array.isArray(allowedResults) && allowedResults.length > 0) {
+    return result === allowedResults[allowedResults.length - 1];
+  }
+  // Fallback (allowedResults 沒帶 / 空)
   if (formType === 'daily') return result === 'X';
   if (formType === 'monthly') return result === 'abnormal' || result === 'X';
   return false;
@@ -292,7 +306,7 @@ function isBadResult_(formType, result) {
  * 把該次填報的所有異常項，透過 LINE 即時通報
  * （sendIncidentAlert_ 在 LineNotify.gs，會自動判斷有沒 token 並決定是否真的 push）
  */
-function notifyLineIncidents_(recordId, submittedAt, checkDate, payload, equipment, fileUrl) {
+function notifyLineIncidents_(recordId, submittedAt, checkDate, payload, equipment, fileUrl, allowedResults) {
   if (typeof sendIncidentAlert_ !== 'function') return;
   const cfg = (typeof getLineConfig_ === 'function') ? getLineConfig_() : null;
   if (!cfg || !cfg.token) return;  // 沒設 token 就 silently skip
@@ -301,7 +315,7 @@ function notifyLineIncidents_(recordId, submittedAt, checkDate, payload, equipme
   const checkDateStr = formatISODate_(checkDate);
 
   payload.items.forEach(it => {
-    if (!isBadResult_(payload.formType, it.result)) return;
+    if (!isBadResult_(payload.formType, it.result, allowedResults)) return;
     sendIncidentAlert_({
       equipmentName: equipment.equipmentName,
       category: equipment.category,
@@ -324,7 +338,11 @@ function notifyLineIncidents_(recordId, submittedAt, checkDate, payload, equipme
  * 一筆檢查表可能產生多筆異常事件（例如 3 項 X）
  * 每筆都有獨立的事件ID、初始狀態 = 待處理
  */
-function writeIncidents_({ recordId, submittedAt, checkDate, formType, equipment, payload, fileUrl }) {
+function writeIncidents_({ recordId, submittedAt, checkDate, formType, equipment, payload, fileUrl, tplMeta }) {
+  // 修 P1.1: 用模板 resultOptions 動態判定 bad（兼容未來新結果選項）
+  const allowedResults = (tplMeta && Array.isArray(tplMeta.resultOptions) && tplMeta.resultOptions.length)
+    ? tplMeta.resultOptions
+    : null;
   if (!Array.isArray(payload.items) || !payload.items.length) return;
 
   const ss = SpreadsheetApp.openById(CONFIG.DB_SHEET_ID);
@@ -339,7 +357,7 @@ function writeIncidents_({ recordId, submittedAt, checkDate, formType, equipment
 
   const rowsToAppend = [];
   for (const it of payload.items) {
-    if (!isBadResult_(formType, it.result)) continue;
+    if (!isBadResult_(formType, it.result, allowedResults)) continue;
     const row = new Array(headers.length).fill('');
     const setCol = (name, value) => {
       const i = headers.indexOf(name);
@@ -407,6 +425,11 @@ function getTemplateForCategoryCycle_(category, formType) {
   const data = sheet.getDataRange().getValues();
   const headers = data[0];
   const idx = n => headers.indexOf(n);
+
+  // 修 P1.2: 必要欄位缺失時 throw 而非靜默 return null（避免 schema 漂移時所有列被當停用 → fallback 白名單 → 堆高機/PPE 全送不出）
+  ['啟用', '設備類別', '週期'].forEach(col => {
+    if (idx(col) < 0) throw new Error('檢查表模板缺必要欄位：' + col + '（請執行 initializeDatabase 補欄）');
+  });
 
   for (let i = 1; i < data.length; i++) {
     if (!isActiveValue_(data[i][idx('啟用')])) continue;

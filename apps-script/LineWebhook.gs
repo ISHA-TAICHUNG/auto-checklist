@@ -15,20 +15,12 @@
 /**
  * 處理 LINE webhook 進來的 payload
  * 由 Main.gs doPost 在 path 是 LINE webhook 時呼叫
+ *
+ * 注意：簽章驗證 (X-Line-Signature) Apps Script 讀不到 HTTP headers
+ * 已改在 doPost 用 URL query token 驗證 (LINE_WEBHOOK_QUERY_TOKEN)
+ * 此函式收到 rawBody 已是通過 doPost 驗證的 — 不再做 secret 驗證
  */
-function handleLineWebhook_(rawBody, signature) {
-  // 簽章驗證（如果有設 LINE_CHANNEL_SECRET）
-  const cfg = getLineConfig_();
-  if (cfg.secret) {
-    const computed = Utilities.base64Encode(
-      Utilities.computeHmacSha256Signature(rawBody, cfg.secret)
-    );
-    if (computed !== signature) {
-      Logger.log('[LINE webhook] 簽章驗證失敗');
-      return { ok: false, error: 'invalid_signature' };
-    }
-  }
-
+function handleLineWebhook_(rawBody) {
   let body;
   try {
     body = JSON.parse(rawBody);
@@ -159,6 +151,10 @@ function cmdQR_(replyToken, eqp) {
 }
 
 function cmdComplete_(replyToken, incIdPrefix, byUserId) {
+  // P2.1 (codex 2026-05-26): prefix 至少 8 碼且必須唯一命中（避免 LINE 使用者打太短誤標多筆）
+  if (!incIdPrefix || incIdPrefix.length < 8) {
+    return lineReply_(replyToken, { type: 'text', text: '✗ 事件ID 至少需 8 碼' });
+  }
   // 用 prefix 找完整事件 ID
   const ss = SpreadsheetApp.openById(CONFIG.DB_SHEET_ID);
   const sheet = ss.getSheetByName('異常事件');
@@ -172,12 +168,27 @@ function cmdComplete_(replyToken, incIdPrefix, byUserId) {
   if (idCol < 0 || statusCol < 0) {
     return lineReply_(replyToken, { type: 'text', text: '✗ 「異常事件」表缺欄位' });
   }
-  let found = 0;
-  const today = Utilities.formatDate(new Date(), tz_(), 'yyyy-MM-dd');
+  // 先找所有符合 prefix 的「未完成」列，若 >1 拒絕（避免一次標多筆）
+  const matched = [];
   for (let i = 1; i < data.length; i++) {
     const id = String(data[i][idCol] || '');
     if (!id.startsWith(incIdPrefix)) continue;
     if (String(data[i][statusCol]) === '已完成') continue;
+    matched.push({ rowIdx: i, id });
+  }
+  if (matched.length === 0) {
+    return lineReply_(replyToken, { type: 'text', text: '✗ 找不到符合的未完成異常（prefix 太短或已完成）' });
+  }
+  if (matched.length > 1) {
+    return lineReply_(replyToken, {
+      type: 'text',
+      text: `✗ Prefix「${incIdPrefix}」命中 ${matched.length} 筆，請貼完整事件ID 才能標記（避免誤標）`,
+    });
+  }
+  let found = 0;
+  const today = Utilities.formatDate(new Date(), tz_(), 'yyyy-MM-dd');
+  matched.forEach(m => {
+    const i = m.rowIdx;
     sheet.getRange(i + 1, statusCol + 1).setValue('已完成');
     if (completedCol >= 0 && !data[i][completedCol]) {
       sheet.getRange(i + 1, completedCol + 1).setValue(today);
@@ -186,7 +197,7 @@ function cmdComplete_(replyToken, incIdPrefix, byUserId) {
       sheet.getRange(i + 1, ownerCol + 1).setValue(`LINE:${byUserId.substring(0,8)}`);
     }
     found++;
-  }
+  });
   const msg = found > 0
     ? `✓ 已標記 ${found} 筆異常為「已完成」`
     : `✗ 找不到 ID 開頭為 ${incIdPrefix} 的待處理異常`;

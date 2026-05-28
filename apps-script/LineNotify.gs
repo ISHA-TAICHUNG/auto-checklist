@@ -207,14 +207,19 @@ function lineReply_(replyToken, messages) {
  *   equipments: [{equipmentId, equipmentName, location}, ...]
  *   webFrontendUrl: GitHub Pages 首頁網址
  */
-function buildReminderFlex_(category, equipments, webFrontendUrl) {
-  const todayROC = formatROCDate_(new Date());
+function buildReminderFlex_(category, equipments, webFrontendUrl, opts) {
+  opts = opts || {};
+  const todayROC = opts.dateLabel || formatROCDate_(new Date());
+  const title = opts.title || '今日未完成檢點';
+  const itemLabel = opts.itemLabel || '未填設備';
+  const itemIcon = opts.itemIcon || '🔧';
+  const buttonLabel = opts.buttonLabel || '立即填寫';
   const itemsBlock = equipments.slice(0, 8).map(eq => ({
     type: 'box',
     layout: 'baseline',
     spacing: 'sm',
     contents: [
-      { type: 'text', text: '🔧', flex: 1, size: 'sm' },
+      { type: 'text', text: itemIcon, flex: 1, size: 'sm' },
       { type: 'text', text: eq.equipmentName, flex: 6, size: 'sm', wrap: true, color: '#333333' },
       { type: 'text', text: eq.location || '', flex: 3, size: 'xs', color: '#888888', align: 'end' },
     ],
@@ -222,9 +227,11 @@ function buildReminderFlex_(category, equipments, webFrontendUrl) {
   const more = equipments.length > 8 ? [{
     type: 'text', text: `... 還有 ${equipments.length - 8} 台`, size: 'xs', color: '#888888', margin: 'sm',
   }] : [];
-  return {
+  // codex 2026-05-26 P1.4: webFrontendUrl 必須是 http/https URL，否則 LINE Flex URI 會 invalid
+  const validUrl = webFrontendUrl && /^https?:\/\//.test(webFrontendUrl) ? webFrontendUrl : '';
+  const bubble = {
     type: 'flex',
-    altText: `⚠ ${category} 今日未完成檢點 (${equipments.length} 台)`,
+    altText: `⚠ ${category} ${title} (${equipments.length} 筆)`,
     contents: {
       type: 'bubble',
       header: {
@@ -232,7 +239,7 @@ function buildReminderFlex_(category, equipments, webFrontendUrl) {
         backgroundColor: '#FFA000',
         paddingAll: 'md',
         contents: [
-          { type: 'text', text: '⚠ 今日未完成檢點', color: '#ffffff', weight: 'bold', size: 'lg' },
+          { type: 'text', text: `⚠ ${title}`, color: '#ffffff', weight: 'bold', size: 'lg' },
           { type: 'text', text: todayROC, color: '#FFF3E0', size: 'sm' },
         ],
       },
@@ -244,22 +251,26 @@ function buildReminderFlex_(category, equipments, webFrontendUrl) {
             { type: 'text', text: category, flex: 5, size: 'sm', weight: 'bold', wrap: true },
           ]},
           { type: 'separator', margin: 'sm' },
-          { type: 'text', text: '🔍 未填設備', size: 'sm', color: '#666666', margin: 'md' },
+          { type: 'text', text: `🔍 ${itemLabel}`, size: 'sm', color: '#666666', margin: 'md' },
           ...itemsBlock,
           ...more,
         ],
       },
-      footer: {
-        type: 'box', layout: 'vertical', spacing: 'sm',
-        contents: [{
-          type: 'button',
-          style: 'primary',
-          color: '#1a73e8',
-          action: { type: 'uri', label: '📝 立即填寫', uri: webFrontendUrl },
-        }],
-      },
     },
   };
+  // 有 validUrl 才加 footer button；空 URL 不放 footer，避免 LINE Flex 拒絕渲染
+  if (validUrl) {
+    bubble.contents.footer = {
+      type: 'box', layout: 'vertical', spacing: 'sm',
+      contents: [{
+        type: 'button',
+        style: 'primary',
+        color: '#1a73e8',
+        action: { type: 'uri', label: `📝 ${buttonLabel}`, uri: validUrl },
+      }],
+    };
+  }
+  return bubble;
 }
 
 /**
@@ -330,8 +341,8 @@ function buildIncidentFlex_(incident, pdfUrl, sheetUrl) {
  * 高層 API：寄未填提醒（給 Reminder.gs 用）
  * 自動加 Quick Reply 按鈕
  */
-function sendReminder_(category, equipments, webFrontendUrl) {
-  const flex = buildReminderFlex_(category, equipments, webFrontendUrl || '');
+function sendReminder_(category, equipments, webFrontendUrl, opts) {
+  const flex = buildReminderFlex_(category, equipments, webFrontendUrl || '', opts);
   return linePush_(withQuickReply_(flex));
 }
 

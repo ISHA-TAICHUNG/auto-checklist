@@ -20,10 +20,16 @@ function dailyReminderJob(opts) {
   const equipments = getEquipmentList_();
   const results = [];
   const sentCategories = new Set();         // 同類別只寄一次
+  const cyclesByCategory = getTemplateCyclesByCategory_();
 
   for (const eqp of equipments) {
     const full = getEquipmentById_(eqp.equipmentId);
     if (!full || !full.active) continue;
+
+    const cycles = cyclesByCategory[full.category] || [];
+    if (cycles.indexOf('每日') < 0) {
+      continue;
+    }
 
     // 防護具檢點：不對場地表（每日 PPE check 由操作員每堂課自行記錄、不發 reminder）
     if (full.category === '防護具檢點') {
@@ -56,6 +62,11 @@ function dailyReminderJob(opts) {
     results.push({ equipmentId: full.equipmentId, category: full.category,
                    action: dryRun ? 'wouldMail' : 'mailed',
                    usage: usage.content });
+  }
+
+  if (typeof monthlyReminderJob_ === 'function') {
+    const monthlyResults = monthlyReminderJob_({ dryRun, today });
+    monthlyResults.forEach(r => results.push(r));
   }
 
   Logger.log((dryRun ? 'dryRun ' : '') + 'dailyReminderJob 結果：' + JSON.stringify(results));
@@ -133,16 +144,30 @@ function sendUnfilledReminder_(equipment, date, usage) {
     </div>
   `;
 
-  // === 通知 channel：優先 LINE (若已設 token)，fallback 到 email ===
+  // === 通知 channel：優先 LINE，**失敗才** fallback 到 email（codex 2026-05-26 P1.4）===
   const lineCfg = (typeof getLineConfig_ === 'function') ? getLineConfig_() : null;
   const hasLineToken = lineCfg && lineCfg.token;
+  // webFrontendUrl 空時，sendReminder_ 內部會構造 invalid Flex URI → 提前判斷不傳 link
+  const safeFillLink = fillLink && /^https?:\/\//.test(fillLink)
+    ? fillLink
+    : '';
 
   if (hasLineToken) {
-    // 抓該類別當日未填的機台清單
-    const allEqps = getEquipmentList_().filter(e => e.category === equipment.category);
-    sendReminder_(equipment.category, allEqps, webFrontendUrl);
-    Logger.log(`[Reminder] 已透過 LINE 通知 ${equipment.category} ${allEqps.length} 台未填`);
-    return;
+    try {
+      const allEqps = getEquipmentList_().filter(e => e.category === equipment.category);
+      // 修 codex P1.1 (round 2): sendReminder_ 失敗時 return {ok:false} 不 throw
+      // 必須檢查回傳值 ok === true，否則 throw 進 catch 走 email fallback
+      const r = sendReminder_(equipment.category, allEqps, safeFillLink);
+      if (r && r.ok === true) {
+        Logger.log(`[Reminder] 已透過 LINE 通知 ${equipment.category} ${allEqps.length} 台未填`);
+        return;
+      }
+      throw new Error(`LINE push 失敗（非 throw 路徑）: ${JSON.stringify(r)}`);
+    } catch (lineErr) {
+      // LINE 推播失敗（token 失效 / LINE API down / multicast 全 fail / no_target 等）→ 改走 email fallback
+      Logger.log(`[Reminder] LINE 推播失敗，fallback 到 email: ${lineErr}\n${lineErr.stack || ''}`);
+      // 不 return，繼續走下方 email 路徑
+    }
   }
 
   // Fallback：email（既有行為）

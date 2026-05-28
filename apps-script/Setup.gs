@@ -7,6 +7,56 @@
  * 重複執行時：已存在的工作表不會被覆蓋（只補欄位 / 補缺少的列）。
  */
 
+/**
+ * 一次性設定安全相關 Script Properties（由 codex 2026-05-26 安全分層觸發）
+ *
+ * 從 Apps Script 編輯器執行此函式 → Logger 會印出隨機產的 token 給你
+ * 你需要：
+ *   1. 跑這個函式
+ *   2. 從 Logger 抄 ADMIN_TOKEN（admin endpoint 用）跟 LINE_WEBHOOK_QUERY_TOKEN（LINE webhook 用）
+ *   3. 把 LINE_WEBHOOK_QUERY_TOKEN 接到 LINE Developers Console 的 Webhook URL 後面：
+ *      原本：https://script.google.com/macros/s/AKfycb.../exec
+ *      改成：https://script.google.com/macros/s/AKfycb.../exec?lineWebhookToken=<那個 token>
+ *   4. 若要從 HTTP 跑 cleanupAll / cleanupDate，再手動設 ALLOW_DESTRUCTIVE_HTTP=YES（預設禁止）
+ *
+ * 不會覆蓋已存在的值（idempotent，重複跑安全）。
+ */
+function setupSecurityProperties() {
+  const props = PropertiesService.getScriptProperties();
+  const report = [];
+
+  const adminToken = props.getProperty('ADMIN_TOKEN');
+  if (!adminToken) {
+    const newToken = Utilities.getUuid().replace(/-/g, '') + Utilities.getUuid().replace(/-/g, '').substring(0, 16);
+    props.setProperty('ADMIN_TOKEN', newToken);
+    report.push('✓ ADMIN_TOKEN 已產生：' + newToken);
+  } else {
+    report.push('• ADMIN_TOKEN 已存在（不覆蓋）');
+  }
+
+  const webhookToken = props.getProperty('LINE_WEBHOOK_QUERY_TOKEN');
+  if (!webhookToken) {
+    const newToken = Utilities.getUuid().replace(/-/g, '') + Utilities.getUuid().replace(/-/g, '').substring(0, 16);
+    props.setProperty('LINE_WEBHOOK_QUERY_TOKEN', newToken);
+    report.push('✓ LINE_WEBHOOK_QUERY_TOKEN 已產生：' + newToken);
+    report.push('  ⚠ 需到 LINE Developers Console 把 Webhook URL 改成 exec_url?lineWebhookToken=' + newToken);
+  } else {
+    report.push('• LINE_WEBHOOK_QUERY_TOKEN 已存在（不覆蓋）');
+  }
+
+  // ALLOW_DESTRUCTIVE_HTTP 預設不設 — 需手動加才能從 HTTP 跑 cleanupAll
+  const destructive = props.getProperty('ALLOW_DESTRUCTIVE_HTTP');
+  if (!destructive) {
+    report.push('• ALLOW_DESTRUCTIVE_HTTP 未設（HTTP cleanupAll/cleanupDate 將被拒絕，須在編輯器手動執行 cleanupAllSubmissionsAndIncidents_）');
+  } else {
+    report.push(`• ALLOW_DESTRUCTIVE_HTTP = ${destructive}`);
+  }
+
+  const msg = report.join('\n');
+  Logger.log(msg);
+  return msg;
+}
+
 function initializeDatabase() {
   if (!CONFIG.DB_SHEET_ID || CONFIG.DB_SHEET_ID.startsWith('REPLACE_')) {
     throw new Error('請先到 Config.gs 設定 DB_SHEET_ID');
@@ -264,8 +314,12 @@ function cleanupAllSubmissionsAndIncidents_(opts) {
   opts = opts || {};
   const dryRun = !!opts.dryRun;
   const confirm = opts.confirm;
+  // 修 P1.3: dryRun 也要 confirm，避免 admin token 持有者亂打就能探勘紀錄筆數
   if (!dryRun && confirm !== 'YES_DELETE_ALL') {
     throw new Error('confirm=YES_DELETE_ALL 必填 才能真的清');
+  }
+  if (dryRun && confirm !== 'YES_DRY_RUN' && confirm !== 'YES_DELETE_ALL') {
+    throw new Error('dryRun 需帶 confirm=YES_DRY_RUN');
   }
 
   const ss = SpreadsheetApp.openById(CONFIG.DB_SHEET_ID);

@@ -65,11 +65,28 @@ function doGet(e) {
         break;
 
       case 'admin': {
-        // 維護動作 — 需 token
-        // 注意：寫入類動作（setBranding / fixWebAppUrl）已移除，請在 Apps Script editor 手動執行
-        // 只保留唯讀類 + 安全範圍受限的動作
+        // 維護動作 — 兩層 token：
+        //   - 唯讀類（reminderStatus / openIssues / fetchPdf）→ 用 API_TOKEN（公開前端也能查）
+        //   - 寫入/破壞性類（其餘）→ 用 ADMIN_TOKEN（存 Script Properties，不公開）
+        // 安全分層由 codex review 2026-05-26 觸發加入
         if (e.parameter.token !== CONFIG.API_TOKEN) throw new Error('未授權');
         const action = e.parameter.action;
+        // 寫入類 actions 白名單 — 這些必須額外用 ADMIN_TOKEN
+        // codex 2026-05-26 round 2 P1.2: fetchPdf 雖唯讀但回 PDF binary（含簽名/姓名）→ 升級成需 ADMIN_TOKEN
+        const WRITE_ACTIONS = ['formatSheets', 'runInit', 'applyDropdowns',
+                               'setEquipmentField', 'addPpe', 'setLineProps',
+                               'testLineIncident', 'markCompleted', 'fetchPdf',
+                               'addMonthlySafetyPpeForms'];
+        // 破壞性 actions — 需 ADMIN_TOKEN + ALLOW_DESTRUCTIVE_HTTP=YES kill switch
+        const DESTRUCTIVE_ACTIONS = ['cleanupAll', 'cleanupDate'];
+        if (WRITE_ACTIONS.indexOf(action) >= 0 || DESTRUCTIVE_ACTIONS.indexOf(action) >= 0) {
+          if (!checkAdminToken_(e.parameter.adminToken)) {
+            throw new Error('未授權：此 action 需 adminToken（Script Properties ADMIN_TOKEN）');
+          }
+        }
+        if (DESTRUCTIVE_ACTIONS.indexOf(action) >= 0 && !destructiveHttpAllowed_()) {
+          throw new Error('未授權：破壞性 action 預設禁止 HTTP 呼叫，請在 Apps Script 編輯器手動執行函式（或設 Script Property ALLOW_DESTRUCTIVE_HTTP=YES）');
+        }
         switch (action) {
           case 'formatSheets': {
             // 重新套用欄寬與換行設定（idempotent）
@@ -79,7 +96,7 @@ function doGet(e) {
           }
           case 'runInit': {
             // Schema migration helper — 從外部觸發 initializeDatabase
-            // 安全性：受 token 限制 + initializeDatabase 是 idempotent
+            // 安全性：受 ADMIN_TOKEN 限制 + initializeDatabase 是 idempotent
             // (重複跑不會破壞既有資料，setupSheet_ 對既有表只補缺欄位)
             initializeDatabase();
             result = { ok: true, action, message: 'initializeDatabase 執行完成' };
@@ -120,6 +137,12 @@ function doGet(e) {
           case 'addPpe': {
             // 加防護具檢點 template + 2 個項目 + 2 個場地（VENUE-CRANE / VENUE-FORK）
             const summary = addPpeTemplatesAndEquipments();
+            result = { ok: true, action, summary };
+            break;
+          }
+          case 'addMonthlySafetyPpeForms': {
+            // 加龍井/復興/忠明量測設備及 PPE 月檢 + SCBA 月檢
+            const summary = addMonthlySafetyPpeForms();
             result = { ok: true, action, summary };
             break;
           }
@@ -172,7 +195,9 @@ function doGet(e) {
               }
               result = { ok: true, action, diagnose, pushResult };
             } catch (innerErr) {
-              result = { ok: false, action, error: String(innerErr.message || innerErr), stack: String(innerErr.stack || '') };
+              // 移除 stack 回傳（codex review 2026-05-26）— 避免洩漏內部結構給拿到 ADMIN_TOKEN 的人
+              Logger.log('[testLineIncident] 失敗: ' + innerErr + '\n' + (innerErr.stack || ''));
+              result = { ok: false, action, error: String(innerErr.message || innerErr) };
             }
             break;
           }
@@ -188,10 +213,14 @@ function doGet(e) {
           case 'cleanupAll': {
             // 清掉所有填報紀錄 + 異常事件 + Drive PDF
             // ⚠ 不可逆（PDF 可救 30 天）
-            // 必須帶 confirm=YES_DELETE_ALL，否則拒絕
-            // 用 dryRun=1 預覽
+            // 修 P1.3: dryRun=1 也要 confirm=YES_DRY_RUN，實刪要 confirm=YES_DELETE_ALL
+            //         避免 admin token 持有者亂打就能探勘紀錄筆數
             const dryRun = e.parameter.dryRun === '1';
             const confirm = e.parameter.confirm || '';
+            if (dryRun && confirm !== 'YES_DRY_RUN' && confirm !== 'YES_DELETE_ALL') {
+              throw new Error('cleanupAll dryRun 需帶 confirm=YES_DRY_RUN');
+            }
+            Logger.log('[cleanupAll] dryRun=' + dryRun + ' at ' + new Date().toISOString());
             const summary = cleanupAllSubmissionsAndIncidents_({ dryRun, confirm });
             result = { ok: true, action, dryRun, summary };
             break;
@@ -199,10 +228,20 @@ function doGet(e) {
           case 'cleanupDate': {
             // 清掉指定日期的所有測試資料（填報紀錄 + 異常事件 + Drive PDF）
             // ⚠ 一旦執行不可逆，PDF 進回收桶可救回 30 天
-            // 用 dryRun=1 預覽會刪掉什麼，dryRun=0 才實刪
+            // 修 codex P2.2 (round 2): 與 cleanupAll 對稱加 confirm 守衛
+            //   - dryRun: 需 confirm=YES_DRY_RUN
+            //   - 實刪: 需 confirm=YES_DELETE_DATE
             const dateStr = e.parameter.date;
             const dryRun = e.parameter.dryRun === '1';
+            const confirm = e.parameter.confirm || '';
             if (!dateStr) throw new Error('需提供 date 參數 (YYYY-MM-DD)');
+            if (dryRun && confirm !== 'YES_DRY_RUN' && confirm !== 'YES_DELETE_DATE') {
+              throw new Error('cleanupDate dryRun 需帶 confirm=YES_DRY_RUN');
+            }
+            if (!dryRun && confirm !== 'YES_DELETE_DATE') {
+              throw new Error('cleanupDate 實刪需帶 confirm=YES_DELETE_DATE');
+            }
+            Logger.log('[cleanupDate] date=' + dateStr + ' dryRun=' + dryRun + ' at ' + new Date().toISOString());
             const summary = cleanupTestDataForDate_(dateStr, { dryRun });
             result = { ok: true, action, date: dateStr, dryRun, summary };
             break;
@@ -251,7 +290,6 @@ function doGet(e) {
 }
 
 function doPost(e) {
-  let authed = false;  // 通過 token 驗證才打開 debug 模式（不在驗證前洩漏 stack）
   try {
     const raw = (e && e.postData && e.postData.contents) || '';
     if (!raw) throw new Error('空白 payload');
@@ -259,13 +297,23 @@ function doPost(e) {
       throw new Error('payload 過大');
     }
 
-    // === LINE Webhook 偵測（header X-Line-Signature 存在即視為 LINE 進來）===
-    // GAS 的 e.parameter 不含 headers，但 LINE webhook 的 body 結構特定
-    // 用 body 結構 + 簽章 header 二段判斷
-    const lineSig = (e.parameter && e.parameter.lineSignature) ||
-                    (e.parameters && e.parameters['X-Line-Signature']);
+    // === LINE Webhook 偵測 ===
+    // Apps Script 讀不到 X-Line-Signature header（codex 2026-05-26 P1）
+    // 改用 URL query token 驗證：Webhook URL 在 LINE Console 設成 exec_url?lineWebhookToken=XXX
+    // - LINE_WEBHOOK_QUERY_TOKEN 未設 → fail-closed 直接拒絕（避免匿名觸發完成異常等指令）
+    // - 設了 → 嚴格比對
     if (typeof handleLineWebhook_ === 'function' && raw.indexOf('"events"') >= 0 && raw.indexOf('"destination"') >= 0) {
-      const r = handleLineWebhook_(raw, lineSig || '');
+      const expected = getLineWebhookQueryToken_();
+      const provided = (e.parameter && e.parameter.lineWebhookToken) || '';
+      if (!expected || expected.length < 32) {
+        Logger.log('[LINE webhook] LINE_WEBHOOK_QUERY_TOKEN 未設置，拒絕 webhook');
+        return jsonResponse_({ ok: false, error: 'webhook_token_not_configured' });
+      }
+      if (provided !== expected) {
+        Logger.log('[LINE webhook] query token 不符，拒絕');
+        return jsonResponse_({ ok: false, error: 'invalid_webhook_token' });
+      }
+      const r = handleLineWebhook_(raw);
       return jsonResponse_(r);
     }
 
@@ -282,19 +330,12 @@ function doPost(e) {
     if (payload.apiToken !== CONFIG.API_TOKEN) {
       throw new Error('未授權');
     }
-    authed = true;
     delete payload.apiToken;
+    // 移除 payload._debug stack 回傳（codex 2026-05-26 P1）— 避免任何拿到 API_TOKEN 的人能拉到 stack
+    delete payload._debug;
 
-    const debug = !!payload._debug;
-    try {
-      const result = handleSubmission_(payload);
-      return jsonResponse_(result);
-    } catch (err) {
-      if (debug) {
-        return jsonResponse_({ ok: false, error: String(err.message || err), stack: String(err.stack || '') });
-      }
-      throw err;
-    }
+    const result = handleSubmission_(payload);
+    return jsonResponse_(result);
 
   } catch (err) {
     Logger.log('doPost 失敗：' + err + '\n' + (err.stack || ''));
@@ -312,8 +353,15 @@ function friendlyError_(err) {
     '找不到設備', '需提供', '缺少',
     // 業務驗證錯誤（v8.10 加）
     '標為異常但未填', '仍有未處理異常', '無法標為',
+    // 修 P2.2: 補白名單（讓使用者看到真因而非「請聯絡管理員」）
+    '結果值不合法', '風險值不合法', '照片超過', '照片過大', '照片格式錯誤',
+    '設備已停用', '找不到模板', '檢查表模板缺必要欄位',
+    '日期格式', 'cleanupAll dryRun 需帶', 'cleanupDate dryRun 需帶', 'cleanupDate 實刪需帶',
     // admin 用錯誤訊息
-    '該檔案非', '需要 fileId', '未知 admin action', '未知的 api'];
+    '該檔案非', '需要 fileId', '未知 admin action', '未知的 api',
+    // 新增安全分層相關 (codex 2026-05-26)
+    'adminToken', '此 action 需 adminToken', '破壞性 action', 'ADMIN_TOKEN', 'ALLOW_DESTRUCTIVE_HTTP',
+    'webhook_token', 'invalid_webhook_token'];
   if (businessErrors.some(k => msg.indexOf(k) >= 0)) return msg;
   return '系統處理失敗，請聯絡管理員';
 }

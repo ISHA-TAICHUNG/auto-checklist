@@ -33,7 +33,8 @@ function getVenueUsage_(equipment, date) {
   const headerRow = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
   let dateCol = -1;
   for (let c = 0; c < headerRow.length; c++) {
-    const v = cellStr_(headerRow[c]);
+    // 修 P2.1: 容錯 trailing / inner whitespace（場地表 header 寫成 '5月 ' 或 '5 月' 也認）
+    const v = cellStr_(headerRow[c]).replace(/\s/g, '');
     if (v === `${month}月`) {
       dateCol = c + 1;
       break;

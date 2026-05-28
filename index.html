@@ -113,17 +113,31 @@
         const actions = document.createElement('div');
         actions.className = 'equip-actions';
 
-        const dailyLink = document.createElement('a');
-        dailyLink.className = 'btn-daily';
-        dailyLink.textContent = '每日檢點';
-        dailyLink.href = 'daily.html?eqp=' + encodeURIComponent(e.equipmentId);
-        actions.appendChild(dailyLink);
+        const hasDaily = e.hasDaily !== false;
+        const hasMonthly = e.hasMonthly !== false;
 
-        const monthlyLink = document.createElement('a');
-        monthlyLink.className = 'btn-monthly';
-        monthlyLink.textContent = '每月檢查';
-        monthlyLink.href = 'monthly.html?eqp=' + encodeURIComponent(e.equipmentId);
-        actions.appendChild(monthlyLink);
+        if (hasDaily) {
+          const dailyLink = document.createElement('a');
+          dailyLink.className = 'btn-daily';
+          dailyLink.textContent = '每日檢點';
+          dailyLink.href = 'daily.html?eqp=' + encodeURIComponent(e.equipmentId);
+          actions.appendChild(dailyLink);
+        }
+
+        if (hasMonthly) {
+          const monthlyLink = document.createElement('a');
+          monthlyLink.className = 'btn-monthly';
+          monthlyLink.textContent = '每月檢查';
+          monthlyLink.href = 'monthly.html?eqp=' + encodeURIComponent(e.equipmentId);
+          actions.appendChild(monthlyLink);
+        }
+
+        if (!hasDaily && !hasMonthly) {
+          const muted = document.createElement('span');
+          muted.className = 'equip-meta';
+          muted.textContent = '尚未啟用表單';
+          actions.appendChild(muted);
+        }
 
         card.appendChild(actions);
         root.appendChild(card);

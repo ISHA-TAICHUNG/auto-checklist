@@ -48,19 +48,53 @@ function getEquipmentList_() {
   const data = sheet.getDataRange().getValues();
   const headers = data[0];
   const idx = name => headers.indexOf(name);
+  const cyclesByCategory = getTemplateCyclesByCategory_();
 
   const list = [];
   for (let i = 1; i < data.length; i++) {
     // 與 getEquipmentById_ 一致：支援 boolean true / 'TRUE' / '是' / '啟用'
     if (!isActiveValue_(data[i][idx('啟用')])) continue;
+    const category = data[i][idx('設備類別')];
+    const cycles = cyclesByCategory[category] || [];
     list.push({
       equipmentId: data[i][idx('設備代號')],
       equipmentName: data[i][idx('設備名稱')],
-      category: data[i][idx('設備類別')],
+      category,
       location: data[i][idx('所在位置')],
+      cycles,
+      hasDaily: cycles.indexOf('每日') >= 0,
+      hasMonthly: cycles.indexOf('每月') >= 0,
     });
   }
   return list;
+}
+
+/**
+ * 依設備類別彙整已啟用模板的週期，讓前端只顯示可填的表單按鈕。
+ */
+function getTemplateCyclesByCategory_() {
+  const ss = SpreadsheetApp.openById(CONFIG.DB_SHEET_ID);
+  const sheet = ss.getSheetByName('檢查表模板');
+  if (!sheet || sheet.getLastRow() < 2) return {};
+
+  const data = sheet.getDataRange().getValues();
+  const headers = data[0];
+  const idx = name => headers.indexOf(name);
+  const categoryIdx = idx('設備類別');
+  const cycleIdx = idx('週期');
+  const activeIdx = idx('啟用');
+  if (categoryIdx < 0 || cycleIdx < 0 || activeIdx < 0) return {};
+
+  const map = {};
+  for (let i = 1; i < data.length; i++) {
+    if (!isActiveValue_(data[i][activeIdx])) continue;
+    const category = String(data[i][categoryIdx] || '').trim();
+    const cycle = String(data[i][cycleIdx] || '').trim();
+    if (!category || !cycle) continue;
+    map[category] = map[category] || [];
+    if (map[category].indexOf(cycle) < 0) map[category].push(cycle);
+  }
+  return map;
 }
 
 /**
@@ -166,6 +200,11 @@ function getFormMeta_(formType, equipmentId) {
 
   const cycleMap = { daily: '每日', monthly: '每月' };
   const targetCycle = cycleMap[formType];
+
+  // 修 P1.2: 必要欄位缺失時 throw 而非靜默 skip 所有列
+  ['啟用', '設備類別', '週期'].forEach(col => {
+    if (tplIdx(col) < 0) throw new Error('檢查表模板缺必要欄位：' + col + '（請執行 initializeDatabase 補欄）');
+  });
 
   let template = null;
   for (let i = 1; i < tplData.length; i++) {
