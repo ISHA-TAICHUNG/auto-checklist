@@ -87,7 +87,9 @@
     listEquipments: () => apiGet({ api: 'equipments' }),
     getFormMeta: (form, eqp) => apiGet({ api: 'meta', form, eqp }),
     getLockedItems: (form, eqp) => apiGet({ api: 'lockedItems', form, eqp }),
+    getApproval: (recordId, token) => apiGet({ api: 'approval', recordId, token }),
     submit: (payload) => apiPost(payload),
+    approveRecord: (payload) => apiPost(Object.assign({ action: 'approveRecord' }, payload)),
     health: () => apiGet({ api: 'health' }),
     branding: () => apiGet({ api: 'branding' }),
   };

@@ -13,6 +13,7 @@
  * 公開函式：
  *   - sendReminder_(category, equipments, webFrontendUrl)  取代 sendUnfilledReminder_
  *   - sendIncidentAlert_(incident)                          異常即時通報
+ *   - sendApprovalRequest_(record)                           主管待簽核通知
  *   - sendCompletionAck_(record)                            填表完成回報
  *   - linePushTo_(target, messages)                         底層 push
  */
@@ -342,6 +343,59 @@ function buildIncidentFlex_(incident, pdfUrl, sheetUrl) {
   };
 }
 
+function buildApprovalRequestFlex_(record) {
+  const formTypeZh = record.formType === 'daily' ? '每日' : '每月';
+  const checkDateLabel = formatROCDate_(record.checkDate);
+  const approvalUrl = record.approvalUrl || '';
+  return {
+    type: 'flex',
+    altText: `🖊 ${record.equipment.equipmentName} 待主管簽核`,
+    contents: {
+      type: 'bubble',
+      header: {
+        type: 'box', layout: 'vertical',
+        backgroundColor: '#1a73e8',
+        paddingAll: 'md',
+        contents: [
+          { type: 'text', text: '🖊 待主管簽核', color: '#ffffff', weight: 'bold', size: 'lg' },
+          { type: 'text', text: `${formTypeZh}檢查紀錄`, color: '#e8f0fe', size: 'sm' },
+        ],
+      },
+      body: {
+        type: 'box', layout: 'vertical', spacing: 'sm',
+        contents: [
+          { type: 'box', layout: 'baseline', contents: [
+            { type: 'text', text: '設備', flex: 2, size: 'sm', color: '#666666' },
+            { type: 'text', text: record.equipment.equipmentName, flex: 5, size: 'sm', weight: 'bold', wrap: true },
+          ]},
+          { type: 'box', layout: 'baseline', contents: [
+            { type: 'text', text: '日期', flex: 2, size: 'sm', color: '#666666' },
+            { type: 'text', text: checkDateLabel, flex: 5, size: 'sm', wrap: true },
+          ]},
+          { type: 'box', layout: 'baseline', contents: [
+            { type: 'text', text: '檢查人', flex: 2, size: 'sm', color: '#666666' },
+            { type: 'text', text: record.inspector || '', flex: 5, size: 'sm', wrap: true },
+          ]},
+          { type: 'box', layout: 'baseline', contents: [
+            { type: 'text', text: '異常', flex: 2, size: 'sm', color: '#666666' },
+            { type: 'text', text: `${record.incidentCount || 0} 項`, flex: 5, size: 'sm',
+              color: record.incidentCount > 0 ? '#D32F2F' : '#137333', weight: 'bold' },
+          ]},
+        ],
+      },
+      footer: {
+        type: 'box', layout: 'vertical', spacing: 'sm',
+        contents: [{
+          type: 'button',
+          style: 'primary',
+          color: '#1a73e8',
+          action: { type: 'uri', label: '主管簽核', uri: approvalUrl },
+        }],
+      },
+    },
+  };
+}
+
 /**
  * 高層 API：寄未填提醒（給 Reminder.gs 用）
  * 自動加 Quick Reply 按鈕
@@ -361,6 +415,14 @@ function sendIncidentAlert_(incident) {
   const pdfUrl = incident.fileUrl || incident.pdfUrl || '';
   const sheetUrl = PropertiesService.getScriptProperties().getProperty('INCIDENT_SHEET_URL') || '';
   const flex = buildIncidentFlex_(incident, pdfUrl, sheetUrl);
+  return linePush_(withQuickReply_(flex));
+}
+
+function sendApprovalRequest_(record) {
+  if (!record.approvalUrl || !/^https?:\/\//.test(record.approvalUrl)) {
+    return { ok: false, reason: 'invalid_approval_url' };
+  }
+  const flex = buildApprovalRequestFlex_(record);
   return linePush_(withQuickReply_(flex));
 }
 

@@ -31,6 +31,18 @@ function getOrCreateArchiveFolder_(category, date) {
 }
 
 /**
+ * 待主管簽核草稿放在歸檔根資料夾下方，避免尚未簽核的文件混入正式年月歸檔。
+ */
+function getOrCreatePendingApprovalFolder_() {
+  const rootId = CONFIG.ARCHIVE_ROOT_FOLDER_ID;
+  if (!rootId || rootId.startsWith('REPLACE_')) {
+    throw new Error('尚未設定 ARCHIVE_ROOT_FOLDER_ID，請到 Config.gs 填入 Drive 資料夾 ID');
+  }
+  const root = DriveApp.getFolderById(rootId);
+  return getOrCreateSubFolder_(root, '_待主管簽核');
+}
+
+/**
  * 在父資料夾中找子資料夾，沒有就建一個
  */
 function getOrCreateSubFolder_(parent, name) {

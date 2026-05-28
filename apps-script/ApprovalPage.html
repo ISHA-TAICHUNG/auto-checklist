@@ -1,0 +1,434 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: #f8fafd;
+      color: #202124;
+      font-family: Arial, "Noto Sans TC", sans-serif;
+    }
+    .header {
+      background: #1a73e8;
+      color: #fff;
+      padding: 18px 16px;
+      text-align: center;
+    }
+    .header h1 {
+      margin: 0;
+      font-size: 22px;
+      letter-spacing: 0;
+    }
+    .container {
+      width: min(760px, 100%);
+      margin: 0 auto;
+      padding: 16px;
+    }
+    .card {
+      background: #fff;
+      border: 1px solid #e0e3eb;
+      border-radius: 8px;
+      padding: 16px;
+      margin-bottom: 16px;
+      box-shadow: 0 1px 3px rgba(60, 64, 67, .12);
+    }
+    .card-title {
+      margin: 0 0 12px;
+      font-size: 18px;
+      letter-spacing: 0;
+    }
+    .meta-grid {
+      display: grid;
+      grid-template-columns: 108px 1fr;
+      gap: 8px 12px;
+      font-size: 15px;
+    }
+    .meta-label { color: #5f6368; }
+    .meta-value { font-weight: 600; overflow-wrap: anywhere; }
+    .field label {
+      display: block;
+      color: #5f6368;
+      font-size: 14px;
+      margin-bottom: 6px;
+    }
+    input {
+      width: 100%;
+      padding: 12px;
+      border: 1px solid #dadce0;
+      border-radius: 6px;
+      font-size: 16px;
+    }
+    .signature-hint {
+      color: #5f6368;
+      font-size: 14px;
+      margin-bottom: 8px;
+    }
+    .signature-pad {
+      width: 100%;
+      height: min(46vh, 320px);
+      min-height: 220px;
+      display: block;
+      background: #fff;
+      border: 2px dashed #b9c1d0;
+      border-radius: 8px;
+      touch-action: none;
+    }
+    .actions {
+      display: flex;
+      gap: 10px;
+      margin-top: 12px;
+      flex-wrap: wrap;
+    }
+    .btn {
+      border: 0;
+      border-radius: 6px;
+      padding: 12px 16px;
+      font-size: 16px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .btn-primary { background: #1a73e8; color: #fff; width: 100%; }
+    .btn-secondary { background: #eef3fb; color: #174ea6; }
+    .alert {
+      border-radius: 8px;
+      padding: 12px;
+      line-height: 1.5;
+      margin-bottom: 16px;
+    }
+    .alert-error {
+      background: #fce8e6;
+      color: #b31412;
+      border: 1px solid #f6b8b2;
+    }
+    .loading {
+      text-align: center;
+      color: #5f6368;
+      padding: 28px;
+    }
+    .result-icon {
+      font-size: 48px;
+      text-align: center;
+      color: #34a853;
+    }
+    .result-title {
+      text-align: center;
+      font-size: 22px;
+      font-weight: 700;
+      margin: 8px 0;
+    }
+    .result-meta {
+      text-align: center;
+      color: #5f6368;
+      margin-bottom: 16px;
+    }
+    a.btn {
+      display: block;
+      text-align: center;
+      text-decoration: none;
+    }
+  </style>
+</head>
+<body>
+  <header class="header">
+    <h1>主管簽核</h1>
+  </header>
+  <main class="container">
+    <div id="content" class="loading">載入中...</div>
+  </main>
+
+  <script>
+    const params = new URLSearchParams(location.search);
+    const recordId = params.get('recordId') || '';
+    const token = params.get('token') || '';
+    let record = null;
+    let sigPad = null;
+
+    class SimpleSignaturePad {
+      constructor(canvas, hint) {
+        this.canvas = canvas;
+        this.ctx = canvas.getContext('2d');
+        this.hint = hint;
+        this.isDrawing = false;
+        this.hasInk = false;
+        this.resize();
+        this.bind();
+        window.addEventListener('resize', () => this.resize());
+      }
+      resize() {
+        const ratio = window.devicePixelRatio || 1;
+        const rect = this.canvas.getBoundingClientRect();
+        const prev = this.hasInk ? this.trimmedDataURL() : '';
+        this.canvas.width = Math.max(1, Math.floor(rect.width * ratio));
+        this.canvas.height = Math.max(1, Math.floor(rect.height * ratio));
+        this.ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+        this.ctx.lineWidth = 2.5;
+        this.ctx.lineCap = 'round';
+        this.ctx.lineJoin = 'round';
+        this.ctx.strokeStyle = '#111';
+        if (this.hint) {
+          this.hint.textContent = window.innerWidth > window.innerHeight
+            ? '已橫向，直接簽名即可'
+            : '可將手機橫向旋轉以獲得更大的簽名空間';
+        }
+        if (prev) this.load(prev);
+      }
+      pos(e) {
+        const r = this.canvas.getBoundingClientRect();
+        const p = e.touches && e.touches[0] ? e.touches[0] : e;
+        return { x: p.clientX - r.left, y: p.clientY - r.top };
+      }
+      start(e) {
+        e.preventDefault();
+        this.isDrawing = true;
+        this.hasInk = true;
+        const p = this.pos(e);
+        this.ctx.beginPath();
+        this.ctx.moveTo(p.x, p.y);
+      }
+      move(e) {
+        if (!this.isDrawing) return;
+        e.preventDefault();
+        const p = this.pos(e);
+        this.ctx.lineTo(p.x, p.y);
+        this.ctx.stroke();
+      }
+      end(e) {
+        if (!this.isDrawing) return;
+        e.preventDefault();
+        this.isDrawing = false;
+        this.ctx.closePath();
+      }
+      bind() {
+        this.canvas.addEventListener('mousedown', e => this.start(e));
+        this.canvas.addEventListener('mousemove', e => this.move(e));
+        this.canvas.addEventListener('mouseup', e => this.end(e));
+        this.canvas.addEventListener('mouseleave', e => this.end(e));
+        this.canvas.addEventListener('touchstart', e => this.start(e), { passive: false });
+        this.canvas.addEventListener('touchmove', e => this.move(e), { passive: false });
+        this.canvas.addEventListener('touchend', e => this.end(e), { passive: false });
+      }
+      clear() {
+        this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+        this.hasInk = false;
+      }
+      isEmpty() { return !this.hasInk; }
+      trimmedDataURL() {
+        if (!this.hasInk) return '';
+        const w = this.canvas.width;
+        const h = this.canvas.height;
+        const pixels = this.ctx.getImageData(0, 0, w, h).data;
+        let minX = w, minY = h, maxX = -1, maxY = -1;
+        for (let y = 0; y < h; y++) {
+          for (let x = 0; x < w; x++) {
+            if (pixels[(y * w + x) * 4 + 3] > 0) {
+              if (x < minX) minX = x;
+              if (x > maxX) maxX = x;
+              if (y < minY) minY = y;
+              if (y > maxY) maxY = y;
+            }
+          }
+        }
+        if (maxX < 0) return this.canvas.toDataURL('image/png');
+        const pad = 16;
+        minX = Math.max(0, minX - pad);
+        minY = Math.max(0, minY - pad);
+        maxX = Math.min(w, maxX + pad);
+        maxY = Math.min(h, maxY + pad);
+        const tw = maxX - minX;
+        const th = maxY - minY;
+        const tmp = document.createElement('canvas');
+        tmp.width = tw;
+        tmp.height = th;
+        tmp.getContext('2d').drawImage(this.canvas, minX, minY, tw, th, 0, 0, tw, th);
+        return tmp.toDataURL('image/png');
+      }
+      load(dataUrl) {
+        const img = new Image();
+        const rect = this.canvas.getBoundingClientRect();
+        img.onload = () => {
+          const ratio = Math.min(rect.width / img.width, rect.height / img.height);
+          const dw = img.width * ratio;
+          const dh = img.height * ratio;
+          this.ctx.drawImage(img, (rect.width - dw) / 2, (rect.height - dh) / 2, dw, dh);
+          this.hasInk = true;
+        };
+        img.src = dataUrl;
+      }
+    }
+
+    if (!recordId || !token) {
+      showError('簽核連結缺少必要參數');
+    } else {
+      google.script.run
+        .withSuccessHandler(res => {
+          if (!res || !res.ok) return showError((res && res.error) || '取得簽核資料失敗');
+          record = res.record;
+          renderApproval();
+        })
+        .withFailureHandler(err => showError(err.message || String(err)))
+        .getApprovalForPage(recordId, token);
+    }
+
+    function renderApproval() {
+      const root = document.getElementById('content');
+      root.className = '';
+      root.textContent = '';
+
+      root.appendChild(infoCard());
+      if (record.status === '已簽核歸檔') {
+        root.appendChild(doneCard('此紀錄已完成簽核', record.fileUrl || ''));
+        return;
+      }
+
+      const formCard = card('主管資訊');
+      const field = document.createElement('div');
+      field.className = 'field';
+      const label = document.createElement('label');
+      label.textContent = '主管姓名';
+      const input = document.createElement('input');
+      input.id = 'supervisorName';
+      input.placeholder = '請填寫主管姓名';
+      field.appendChild(label);
+      field.appendChild(input);
+      formCard.appendChild(field);
+      root.appendChild(formCard);
+
+      const sigCard = card('主管手寫簽名');
+      const hint = document.createElement('div');
+      hint.className = 'signature-hint';
+      const canvas = document.createElement('canvas');
+      canvas.className = 'signature-pad';
+      const actions = document.createElement('div');
+      actions.className = 'actions';
+      const clearBtn = document.createElement('button');
+      clearBtn.type = 'button';
+      clearBtn.className = 'btn btn-secondary';
+      clearBtn.textContent = '清除重簽';
+      actions.appendChild(clearBtn);
+      sigCard.appendChild(hint);
+      sigCard.appendChild(canvas);
+      sigCard.appendChild(actions);
+      root.appendChild(sigCard);
+
+      setTimeout(() => {
+        sigPad = new SimpleSignaturePad(canvas, hint);
+        clearBtn.onclick = () => sigPad.clear();
+      }, 0);
+
+      const submit = document.createElement('button');
+      submit.id = 'approveBtn';
+      submit.type = 'button';
+      submit.className = 'btn btn-primary';
+      submit.textContent = '完成主管簽核並正式歸檔';
+      submit.onclick = approve;
+      root.appendChild(submit);
+    }
+
+    function approve() {
+      const btn = document.getElementById('approveBtn');
+      const supervisorName = document.getElementById('supervisorName').value.trim();
+      if (!supervisorName) return alert('請填寫主管姓名');
+      if (!sigPad || sigPad.isEmpty()) return alert('請簽名');
+      btn.disabled = true;
+      btn.textContent = '簽核中...';
+      google.script.run
+        .withSuccessHandler(res => {
+          if (!res || !res.ok) {
+            btn.disabled = false;
+            btn.textContent = '完成主管簽核並正式歸檔';
+            return alert('簽核失敗：' + ((res && res.error) || '未知錯誤'));
+          }
+          const root = document.getElementById('content');
+          root.textContent = '';
+          root.appendChild(doneCard(res.alreadyApproved ? '此紀錄已完成簽核' : '主管簽核完成', res.fileUrl || ''));
+        })
+        .withFailureHandler(err => {
+          btn.disabled = false;
+          btn.textContent = '完成主管簽核並正式歸檔';
+          alert('簽核失敗：' + (err.message || String(err)));
+        })
+        .approveRecordFromPage({
+          recordId,
+          token,
+          supervisorName,
+          supervisorSignature: sigPad.trimmedDataURL(),
+        });
+    }
+
+    function infoCard() {
+      const c = card('待簽核紀錄');
+      const grid = document.createElement('div');
+      grid.className = 'meta-grid';
+      addRow(grid, '設備名稱', record.equipmentName);
+      addRow(grid, '設備類別', record.category);
+      addRow(grid, '表單類型', record.formType);
+      addRow(grid, '檢查日期', record.checkDate);
+      addRow(grid, '檢查人', record.inspector);
+      addRow(grid, '異常項目', String(record.incidentCount || 0));
+      addRow(grid, '簽核狀態', record.status);
+      c.appendChild(grid);
+      return c;
+    }
+
+    function card(title) {
+      const c = document.createElement('div');
+      c.className = 'card';
+      const h = document.createElement('h2');
+      h.className = 'card-title';
+      h.textContent = title;
+      c.appendChild(h);
+      return c;
+    }
+
+    function addRow(grid, label, value) {
+      const l = document.createElement('div');
+      l.className = 'meta-label';
+      l.textContent = label;
+      const v = document.createElement('div');
+      v.className = 'meta-value';
+      v.textContent = value || '—';
+      grid.appendChild(l);
+      grid.appendChild(v);
+    }
+
+    function doneCard(title, fileUrl) {
+      const c = document.createElement('div');
+      c.className = 'card';
+      const icon = document.createElement('div');
+      icon.className = 'result-icon';
+      icon.textContent = '✓';
+      const t = document.createElement('div');
+      t.className = 'result-title';
+      t.textContent = title;
+      const meta = document.createElement('div');
+      meta.className = 'result-meta';
+      meta.textContent = '正式 PDF 已歸檔';
+      c.appendChild(icon);
+      c.appendChild(t);
+      c.appendChild(meta);
+      if (fileUrl) {
+        const a = document.createElement('a');
+        a.href = fileUrl;
+        a.target = '_blank';
+        a.rel = 'noopener';
+        a.className = 'btn btn-primary';
+        a.textContent = '查看正式 PDF';
+        c.appendChild(a);
+      }
+      return c;
+    }
+
+    function showError(msg) {
+      const root = document.getElementById('content');
+      root.className = '';
+      root.textContent = '';
+      const d = document.createElement('div');
+      d.className = 'alert alert-error';
+      d.textContent = msg;
+      root.appendChild(d);
+    }
+  </script>
+</body>
+</html>

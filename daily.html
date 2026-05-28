@@ -420,8 +420,17 @@
 
       const meta = document.createElement('div');
       meta.className = 'result-meta';
-      meta.textContent = '本次紀錄已自動歸檔';
+      meta.textContent = r.approvalPending
+        ? '已送出主管簽核通知，主管簽名後才會正式歸檔'
+        : '本次紀錄已自動歸檔';
       card.appendChild(meta);
+
+      if (r.approvalPending && r.approvalNotice && !r.approvalNotice.ok) {
+        const warn = document.createElement('div');
+        warn.className = 'alert alert-error';
+        warn.textContent = '主管 LINE 簽核通知未送出，請管理員確認 LINE 通知設定';
+        card.appendChild(warn);
+      }
 
       const back = document.createElement('a');
       back.href = 'index.html';

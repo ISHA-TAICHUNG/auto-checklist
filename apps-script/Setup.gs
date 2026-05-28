@@ -68,6 +68,11 @@ function initializeDatabase() {
     ['webAppUrl', '', 'Apps Script 部署後的 exec URL（部署完執行 setWebAppUrlFromCurrent 自動填）'],
     ['webFrontendUrl', '', 'GitHub Pages 前端網址（提醒信會帶這連結）例：https://<your-github-username>.github.io/auto-checklist'],
   ]);
+  ensureSystemSettingDefaults_(ss, [
+    ['monthlyCheckWindowStart', '1', '教室月檢應檢期起始日（狀態顯示用）'],
+    ['monthlyCheckWindowEnd', '5', '教室月檢應檢期結束日（狀態顯示用）'],
+    ['monthlyReminderStartDay', '25', '教室月檢補填提醒起始日'],
+  ]);
 
   setupSheet_(ss, '節假日關鍵字', ['關鍵字', '備註'],
     CONFIG.HOLIDAY_KEYWORDS_DEFAULT.map(k => [k, '預設'])
@@ -160,9 +165,12 @@ function initializeDatabase() {
   // 加 clientSubmissionId（idempotency）+ 異常事件數（方便快速辨識哪天有異常）
   setupSheet_(ss, '填報紀錄',
     ['紀錄ID', '送出時間', '檢查日期', '表單類型', '設備代號', '設備名稱',
-     '設備類別', '檢點人員', '異常事件數', '完整資料JSON', 'PDF連結', 'clientSubmissionId', '備註'],
+     '設備類別', '檢點人員', '異常事件數', '完整資料JSON', 'PDF連結',
+     '簽核狀態', '主管姓名', '主管簽核時間', '主管簽核Token', '草稿DocID', '草稿Doc連結',
+     'clientSubmissionId', '備註'],
     []
   );
+  setupApprovalStatusValidation_(ss);
 
   // 異常事件追蹤（Layer 1）
   // 每填一張表的每個「結果=bad」項目，自動寫一列到這
@@ -241,6 +249,20 @@ function setupSheet_(ss, sheetName, headers, initialRows) {
 
   for (let c = 1; c <= Math.min(headers.length, 26); c++) {
     sheet.autoResizeColumn(c);
+  }
+}
+
+function ensureSystemSettingDefaults_(ss, rows) {
+  const sheet = ss.getSheetByName('系統設定');
+  if (!sheet) return;
+  const data = sheet.getDataRange().getValues();
+  const existing = new Set(data.slice(1).map(r => String(r[0] || '').trim()).filter(Boolean));
+  const toAppend = [];
+  rows.forEach(row => {
+    if (!existing.has(row[0])) toAppend.push(row);
+  });
+  if (toAppend.length > 0) {
+    sheet.getRange(sheet.getLastRow() + 1, 1, toAppend.length, 3).setValues(toAppend);
   }
 }
 
@@ -336,11 +358,19 @@ function cleanupAllSubmissionsAndIncidents_(opts) {
     if (dataRows > 0) {
       const headers = recSheet.getRange(1, 1, 1, recSheet.getLastColumn()).getValues()[0];
       const idxPdf = headers.indexOf('PDF連結');
+      const idxDraft = headers.indexOf('草稿DocID');
       if (idxPdf >= 0) {
         const urls = recSheet.getRange(2, idxPdf + 1, dataRows, 1).getValues().flat();
         urls.forEach(u => {
           const m = String(u || '').match(/\/d\/([A-Za-z0-9_-]+)/);
           if (m) pdfsToTrash.push(m[1]);
+        });
+      }
+      if (idxDraft >= 0) {
+        const ids = recSheet.getRange(2, idxDraft + 1, dataRows, 1).getValues().flat();
+        ids.forEach(id => {
+          const s = String(id || '').trim();
+          if (s) pdfsToTrash.push(s);
         });
       }
       if (!dryRun) {
@@ -391,6 +421,7 @@ function cleanupTestDataForDate_(dateStr, opts) {
     const headers = data[0];
     const idxDate = headers.indexOf('檢查日期');
     const idxPdf = headers.indexOf('PDF連結');
+    const idxDraft = headers.indexOf('草稿DocID');
     for (let i = 1; i < data.length; i++) {
       const cellDate = data[i][idxDate];
       let iso = '';
@@ -404,6 +435,10 @@ function cleanupTestDataForDate_(dateStr, opts) {
         const url = String(data[i][idxPdf] || '');
         const m = url.match(/\/d\/([A-Za-z0-9_-]+)/);
         if (m) recPdfsToTrash.push(m[1]);
+        if (idxDraft >= 0) {
+          const draftId = String(data[i][idxDraft] || '').trim();
+          if (draftId) recPdfsToTrash.push(draftId);
+        }
       }
     }
     if (!dryRun) {
@@ -562,6 +597,8 @@ function applyColumnWidthsAndWrap_() {
       '紀錄ID': 90, '送出時間': 140, '檢查日期': 100, '表單類型': 80,
       '設備代號': 110, '設備名稱': 140, '設備類別': 90, '檢點人員': 100,
       '異常事件數': 90, '完整資料JSON': 200, 'PDF連結': 140,
+      '簽核狀態': 110, '主管姓名': 100, '主管簽核時間': 140,
+      '主管簽核Token': 160, '草稿DocID': 160, '草稿Doc連結': 140,
       'clientSubmissionId': 100, '備註': 150,
     },
     '檢查表模板': {
@@ -580,7 +617,8 @@ function applyColumnWidthsAndWrap_() {
   };
   // 這些欄位文字較長，要開「自動換行」
   const wrapCols = ['項目名稱', '表單名稱', '異常說明', '填寫規則', '法規依據',
-                    '完整資料JSON', '備註', '型式規格', '場地表分頁', '值'];
+                    '完整資料JSON', '備註', '型式規格', '場地表分頁', '值',
+                    '草稿Doc連結', 'PDF連結'];
 
   Object.keys(profiles).forEach(sheetName => {
     const sheet = ss.getSheetByName(sheetName);
@@ -602,6 +640,22 @@ function applyColumnWidthsAndWrap_() {
   });
 
   Logger.log('column widths + wrap applied to ' + Object.keys(profiles).length + ' sheets');
+}
+
+function setupApprovalStatusValidation_(ss) {
+  const sheet = ss.getSheetByName('填報紀錄');
+  if (!sheet) return;
+  const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  const statusCol = headers.indexOf('簽核狀態') + 1;
+  if (statusCol < 1) return;
+  const range = sheet.getRange(2, statusCol, sheet.getMaxRows() - 1, 1);
+  const rule = SpreadsheetApp.newDataValidation()
+    .requireValueInList(['待主管簽核', '已簽核歸檔', '簽核略過'], true)
+    .setAllowInvalid(false)
+    .setHelpText('請從下拉選單選擇簽核狀態')
+    .build();
+  range.setDataValidation(rule);
+  Logger.log('「填報紀錄」簽核狀態欄已加下拉驗證');
 }
 
 /**

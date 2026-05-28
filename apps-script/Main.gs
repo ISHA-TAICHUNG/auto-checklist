@@ -8,10 +8,12 @@
  *   GET  ...exec?api=equipments               — 設備清單
  *   GET  ...exec?api=meta&form=...&eqp=...    — 檢查表模板
  *   GET  ...exec?api=branding                  — 機構名稱（前端啟動載入）
+ *   GET  ...exec?api=approval&recordId=...&token=... — 主管簽核頁讀取待簽資料
  *   GET  ...exec?api=status                    — 系統狀態（不含 secret）
  *   GET  ...exec?api=admin&action=...&token=...  — 管理用，需 token
  *
  *   POST ...exec   body={ apiToken, formType, equipmentId, ... }
+ *   POST ...exec   body={ apiToken, action:'approveRecord', recordId, token, ... }
  *
  * doPost 強制驗證 apiToken；body 必須是 JSON 字串（前端用 fetch + Content-Type
  * text/plain 送出，避開 Apps Script 對 application/json preflight 的限制）。
@@ -21,6 +23,10 @@ function doGet(e) {
   const api = (e && e.parameter && e.parameter.api) || 'health';
 
   try {
+    if (e && e.parameter && e.parameter.page === 'approve') {
+      return approvalPageResponse_();
+    }
+
     let result;
     switch (api) {
       case 'health':
@@ -63,6 +69,14 @@ function doGet(e) {
       case 'branding':
         result = { ok: true, organizationName: getOrgHeader_() };
         break;
+
+      case 'approval': {
+        const recordId = e.parameter.recordId;
+        const token = e.parameter.token;
+        if (!recordId || !token) throw new Error('需提供 recordId 與 token');
+        result = getApprovalSummary_(recordId, token);
+        break;
+      }
 
       case 'admin': {
         // 維護動作 — 兩層 token：
@@ -334,7 +348,9 @@ function doPost(e) {
     // 移除 payload._debug stack 回傳（codex 2026-05-26 P1）— 避免任何拿到 API_TOKEN 的人能拉到 stack
     delete payload._debug;
 
-    const result = handleSubmission_(payload);
+    const result = payload.action === 'approveRecord'
+      ? handleApprovalSubmission_(payload)
+      : handleSubmission_(payload);
     return jsonResponse_(result);
 
   } catch (err) {
@@ -351,6 +367,8 @@ function friendlyError_(err) {
   const businessErrors = ['未授權', 'payload 過大', 'payload 不是合法 JSON',
     '簽名格式錯誤', '簽名圖太大', '空白 payload', '系統忙碌，請稍後再試',
     '找不到設備', '需提供', '缺少',
+    '簽核連結無效', '找不到待簽核紀錄', '待簽核草稿不存在', '不可簽核',
+    '無法建立主管簽核連結', '主管簽名格式錯誤',
     // 業務驗證錯誤（v8.10 加）
     '標為異常但未填', '仍有未處理異常', '無法標為',
     // 修 P2.2: 補白名單（讓使用者看到真因而非「請聯絡管理員」）
@@ -364,6 +382,32 @@ function friendlyError_(err) {
     'webhook_token', 'invalid_webhook_token'];
   if (businessErrors.some(k => msg.indexOf(k) >= 0)) return msg;
   return '系統處理失敗，請聯絡管理員';
+}
+
+function approvalPageResponse_() {
+  return HtmlService
+    .createHtmlOutputFromFile('ApprovalPage')
+    .setTitle('主管簽核')
+    .addMetaTag('viewport', 'width=device-width, initial-scale=1, maximum-scale=1')
+    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+}
+
+function getApprovalForPage(recordId, token) {
+  try {
+    return getApprovalSummary_(recordId, token);
+  } catch (err) {
+    Logger.log('getApprovalForPage 失敗：' + err + '\n' + (err.stack || ''));
+    return { ok: false, error: friendlyError_(err) };
+  }
+}
+
+function approveRecordFromPage(payload) {
+  try {
+    return handleApprovalSubmission_(payload);
+  } catch (err) {
+    Logger.log('approveRecordFromPage 失敗：' + err + '\n' + (err.stack || ''));
+    return { ok: false, error: friendlyError_(err) };
+  }
 }
 
 function jsonResponse_(obj) {

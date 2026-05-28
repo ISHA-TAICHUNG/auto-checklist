@@ -163,17 +163,20 @@ function handleSubmission_(payload) {
       // 取對應檢查表模板（codex P2: PDF 動態抓 templateName / legalBasis / rule）
       const tplMeta = getTemplateForCategoryCycle_(equipment.category, payload.formType);
 
-      // 1. 先產 PDF
-      const pdfBlob = buildPdf_(payload.formType, {
+      const approvalToken = createApprovalToken_();
+      const approvalUrl = buildApprovalUrl_(recordId, approvalToken);
+      if (!approvalUrl) throw new Error('系統設定 webFrontendUrl 未填，無法建立主管簽核連結');
+
+      // 1. 先產「待簽核 Google Doc」而非正式 PDF；主管簽完後才匯出 PDF 歸檔。
+      const docInfo = createChecklistDoc_(payload.formType, {
         recordId, submittedAt, checkDate, equipment, payload, template: tplMeta,
       });
-      const fileName = buildPdfFilename_(payload.formType, checkDate, equipment);
-      pdfBlob.setName(fileName);
-
-      // 2. 上傳 Drive
-      const folder = getOrCreateArchiveFolder_(equipment.category, checkDate);
-      const file = folder.createFile(pdfBlob);
-      const fileUrl = file.getUrl();
+      const draftFile = DriveApp.getFileById(docInfo.docId);
+      draftFile.setName(buildDraftDocFilename_(payload.formType, checkDate, equipment));
+      const pendingFolder = getOrCreatePendingApprovalFolder_();
+      draftFile.moveTo(pendingFolder);
+      const draftDocUrl = draftFile.getUrl();
+      const fileUrl = '';
 
       // 3-4. 寫紀錄 + 異常事件
       //
@@ -189,11 +192,17 @@ function handleSubmission_(payload) {
       const incidentCount = countIncidents_(payload, allowedResults);
       try {
         writeRecord_({ recordId, submittedAt, checkDate, formType: payload.formType,
-                       equipment, payload, fileUrl, incidentCount });
+                       equipment, payload, fileUrl, incidentCount,
+                       approval: {
+                         status: '待主管簽核',
+                         token: approvalToken,
+                         draftDocId: docInfo.docId,
+                         draftDocUrl,
+                       } });
       } catch (writeErr) {
-        // 主紀錄寫失敗 → PDF 是孤兒，清理
-        Logger.log('writeRecord_ 失敗，清理孤兒 PDF: ' + writeErr + '\n' + (writeErr.stack || ''));
-        try { file.setTrashed(true); } catch (_) {}
+        // 主紀錄寫失敗 → 草稿 Doc 是孤兒，清理
+        Logger.log('writeRecord_ 失敗，清理孤兒草稿 Doc: ' + writeErr + '\n' + (writeErr.stack || ''));
+        trashChecklistDoc_(docInfo.docId);
         throw writeErr;
       }
       // 主紀錄已成功，異常追蹤失敗時只 log（不影響使用者結果）
@@ -205,12 +214,36 @@ function handleSubmission_(payload) {
         Logger.log('writeIncidents_ 失敗（主紀錄已寫，異常追蹤可從 JSON 重建）: ' +
                    incidentErr + '\n' + (incidentErr.stack || ''));
       }
-      // 有異常時透過 LINE 即時通報（如果 token 已設、沒設就 silently skip）
+      // 異常通報仍維持「檢查人送出當下即時推播」；正式 PDF 連結待主管簽核後回填到 Sheet。
       if (incidentCount > 0) {
         try { notifyLineIncidents_(recordId, submittedAt, checkDate, payload, equipment, fileUrl, allowedResults); }
         catch (lineErr) { Logger.log('[LINE incident push] 失敗: ' + lineErr + '\n' + (lineErr.stack || '')); }
       }
-      return { ok: true, recordId, fileName, fileUrl, incidentCount };
+
+      let approvalNotice = null;
+      try {
+        approvalNotice = notifySupervisorApprovalRequest_({
+          recordId,
+          submittedAt,
+          checkDate,
+          formType: payload.formType,
+          equipment,
+          inspector: payload.inspector,
+          incidentCount,
+          approvalUrl,
+        });
+      } catch (lineErr) {
+        Logger.log('[LINE approval push] 失敗: ' + lineErr + '\n' + (lineErr.stack || ''));
+        approvalNotice = { ok: false, reason: 'line_error' };
+      }
+
+      return {
+        ok: true,
+        recordId,
+        approvalPending: true,
+        approvalNotice,
+        incidentCount,
+      };
 
     } finally {
       lock.releaseLock();
@@ -223,7 +256,7 @@ function handleSubmission_(payload) {
  * 為避免單 cell 超過 50000 字元上限，這裡不存 signature dataURL，
  * 只存 payload 結構（items, inspector）。簽名仍隨 PDF 一起存到 Drive。
  */
-function writeRecord_({ recordId, submittedAt, checkDate, formType, equipment, payload, fileUrl, incidentCount }) {
+function writeRecord_({ recordId, submittedAt, checkDate, formType, equipment, payload, fileUrl, incidentCount, approval }) {
   const ss = SpreadsheetApp.openById(CONFIG.DB_SHEET_ID);
   const sheet = ss.getSheetByName('填報紀錄');
 
@@ -260,10 +293,196 @@ function writeRecord_({ recordId, submittedAt, checkDate, formType, equipment, p
   setCol('完整資料JSON', jsonStr);
 
   setCol('PDF連結', fileUrl);
+  if (approval) {
+    setCol('簽核狀態', approval.status || '待主管簽核');
+    setCol('主管簽核Token', approval.token || '');
+    setCol('草稿DocID', approval.draftDocId || '');
+    setCol('草稿Doc連結', approval.draftDocUrl || '');
+  } else {
+    setCol('簽核狀態', '已簽核歸檔');
+  }
   // codex P1: idempotency 用
   setCol('clientSubmissionId', payload.clientSubmissionId || '');
 
   sheet.appendRow(row);
+}
+
+function createApprovalToken_() {
+  return (Utilities.getUuid() + Utilities.getUuid()).replace(/-/g, '');
+}
+
+function buildApprovalUrl_(recordId, token) {
+  const base = getSetting_('webAppUrl', '') || ScriptApp.getService().getUrl();
+  if (!base || !/^https?:\/\//.test(base)) return '';
+  return base.replace(/\/+$/, '') +
+    '?page=approve&recordId=' + encodeURIComponent(recordId) +
+    '&token=' + encodeURIComponent(token);
+}
+
+function buildDraftDocFilename_(formType, checkDate, equipment) {
+  return buildPdfFilename_(formType, checkDate, equipment).replace(/\.pdf$/i, '_待主管簽核');
+}
+
+function notifySupervisorApprovalRequest_(record) {
+  if (typeof sendApprovalRequest_ !== 'function') return { ok: false, reason: 'missing_sendApprovalRequest' };
+  return sendApprovalRequest_(record);
+}
+
+function handleApprovalSubmission_(payload) {
+  if (!payload) throw new Error('缺少 approval payload');
+  const recordId = sanitizeText_(payload.recordId, 80);
+  const token = sanitizeText_(payload.token, 160);
+  const supervisorName = sanitizeText_(payload.supervisorName, 80);
+  const supervisorSignature = payload.supervisorSignature;
+  if (!recordId) throw new Error('缺少 recordId');
+  if (!token || token.length < 32) throw new Error('簽核連結無效');
+  if (!supervisorName) throw new Error('缺少主管姓名');
+  validateSignature_(supervisorSignature);
+
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(30000)) throw new Error('系統忙碌，請稍後再試');
+
+  try {
+    const rec = getApprovalRecord_(recordId, token);
+    if (rec.status === '已簽核歸檔') {
+      return { ok: true, alreadyApproved: true, recordId, fileUrl: rec.fileUrl };
+    }
+    if (rec.status && rec.status !== '待主管簽核') {
+      throw new Error('此紀錄目前不可簽核：' + rec.status);
+    }
+    if (!rec.draftDocId) throw new Error('待簽核草稿不存在');
+
+    const approvedAt = new Date();
+    const checkDate = parseISODate_(rec.checkDate);
+    const equipment = getEquipmentById_(rec.equipmentId) || {
+      equipmentId: rec.equipmentId,
+      equipmentName: rec.equipmentName,
+      category: rec.category,
+      machineSerial: '',
+      machineType: '',
+      location: '',
+    };
+
+    appendSupervisorApprovalToDoc_(rec.draftDocId, supervisorName, supervisorSignature, approvedAt);
+
+    const pdfBlob = exportChecklistDocToPdf_(rec.draftDocId);
+    const fileName = buildPdfFilename_(rec.formType, checkDate, equipment);
+    pdfBlob.setName(fileName);
+    const folder = getOrCreateArchiveFolder_(rec.category, checkDate);
+    const file = folder.createFile(pdfBlob);
+    const fileUrl = file.getUrl();
+
+    updateApprovalRecord_(rec.sheet, rec.headers, rec.rowNo, {
+      'PDF連結': fileUrl,
+      '簽核狀態': '已簽核歸檔',
+      '主管姓名': supervisorName,
+      '主管簽核時間': Utilities.formatDate(approvedAt, tz_(), 'yyyy-MM-dd HH:mm:ss'),
+    });
+    updateIncidentPdfLinks_(recordId, fileUrl);
+
+    trashChecklistDoc_(rec.draftDocId);
+    return { ok: true, approved: true, recordId, fileName, fileUrl };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function getApprovalRecord_(recordId, token) {
+  const ss = SpreadsheetApp.openById(CONFIG.DB_SHEET_ID);
+  const sheet = ss.getSheetByName('填報紀錄');
+  if (!sheet || sheet.getLastRow() < 2) throw new Error('找不到待簽核紀錄');
+  const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  const idIdx = headers.indexOf('紀錄ID');
+  const tokenIdx = headers.indexOf('主管簽核Token');
+  if (idIdx < 0 || tokenIdx < 0) throw new Error('填報紀錄缺簽核欄位，請先執行 initializeDatabase');
+  const data = sheet.getRange(2, 1, sheet.getLastRow() - 1, headers.length).getValues();
+  for (let i = 0; i < data.length; i++) {
+    if (String(data[i][idIdx] || '') !== recordId) continue;
+    if (String(data[i][tokenIdx] || '') !== token) throw new Error('簽核連結無效');
+    return approvalRecordFromRow_(sheet, headers, data[i], i + 2);
+  }
+  throw new Error('找不到待簽核紀錄');
+}
+
+function approvalRecordFromRow_(sheet, headers, row, rowNo) {
+  const idx = name => headers.indexOf(name);
+  const value = name => {
+    const i = idx(name);
+    return i >= 0 ? row[i] : '';
+  };
+  const checkDate = value('檢查日期');
+  const submittedAt = value('送出時間');
+  const payloadRaw = String(value('完整資料JSON') || '');
+  let payload = null;
+  try { payload = payloadRaw ? JSON.parse(payloadRaw) : null; } catch (_) { payload = null; }
+  const formTypeZh = String(value('表單類型') || '');
+  return {
+    sheet,
+    headers,
+    rowNo,
+    recordId: String(value('紀錄ID') || ''),
+    submittedAt: submittedAt instanceof Date
+      ? submittedAt.toISOString()
+      : String(submittedAt || ''),
+    checkDate: checkDate instanceof Date
+      ? formatISODate_(checkDate)
+      : String(checkDate || '').trim(),
+    formType: formTypeZh === '每日' ? 'daily' : 'monthly',
+    formTypeZh,
+    equipmentId: String(value('設備代號') || ''),
+    equipmentName: String(value('設備名稱') || ''),
+    category: String(value('設備類別') || ''),
+    inspector: String(value('檢點人員') || ''),
+    incidentCount: Number(value('異常事件數') || 0),
+    fileUrl: String(value('PDF連結') || ''),
+    status: String(value('簽核狀態') || ''),
+    draftDocId: String(value('草稿DocID') || ''),
+    draftDocUrl: String(value('草稿Doc連結') || ''),
+    payload,
+  };
+}
+
+function updateApprovalRecord_(sheet, headers, rowNo, values) {
+  Object.keys(values).forEach(key => {
+    const col = headers.indexOf(key);
+    if (col >= 0) sheet.getRange(rowNo, col + 1).setValue(values[key]);
+  });
+}
+
+function updateIncidentPdfLinks_(recordId, fileUrl) {
+  const ss = SpreadsheetApp.openById(CONFIG.DB_SHEET_ID);
+  const sheet = ss.getSheetByName('異常事件');
+  if (!sheet || sheet.getLastRow() < 2) return;
+  const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  const recordCol = headers.indexOf('紀錄ID');
+  const pdfCol = headers.indexOf('PDF連結');
+  if (recordCol < 0 || pdfCol < 0) return;
+  const data = sheet.getRange(2, 1, sheet.getLastRow() - 1, headers.length).getValues();
+  for (let i = 0; i < data.length; i++) {
+    if (String(data[i][recordCol] || '') === recordId) {
+      sheet.getRange(i + 2, pdfCol + 1).setValue(fileUrl);
+    }
+  }
+}
+
+function getApprovalSummary_(recordId, token) {
+  const rec = getApprovalRecord_(recordId, token);
+  return {
+    ok: true,
+    record: {
+      recordId: rec.recordId,
+      status: rec.status || '待主管簽核',
+      submittedAt: rec.submittedAt,
+      checkDate: rec.checkDate,
+      formType: rec.formTypeZh,
+      equipmentId: rec.equipmentId,
+      equipmentName: rec.equipmentName,
+      category: rec.category,
+      inspector: rec.inspector,
+      incidentCount: rec.incidentCount,
+      fileUrl: rec.fileUrl,
+    },
+  };
 }
 
 /**
@@ -415,6 +634,9 @@ function findRecordByClientId_(clientId) {
       return {
         recordId: data[i][headers.indexOf('紀錄ID')],
         fileUrl: data[i][headers.indexOf('PDF連結')] || '',
+        approvalPending: headers.indexOf('簽核狀態') >= 0
+          ? String(data[i][headers.indexOf('簽核狀態')] || '') === '待主管簽核'
+          : false,
       };
     }
   }

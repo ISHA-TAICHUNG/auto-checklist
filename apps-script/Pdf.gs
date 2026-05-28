@@ -15,6 +15,15 @@
  */
 
 function buildPdf_(formType, ctx) {
+  const docInfo = createChecklistDoc_(formType, ctx);
+  try {
+    return exportChecklistDocToPdf_(docInfo.docId);
+  } finally {
+    trashChecklistDoc_(docInfo.docId);
+  }
+}
+
+function createChecklistDoc_(formType, ctx) {
   const isDaily = formType === 'daily';
   const docName = 'tmp_pdf_' + ctx.recordId;
   const doc = DocumentApp.create(docName);
@@ -231,19 +240,62 @@ function buildPdf_(formType, ctx) {
     }
 
     doc.saveAndClose();
+    return { docId, docName };
 
-    // ----- 匯出 PDF -----
-    const pdfBlob = DriveApp.getFileById(docId).getAs('application/pdf');
-    return pdfBlob;
-
-  } finally {
-    // 不論成功失敗，刪暫時 Doc
+  } catch (err) {
+    // 成功時交由呼叫端決定是否保留草稿；失敗才清暫時 Doc。
     try {
       DriveApp.getFileById(docId).setTrashed(true);
     } catch (e) {
       Logger.log('刪暫時 Doc 失敗：' + e);
     }
+    throw err;
   }
+}
+
+function exportChecklistDocToPdf_(docId) {
+  return DriveApp.getFileById(docId).getAs('application/pdf');
+}
+
+function trashChecklistDoc_(docId) {
+  try {
+    DriveApp.getFileById(docId).setTrashed(true);
+  } catch (e) {
+    Logger.log('刪暫時 Doc 失敗：' + e);
+  }
+}
+
+function appendSupervisorApprovalToDoc_(docId, supervisorName, supervisorSignature, approvedAt) {
+  const doc = DocumentApp.openById(docId);
+  const body = doc.getBody();
+  const approvedAtStr = Utilities.formatDate(approvedAt, tz_(), 'yyyy/MM/dd HH:mm');
+  if (body.getText().indexOf('主管簽核時間：') >= 0) {
+    doc.saveAndClose();
+    return;
+  }
+
+  body.appendParagraph('');
+  const label = body.appendParagraph('主管簽名：');
+  label.editAsText().setFontSize(11).setBold(true);
+
+  const sigBlob = dataUrlToBlob_(supervisorSignature, 'supervisor_sig.png');
+  if (!sigBlob) throw new Error('主管簽名格式錯誤');
+  const img = body.appendImage(sigBlob);
+  const maxW = 260;
+  if (img.getWidth() > maxW) {
+    const ratio = img.getHeight() / img.getWidth();
+    img.setWidth(maxW);
+    img.setHeight(Math.round(maxW * ratio));
+  }
+
+  const nameP = body.appendParagraph(supervisorName || '');
+  nameP.editAsText().setFontSize(11);
+
+  const timeP = body.appendParagraph('主管簽核時間：' + approvedAtStr);
+  timeP.editAsText().setFontSize(9).setForegroundColor('#888888');
+  timeP.setAlignment(DocumentApp.HorizontalAlignment.RIGHT);
+
+  doc.saveAndClose();
 }
 
 function getPdfItemSection_(it) {
