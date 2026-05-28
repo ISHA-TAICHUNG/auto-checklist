@@ -101,6 +101,7 @@ function handleSubmission_(payload) {
       return {
         order: Number(it.order) || 0,
         name: sanitizeText_(it.name, 200),
+        section: sanitizeText_(it.section, 80),
         result,
         note: sanitizeText_(it.note),
         methods,
@@ -280,6 +281,13 @@ function countIncidents_(payload, allowedResults) {
   return count;
 }
 
+function itemNameWithSection_(it) {
+  const section = String((it && it.section) || '').trim();
+  const name = String((it && it.name) || '').trim();
+  if (!section || section === '安全衛生量測設備及個人防護具') return name;
+  return `${section}：${name}`;
+}
+
 /**
  * 判斷一個 result 值是不是「bad」
  *
@@ -321,7 +329,7 @@ function notifyLineIncidents_(recordId, submittedAt, checkDate, payload, equipme
       category: equipment.category,
       formType: formTypeZh,
       order: it.order,
-      itemName: it.name,
+      itemName: itemNameWithSection_(it),
       result: it.result,
       description: it.abnormalDesc || it.note || '(無說明)',
       photoCount: Array.isArray(it.photos) ? it.photos.length : 0,
@@ -371,7 +379,7 @@ function writeIncidents_({ recordId, submittedAt, checkDate, formType, equipment
     setCol('設備類別', equipment.category);
     setCol('表單類型', formType === 'daily' ? '每日' : '每月');
     setCol('項次', it.order);
-    setCol('項目名稱', it.name);
+    setCol('項目名稱', itemNameWithSection_(it));
     setCol('結果代號', it.result);
     // monthly 用 abnormalDesc，daily 用 note
     setCol('異常說明', it.abnormalDesc || it.note || '');

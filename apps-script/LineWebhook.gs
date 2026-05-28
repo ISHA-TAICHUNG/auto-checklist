@@ -99,7 +99,7 @@ function cmdHelp_(replyToken) {
       '• QR CLASSROOM-LJ-MEAS-PPE — 龍井教室月檢',
       '• QR CLASSROOM-FX-MEAS-PPE — 復興教室月檢',
       '• QR CLASSROOM-ZM-MEAS-PPE — 忠明教室月檢',
-      '• QR PPE-SCBA-MONTHLY — SCBA 月檢',
+      '（SCBA 已併入三間教室月檢表下方區塊）',
       '',
       '（群組內要加 / 或 @ 開頭）',
     ].join('\n'),
@@ -159,6 +159,12 @@ function cmdOpenIncidents_(replyToken) {
 }
 
 function cmdQR_(replyToken, eqp) {
+  if (isLegacyScbaQrEquipment_(eqp)) {
+    return lineReply_(replyToken, {
+      type: 'text',
+      text: 'SCBA 月檢已併入三間教室月檢表下方區塊，請改用 QR選單 選擇龍井、復興或忠明教室月檢。',
+    });
+  }
   const url = (CONFIG.webFrontendUrl || getSettingValue_('webFrontendUrl') || '');
   if (!url) return lineReply_(replyToken, { type: 'text', text: '✗ 系統設定 webFrontendUrl 未填' });
   const targetUrl = buildChecklistQrTargetUrl_(url, eqp);
@@ -180,8 +186,11 @@ function isMonthlyOnlyQrEquipment_(eqp) {
     'CLASSROOM-LJ-MEAS-PPE',
     'CLASSROOM-FX-MEAS-PPE',
     'CLASSROOM-ZM-MEAS-PPE',
-    'PPE-SCBA-MONTHLY',
   ].indexOf(String(eqp || '').trim().toUpperCase()) >= 0;
+}
+
+function isLegacyScbaQrEquipment_(eqp) {
+  return String(eqp || '').trim().toUpperCase() === 'PPE-SCBA-MONTHLY';
 }
 
 function cmdComplete_(replyToken, incIdPrefix, byUserId) {

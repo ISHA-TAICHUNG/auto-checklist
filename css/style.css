@@ -126,6 +126,16 @@ body {
 .field textarea { min-height: 80px; resize: vertical; }
 
 /* ---- 檢查項目列 ---- */
+.item-section-header {
+  margin: 18px -4px 4px;
+  padding: 12px 14px;
+  border-left: 5px solid #1a73e8;
+  border-radius: 8px;
+  background: #e8f0fe;
+  color: #174ea6;
+  font-size: 18px;
+  font-weight: 800;
+}
 .item-row { border-bottom: 1px solid #e8eaed; padding: 18px 0; }
 .item-row:last-child { border-bottom: none; }
 .item-title {

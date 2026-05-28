@@ -3,7 +3,7 @@
  *
  * 來源：
  * - 龍井 / 復興 / 忠明「置備之安全衛生量測設備及個人防護具每月檢核表」
- * - 「都有_置備之個人防護具SCBA每月檢核表.xlsx」
+ * - SCBA 月檢不再獨立成第四張表，而是併入三間教室表單下方獨立區塊。
  *
  * 這批表單是 monthly-only，沿用堆高機「簡式月檢」UI/PDF：
  * 項次 / 檢查部份 / 檢查方法 / 檢查結果 / 改善措施。
@@ -12,7 +12,21 @@
 function getMonthlySafetyPpeDefinitions_() {
   const commonRule = '正常打「ˇ」/ 異常打「X」；異常需填寫說明與改善措施';
   const commonLegal = '職業安全衛生設施規則、職業安全衛生管理辦法';
-  return [
+  const scbaSection = 'SCBA 空氣呼吸器檢查';
+  const scbaItems = [
+    ['面體、吸氣管、呼氣閥、眼睛玻璃罩是否完好', '目視'],
+    ['減壓閥及壓力指示計是否正常', '目視'],
+    ['壓力指示是否在最高填充壓力80%以上', '目視'],
+    ['呼氣閥蓋是否完好', '目視'],
+    ['置放地點溫度是否在40°C以下', '溫度計'],
+    ['主閥是否無洩漏', '有無氣音'],
+    ['高壓導管是否完好', '目視'],
+    ['背負具（背帶、金屬裝置）是否完好', '目視'],
+    ['外表是否保持清潔', '目視'],
+  ].map(item => [item[0], item[1], scbaSection]);
+  const withScbaBlock = items => items.concat(scbaItems);
+
+  const defs = [
     {
       templateId: 'F-LJ-MEAS-PPE-M',
       equipmentId: 'CLASSROOM-LJ-MEAS-PPE',
@@ -22,7 +36,7 @@ function getMonthlySafetyPpeDefinitions_() {
       templateName: '龍井教室置備之安全衛生量測設備及個人防護具每月檢核表',
       legalBasis: commonLegal,
       rule: commonRule,
-      items: [
+      items: withScbaBlock([
         ['安全帽', '數量/外觀/操作；應備1頂；石頭牌安全帽 型號：SM-901'],
         ['安全鞋', '數量/外觀/操作；應備1雙；藍鷹牌橡膠鞋底安全鞋 型號：EN.345.99.S5'],
         ['安全帶', '數量/外觀/操作；應備1條；HC-321豪華型插扣式'],
@@ -45,7 +59,7 @@ function getMonthlySafetyPpeDefinitions_() {
         ['風速計', '數量/外觀/操作；應備1台；TM-412 S/N:131100169'],
         ['WBGT測定設備', '數量/外觀/操作；應備1組；MC黑球溫度計'],
         ['檢電器具', '數量/外觀/操作；應備1部；LVD-15'],
-      ],
+      ]),
     },
     {
       templateId: 'F-FX-MEAS-PPE-M',
@@ -56,7 +70,7 @@ function getMonthlySafetyPpeDefinitions_() {
       templateName: '復興教室置備之安全衛生量測設備及個人防護具每月檢核表',
       legalBasis: commonLegal,
       rule: commonRule,
-      items: [
+      items: withScbaBlock([
         ['安全帽', '數量/外觀/操作；應備1頂；0.P0歐堡牌產業用防護頭盔-型號：SN-70-1'],
         ['安全鞋', '數量/外觀/操作；應備1雙；牛頭牌橡膠鞋底安全鞋 型號：SB-SRA-FO'],
         ['安全帶', '數量/外觀/操作；應備1條；背負式18-44-601013-3M'],
@@ -79,7 +93,7 @@ function getMonthlySafetyPpeDefinitions_() {
         ['風速計', '數量/外觀/操作；應備1台；TM-4001序號190800184'],
         ['WBGT測定設備', '數量/外觀/操作；應備1組；MC黑球溫度計'],
         ['檢電器具', "數量/外觀/操作；應備1部；Pro'sKit NT-309"],
-      ],
+      ]),
     },
     {
       templateId: 'F-ZM-MEAS-PPE-M',
@@ -90,7 +104,7 @@ function getMonthlySafetyPpeDefinitions_() {
       templateName: '忠明教室置備之安全衛生量測設備及個人防護具每月檢核表',
       legalBasis: commonLegal,
       rule: commonRule,
-      items: [
+      items: withScbaBlock([
         ['安全帽', '數量/外觀/操作；應備1頂；石頭牌 HM'],
         ['安全鞋', '數量/外觀/操作；應備1雙；牛頭牌steel toe97'],
         ['安全帶', '數量/外觀/操作；應備1條；巨力 標準單掛勾'],
@@ -113,30 +127,10 @@ function getMonthlySafetyPpeDefinitions_() {
         ['風速計', '數量/外觀/操作；應備1台；TES-1340 S/N：120207379'],
         ['WBGT測定設備', '數量/外觀/操作；應備1組；黑球溫度計'],
         ['檢電器具', '數量/外觀/操作；應備1部；LVD-15'],
-      ],
-    },
-    {
-      templateId: 'F-SCBA-M',
-      equipmentId: 'PPE-SCBA-MONTHLY',
-      category: '個人防護具SCBA',
-      equipmentName: '空氣呼吸器（SCBA）月檢',
-      location: '各教室',
-      templateName: '置備之個人防護具SCBA每月檢核表',
-      legalBasis: commonLegal,
-      rule: commonRule,
-      items: [
-        ['面體、吸氣管、呼氣閥、眼睛玻璃罩是否完好', '目視'],
-        ['減壓閥及壓力指示計是否正常', '目視'],
-        ['壓力指示是否在最高填充壓力80%以上', '目視'],
-        ['呼氣閥蓋是否完好', '目視'],
-        ['置放地點溫度是否在40°C以下', '溫度計'],
-        ['主閥是否無洩漏', '有無氣音'],
-        ['高壓導管是否完好', '目視'],
-        ['背負具（背帶、金屬裝置）是否完好', '目視'],
-        ['外表是否保持清潔', '目視'],
-      ],
+      ]),
     },
   ];
+  return defs;
 }
 
 function getMonthlySafetyPpeReminderCategories_() {
@@ -150,7 +144,17 @@ function isMonthlySafetyPpeReminderCategory_(category) {
 function addMonthlySafetyPpeForms() {
   const ss = SpreadsheetApp.openById(CONFIG.DB_SHEET_ID);
   const defs = getMonthlySafetyPpeDefinitions_();
-  const out = { templatesAdded: 0, templatesUpdated: 0, equipmentsAdded: 0, equipmentsUpdated: 0, itemsAdded: 0, itemsUpdated: 0 };
+  const out = {
+    templatesAdded: 0,
+    templatesUpdated: 0,
+    equipmentsAdded: 0,
+    equipmentsUpdated: 0,
+    itemsAdded: 0,
+    itemsUpdated: 0,
+    legacyTemplatesDisabled: 0,
+    legacyEquipmentsDisabled: 0,
+    legacyItemsDisabled: 0,
+  };
 
   const tplSheet = ss.getSheetByName('檢查表模板');
   const tplHeaders = tplSheet.getRange(1, 1, 1, tplSheet.getLastColumn()).getValues()[0];
@@ -230,7 +234,7 @@ function addMonthlySafetyPpeForms() {
       const values = {
         '表單ID': def.templateId,
         '項目順序': order,
-        '項目名稱': item[0],
+        '項目名稱': formatMonthlySafetyPpeStoredItemName_(item),
         '檢查方法': item[1],
         '啟用': '是',
       };
@@ -246,11 +250,72 @@ function addMonthlySafetyPpeForms() {
     });
   });
 
+  disableLegacyMonthlyScbaForm_(ss, out);
+
   try { applyChineseSettingsAndDropdowns(); } catch (e) { Logger.log('dropdown 重套失敗：' + e); }
   try { applyColumnWidthsAndWrap_(); } catch (e) { Logger.log('欄寬重套失敗：' + e); }
 
   Logger.log('addMonthlySafetyPpeForms 完成：' + JSON.stringify(out));
   return out;
+}
+
+function formatMonthlySafetyPpeStoredItemName_(item) {
+  const name = item[0];
+  const section = item[2] || '';
+  return section ? `【${section}】${name}` : name;
+}
+
+function disableLegacyMonthlyScbaForm_(ss, out) {
+  const legacyTemplateId = 'F-SCBA-M';
+  const legacyEquipmentId = 'PPE-SCBA-MONTHLY';
+
+  const tplSheet = ss.getSheetByName('檢查表模板');
+  if (tplSheet && tplSheet.getLastRow() > 1) {
+    const headers = tplSheet.getRange(1, 1, 1, tplSheet.getLastColumn()).getValues()[0];
+    const idCol = headers.indexOf('表單ID');
+    const activeCol = headers.indexOf('啟用');
+    if (idCol >= 0 && activeCol >= 0) {
+      const rows = tplSheet.getRange(2, 1, tplSheet.getLastRow() - 1, headers.length).getValues();
+      rows.forEach((row, i) => {
+        if (String(row[idCol] || '') !== legacyTemplateId) return;
+        if (!isActiveValue_(row[activeCol])) return;
+        tplSheet.getRange(i + 2, activeCol + 1).setValue('否');
+        out.legacyTemplatesDisabled++;
+      });
+    }
+  }
+
+  const eqSheet = ss.getSheetByName('設備清單');
+  if (eqSheet && eqSheet.getLastRow() > 1) {
+    const headers = eqSheet.getRange(1, 1, 1, eqSheet.getLastColumn()).getValues()[0];
+    const idCol = headers.indexOf('設備代號');
+    const activeCol = headers.indexOf('啟用');
+    if (idCol >= 0 && activeCol >= 0) {
+      const rows = eqSheet.getRange(2, 1, eqSheet.getLastRow() - 1, headers.length).getValues();
+      rows.forEach((row, i) => {
+        if (String(row[idCol] || '') !== legacyEquipmentId) return;
+        if (!isActiveValue_(row[activeCol])) return;
+        eqSheet.getRange(i + 2, activeCol + 1).setValue('否');
+        out.legacyEquipmentsDisabled++;
+      });
+    }
+  }
+
+  const itemSheet = ss.getSheetByName('檢查項目');
+  if (itemSheet && itemSheet.getLastRow() > 1) {
+    const headers = itemSheet.getRange(1, 1, 1, itemSheet.getLastColumn()).getValues()[0];
+    const tplCol = headers.indexOf('表單ID');
+    const activeCol = headers.indexOf('啟用');
+    if (tplCol >= 0 && activeCol >= 0) {
+      const rows = itemSheet.getRange(2, 1, itemSheet.getLastRow() - 1, headers.length).getValues();
+      rows.forEach((row, i) => {
+        if (String(row[tplCol] || '') !== legacyTemplateId) return;
+        if (!isActiveValue_(row[activeCol])) return;
+        itemSheet.getRange(i + 2, activeCol + 1).setValue('否');
+        out.legacyItemsDisabled++;
+      });
+    }
+  }
 }
 
 function setSheetRowValues_(sheet, headers, rowNo, values) {

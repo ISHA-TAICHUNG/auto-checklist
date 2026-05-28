@@ -75,10 +75,17 @@ function buildPdf_(formType, ctx) {
         // 堆高機月檢樣式：項次/檢查部份/檢查方法/檢查結果/改善措施
         rows = [['項次', '檢查部份', '檢查方法', '檢查結果', '改善措施']];
         colWidths = [30, 160, 55, 90, 125];   // 共 460
+        const hasSections = ctx.payload.items.some(it => getPdfItemSection_(it));
+        let lastSection = '';
         ctx.payload.items.forEach(it => {
+          const section = getPdfItemSection_(it);
+          if (hasSections && section !== lastSection) {
+            rows.push(['', section || '檢查項目', '', '', '']);
+            lastSection = section;
+          }
           rows.push([
             String(it.order),
-            it.name,
+            getPdfItemName_(it),
             it.method || (it.methods || []).join('/'),
             it.result || '',
             it.action || '',
@@ -182,7 +189,7 @@ function buildPdf_(formType, ctx) {
           photoPageIdx++;
 
           // 項次 + 名稱
-          const labelP = body.appendParagraph(`第 ${it.order} 項：${it.name}`);
+          const labelP = body.appendParagraph(`第 ${it.order} 項：${itemNameWithPdfSection_(it)}`);
           labelP.editAsText().setFontSize(12).setBold(true).setForegroundColor('#1a73e8');
 
           // 異常說明
@@ -239,6 +246,27 @@ function buildPdf_(formType, ctx) {
   }
 }
 
+function getPdfItemSection_(it) {
+  const explicit = String((it && it.section) || '').trim();
+  if (explicit) return explicit;
+  const rawName = String((it && it.name) || '');
+  const match = rawName.match(/^【([^】]+)】\s*(.*)$/);
+  return match ? match[1] : '';
+}
+
+function getPdfItemName_(it) {
+  const rawName = String((it && it.name) || '');
+  const match = rawName.match(/^【([^】]+)】\s*(.*)$/);
+  return match ? (match[2] || rawName) : rawName;
+}
+
+function itemNameWithPdfSection_(it) {
+  const section = getPdfItemSection_(it);
+  const name = getPdfItemName_(it);
+  if (!section || section === '安全衛生量測設備及個人防護具') return name;
+  return `${section}：${name}`;
+}
+
 /** 設備資訊表樣式：label 灰底、border、字 10pt */
 function styleMetaTable_(table) {
   const numRows = table.getNumRows();
@@ -284,6 +312,7 @@ function styleItemsTable_(table, colWidths, isDaily, resultOptions) {
   for (let r = 0; r < numRows; r++) {
     const row = table.getRow(r);
     const numCols = row.getNumCells();
+    const isSectionRow = !isDaily && r > 0 && row.getCell(0).editAsText().getText() === '';
     for (let c = 0; c < numCols; c++) {
       const cell = row.getCell(c);
       cell.setPaddingTop(4).setPaddingBottom(4).setPaddingLeft(6).setPaddingRight(6);
@@ -296,6 +325,10 @@ function styleItemsTable_(table, colWidths, isDaily, resultOptions) {
         cell.setBackgroundColor('#1a73e8');
         text.setForegroundColor('#ffffff').setBold(true);
         setCenter(cell);
+      } else if (isSectionRow) {
+        cell.setBackgroundColor('#e8f0fe');
+        text.setForegroundColor('#174ea6').setBold(true);
+        if (c !== 1) setCenter(cell);
       } else {
         if (c === 0) setCenter(cell);
         if (isDaily && c === 2) {

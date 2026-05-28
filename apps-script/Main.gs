@@ -141,7 +141,7 @@ function doGet(e) {
             break;
           }
           case 'addMonthlySafetyPpeForms': {
-            // 加龍井/復興/忠明量測設備及 PPE 月檢 + SCBA 月檢
+            // 加龍井/復興/忠明量測設備及 PPE 月檢；SCBA 併入三張表下方區塊
             const summary = addMonthlySafetyPpeForms();
             result = { ok: true, action, summary };
             break;

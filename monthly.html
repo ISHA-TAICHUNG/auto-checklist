@@ -42,6 +42,8 @@
 
     if (!eqp) {
       showError('未指定設備（缺少 eqp 參數）');
+    } else if (eqp.toUpperCase() === 'PPE-SCBA-MONTHLY') {
+      showLegacyScbaNotice();
     } else {
       loadForm();
     }
@@ -53,6 +55,39 @@
       div.className = 'alert alert-error';
       div.textContent = msg;
       root.appendChild(div);
+    }
+
+    function showLegacyScbaNotice() {
+      const root = document.getElementById('content');
+      root.textContent = '';
+      const card = document.createElement('div');
+      card.className = 'card';
+
+      const title = document.createElement('h2');
+      title.className = 'card-title';
+      title.textContent = 'SCBA 月檢已併入教室月檢';
+      card.appendChild(title);
+
+      const msg = document.createElement('div');
+      msg.className = 'alert alert-info';
+      msg.textContent = '請選擇教室月檢表，SCBA 檢查項目會在表單下方以獨立區塊呈現。';
+      card.appendChild(msg);
+
+      const actions = document.createElement('div');
+      actions.className = 'equip-actions';
+      [
+        ['龍井月檢', 'CLASSROOM-LJ-MEAS-PPE'],
+        ['復興月檢', 'CLASSROOM-FX-MEAS-PPE'],
+        ['忠明月檢', 'CLASSROOM-ZM-MEAS-PPE'],
+      ].forEach(([label, id]) => {
+        const link = document.createElement('a');
+        link.className = 'btn-monthly';
+        link.href = 'monthly.html?eqp=' + encodeURIComponent(id);
+        link.textContent = label;
+        actions.appendChild(link);
+      });
+      card.appendChild(actions);
+      root.appendChild(card);
     }
 
     async function loadForm() {
@@ -126,8 +161,18 @@
       // 把 lockedItems 轉成 Map by order
       const lockedByOrder = {};
       lockedItems.forEach(l => { lockedByOrder[l.order] = l; });
+      const hasSectionedItems = formMeta.items.some(hasMonthlyItemSection);
+      let lastSection = '';
 
       formMeta.items.forEach((it, idx) => {
+        const display = getMonthlyItemDisplay(it);
+        it._section = display.section;
+        it._displayName = display.name;
+        if (hasSectionedItems && display.section !== lastSection) {
+          itemsCard.body.appendChild(makeSectionHeader(display.section));
+          lastSection = display.section;
+        }
+
         const lock = lockedByOrder[it.order] || null;
         const row = document.createElement('div');
         row.className = 'item-row' + (lock ? ' item-locked' : '');
@@ -140,7 +185,7 @@
         title.appendChild(order);
         const text = document.createElement('span');
         text.className = 'text';
-        text.textContent = it.name;
+        text.textContent = display.name;
         title.appendChild(text);
         row.appendChild(title);
 
@@ -328,6 +373,24 @@
       return { card, body: card };
     }
 
+    function hasMonthlyItemSection(it) {
+      return /^【[^】]+】/.test(String((it && it.name) || ''));
+    }
+
+    function getMonthlyItemDisplay(it) {
+      const rawName = String((it && it.name) || '');
+      const match = rawName.match(/^【([^】]+)】\s*(.*)$/);
+      if (match) return { section: match[1], name: match[2] || rawName };
+      return { section: '安全衛生量測設備及個人防護具', name: rawName };
+    }
+
+    function makeSectionHeader(text) {
+      const div = document.createElement('div');
+      div.className = 'item-section-header';
+      div.textContent = text;
+      return div;
+    }
+
     function addGridRow(grid, label, value) {
       const l = document.createElement('div');
       l.className = 'label';
@@ -422,7 +485,8 @@
           : [];
         items.push({
           order: it.order,
-          name: it.name,
+          name: it._displayName || it.name,
+          section: it._section || '',
           methods,
           method,                                                 // simple schema 用
           result,

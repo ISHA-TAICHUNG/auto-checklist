@@ -125,7 +125,7 @@ function defaultQuickReply_() {
 /**
  * 設備 QR 選單按鈕（點「QR 選單」後回的子按鈕）
  *
- * LINE Quick Reply 最多 13 個 items；目前 9 個既有入口 + 4 個月檢入口剛好滿。
+ * LINE Quick Reply 最多 13 個 items；目前 9 個既有入口 + 3 個月檢入口 + 回主選單剛好滿。
  */
 function equipmentQuickReply_() {
   return {
@@ -142,7 +142,7 @@ function equipmentQuickReply_() {
       { type: 'action', action: { type: 'message', label: '📋 龍井月檢',   text: 'QR CLASSROOM-LJ-MEAS-PPE' } },
       { type: 'action', action: { type: 'message', label: '📋 復興月檢',   text: 'QR CLASSROOM-FX-MEAS-PPE' } },
       { type: 'action', action: { type: 'message', label: '📋 忠明月檢',   text: 'QR CLASSROOM-ZM-MEAS-PPE' } },
-      { type: 'action', action: { type: 'message', label: '🫁 SCBA月檢',   text: 'QR PPE-SCBA-MONTHLY' } },
+      { type: 'action', action: { type: 'message', label: '↩ 回主選單',    text: '幫助' } },
     ],
   };
 }
