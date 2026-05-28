@@ -389,7 +389,7 @@ function approvalPageResponse_() {
     .createHtmlOutputFromFile('ApprovalPage')
     .setTitle('主管簽核')
     .addMetaTag('viewport', 'width=device-width, initial-scale=1, maximum-scale=1')
-    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.DEFAULT);
 }
 
 function getApprovalForPage(recordId, token) {

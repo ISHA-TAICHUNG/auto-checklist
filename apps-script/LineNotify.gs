@@ -8,6 +8,7 @@
  *   - LINE_CHANNEL_SECRET        (選填) Webhook 簽章驗證用
  *   - LINE_TARGET_GROUP_ID       (推薦) 通知群組 ID（最高優先）
  *   - LINE_TARGET_USER_IDS       (備用) 逗號分隔 userId list（multicast）
+ *   - SUPERVISOR_USER_IDS        (選填) 主管簽核通知專用 userId list
  *   - LINE_ADMIN_USER_IDS        (選填) 管理者 userId（升級通知用）
  *
  * 公開函式：
@@ -30,6 +31,7 @@ function getLineConfig_() {
     secret: p.getProperty('LINE_CHANNEL_SECRET') || '',
     groupId: p.getProperty('LINE_TARGET_GROUP_ID') || '',
     userIds: (p.getProperty('LINE_TARGET_USER_IDS') || '').split(',').map(s => s.trim()).filter(Boolean),
+    supervisorIds: (p.getProperty('SUPERVISOR_USER_IDS') || '').split(',').map(s => s.trim()).filter(Boolean),
     adminIds: (p.getProperty('LINE_ADMIN_USER_IDS') || '').split(',').map(s => s.trim()).filter(Boolean),
   };
 }
@@ -423,7 +425,11 @@ function sendApprovalRequest_(record) {
     return { ok: false, reason: 'invalid_approval_url' };
   }
   const flex = buildApprovalRequestFlex_(record);
-  return linePush_(withQuickReply_(flex));
+  const cfg = getLineConfig_();
+  const messages = withQuickReply_(flex);
+  if (cfg.supervisorIds.length > 1) return lineMulticast_(cfg.supervisorIds, messages);
+  if (cfg.supervisorIds.length === 1) return linePushTo_(cfg.supervisorIds[0], messages, 'push');
+  return linePush_(messages);
 }
 
 /**
