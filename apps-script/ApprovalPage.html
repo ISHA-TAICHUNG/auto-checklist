@@ -259,7 +259,7 @@
     }
 
     if (!recordId || !token) {
-      showError('簽核連結缺少必要參數');
+      showError('簽核連結缺少必要參數，請從最新的主管簽核 LINE 卡片重新開啟');
     } else {
       google.script.run
         .withSuccessHandler(res => {

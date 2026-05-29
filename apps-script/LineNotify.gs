@@ -65,6 +65,20 @@ function getSupervisorUserIdsFromSheet_() {
   }
 }
 
+function linePushToSupervisors_(messages) {
+  const cfg = getLineConfig_();
+  if (!cfg.token) {
+    Logger.log('[LINE supervisor] LINE_CHANNEL_ACCESS_TOKEN 未設定，略過 push');
+    return { ok: false, reason: 'no_token' };
+  }
+  if (!Array.isArray(messages)) messages = [messages];
+  const supervisorIds = getSupervisorUserIds_();
+  if (supervisorIds.length > 1) return lineMulticast_(supervisorIds, messages);
+  if (supervisorIds.length === 1) return linePushTo_(supervisorIds[0], messages, 'push');
+  Logger.log('[LINE supervisor] 無啟用主管，略過主管通知');
+  return { ok: false, reason: 'no_supervisor' };
+}
+
 /**
  * 底層 push：依設定優先級選 target
  *   群組 > multicast(多 userId) > 單 userId
@@ -436,6 +450,11 @@ function sendReminder_(category, equipments, webFrontendUrl, opts) {
   return linePush_(withQuickReply_(flex));
 }
 
+function sendSupervisorReminder_(category, equipments, webFrontendUrl, opts) {
+  const flex = buildReminderFlex_(category, equipments, webFrontendUrl || '', opts);
+  return linePushToSupervisors_(withQuickReply_(flex));
+}
+
 /**
  * 高層 API：寄異常即時通報
  * incident.fileUrl  → 該次填報 PDF（優先顯示）
@@ -455,10 +474,7 @@ function sendApprovalRequest_(record) {
   }
   const flex = buildApprovalRequestFlex_(record);
   const messages = withQuickReply_(flex);
-  const supervisorIds = getSupervisorUserIds_();
-  if (supervisorIds.length > 1) return lineMulticast_(supervisorIds, messages);
-  if (supervisorIds.length === 1) return linePushTo_(supervisorIds[0], messages, 'push');
-  return linePush_(messages);
+  return linePushToSupervisors_(messages);
 }
 
 /**

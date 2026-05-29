@@ -340,12 +340,26 @@ function getMonthlyReminderStartDay_() {
   return Math.floor(raw);
 }
 
+/**
+ * 教室月檢「應檢期」(window)：當期可填的時段
+ * 預設每月 1~5 號（依承辦實務「月初填寫」設定）
+ * 可在 DB 系統設定 monthlyCheckWindowStart / monthlyCheckWindowEnd 覆蓋
+ */
+function getMonthlyCheckWindow_() {
+  const start = Number(getSetting_('monthlyCheckWindowStart', '1'));
+  const end = Number(getSetting_('monthlyCheckWindowEnd', '5'));
+  const safeStart = (!start || start < 1 || start > 31) ? 1 : Math.floor(start);
+  const safeEnd = (!end || end < safeStart || end > 31) ? Math.max(safeStart, 5) : Math.floor(end);
+  return { start: safeStart, end: safeEnd };
+}
+
 function monthlyReminderJob_(opts) {
   opts = opts || {};
   const dryRun = !!opts.dryRun;
   const today = opts.today || todayStart_();
   const day = dateParts_(today).d;
   const startDay = getMonthlyReminderStartDay_();
+  const checkWindow = getMonthlyCheckWindow_();
   const equipments = getEquipmentList_();
   const sentCategories = new Set();
   const results = [];
@@ -367,8 +381,12 @@ function monthlyReminderJob_(opts) {
       continue;
     }
 
-    if (day < startDay) {
-      results.push(Object.assign({}, base, { action: 'skip', reason: `未到月檢提醒起始日（每月${startDay}日）` }));
+    const inCheckWindow = (day >= checkWindow.start && day <= checkWindow.end);
+    const inReminderPeriod = (day >= startDay);
+
+    // 非「應檢期」也非「補填提醒期」→ 完全隱藏，不 push 到 results
+    //   結果：cmdStatus_ 不會列、reminderStatus 也不會出現（避免 6~24 號之間冗餘訊息）
+    if (!inCheckWindow && !inReminderPeriod) {
       continue;
     }
 
@@ -377,6 +395,17 @@ function monthlyReminderJob_(opts) {
       continue;
     }
 
+    // 應檢期內未填 → 顯示在狀態（讓承辦看進度），但不寄信（避免月初就吵）
+    if (inCheckWindow && !inReminderPeriod) {
+      results.push(Object.assign({}, base, {
+        action: dryRun ? 'inWindow' : 'inWindow',
+        reason: `本月應檢期(${checkWindow.start}-${checkWindow.end}日)尚未填`,
+      }));
+      sentCategories.add(full.category);
+      continue;
+    }
+
+    // 已到補填提醒期（≥ startDay）+ 未填 → 寄信
     if (!dryRun) sendMonthlyUnfilledReminder_(full, today);
     sentCategories.add(full.category);
     results.push(Object.assign({}, base, { action: dryRun ? 'wouldMail' : 'mailed', reason: '本月尚未填月檢' }));
@@ -449,7 +478,7 @@ function sendMonthlyUnfilledReminder_(equipment, date) {
 
   if (hasLineToken) {
     try {
-      const r = sendReminder_(equipment.category, [equipment], safeFillLink, {
+      const r = sendSupervisorReminder_(equipment.category, [equipment], safeFillLink, {
         title: '本月未完成月檢',
         dateLabel: rocMonth,
         itemLabel: '待填表單',

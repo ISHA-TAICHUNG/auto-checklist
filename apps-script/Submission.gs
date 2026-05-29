@@ -163,20 +163,37 @@ function handleSubmission_(payload) {
       // 取對應檢查表模板（codex P2: PDF 動態抓 templateName / legalBasis / rule）
       const tplMeta = getTemplateForCategoryCycle_(equipment.category, payload.formType);
 
-      const approvalToken = createApprovalToken_();
-      const approvalUrl = buildApprovalUrl_(recordId, approvalToken);
-      if (!approvalUrl) throw new Error('系統設定 webFrontendUrl 未填，無法建立主管簽核連結');
+      const needsApproval = requiresSupervisorApproval_(payload.formType, equipment);
+      let approvalToken = '';
+      let approvalUrl = '';
+      let docInfo = null;
+      let draftDocUrl = '';
+      let fileUrl = '';
 
-      // 1. 先產「待簽核 Google Doc」而非正式 PDF；主管簽完後才匯出 PDF 歸檔。
-      const docInfo = createChecklistDoc_(payload.formType, {
-        recordId, submittedAt, checkDate, equipment, payload, template: tplMeta,
-      });
-      const draftFile = DriveApp.getFileById(docInfo.docId);
-      draftFile.setName(buildDraftDocFilename_(payload.formType, checkDate, equipment));
-      const pendingFolder = getOrCreatePendingApprovalFolder_();
-      draftFile.moveTo(pendingFolder);
-      const draftDocUrl = draftFile.getUrl();
-      const fileUrl = '';
+      if (needsApproval) {
+        approvalToken = createApprovalToken_();
+        approvalUrl = buildApprovalUrl_(recordId, approvalToken);
+        if (!approvalUrl) throw new Error('系統設定 webAppUrl 未填，無法建立主管簽核連結');
+
+        // 主管簽核表單：先產「待簽核 Google Doc」，主管簽完後才匯出 PDF 歸檔。
+        docInfo = createChecklistDoc_(payload.formType, {
+          recordId, submittedAt, checkDate, equipment, payload, template: tplMeta,
+        });
+        const draftFile = DriveApp.getFileById(docInfo.docId);
+        draftFile.setName(buildDraftDocFilename_(payload.formType, checkDate, equipment));
+        const pendingFolder = getOrCreatePendingApprovalFolder_();
+        draftFile.moveTo(pendingFolder);
+        draftDocUrl = draftFile.getUrl();
+      } else {
+        // 一般日檢 / 機具月檢 / 防護具日檢：檢查人簽名後直接正式歸檔，不走主管簽核。
+        const pdfBlob = buildPdf_(payload.formType, {
+          recordId, submittedAt, checkDate, equipment, payload, template: tplMeta,
+        });
+        pdfBlob.setName(buildPdfFilename_(payload.formType, checkDate, equipment));
+        const folder = getOrCreateArchiveFolder_(equipment.category, checkDate);
+        const file = folder.createFile(pdfBlob);
+        fileUrl = file.getUrl();
+      }
 
       // 3-4. 寫紀錄 + 異常事件
       //
@@ -193,16 +210,26 @@ function handleSubmission_(payload) {
       try {
         writeRecord_({ recordId, submittedAt, checkDate, formType: payload.formType,
                        equipment, payload, fileUrl, incidentCount,
-                       approval: {
-                         status: '待主管簽核',
-                         token: approvalToken,
-                         draftDocId: docInfo.docId,
-                         draftDocUrl,
-                       } });
+                       approval: needsApproval
+                         ? {
+                           status: '待主管簽核',
+                           token: approvalToken,
+                           draftDocId: docInfo.docId,
+                           draftDocUrl,
+                         }
+                         : { status: '簽核略過' } });
       } catch (writeErr) {
-        // 主紀錄寫失敗 → 草稿 Doc 是孤兒，清理
-        Logger.log('writeRecord_ 失敗，清理孤兒草稿 Doc: ' + writeErr + '\n' + (writeErr.stack || ''));
-        trashChecklistDoc_(docInfo.docId);
+        // 主紀錄寫失敗 → 清理孤兒檔案
+        Logger.log('writeRecord_ 失敗，清理孤兒檔案: ' + writeErr + '\n' + (writeErr.stack || ''));
+        if (docInfo && docInfo.docId) trashChecklistDoc_(docInfo.docId);
+        if (fileUrl) {
+          try {
+            const idMatch = String(fileUrl).match(/\/d\/([^/]+)/);
+            if (idMatch && idMatch[1]) DriveApp.getFileById(idMatch[1]).setTrashed(true);
+          } catch (cleanupErr) {
+            Logger.log('清理孤兒 PDF 失敗: ' + cleanupErr);
+          }
+        }
         throw writeErr;
       }
       // 主紀錄已成功，異常追蹤失敗時只 log（不影響使用者結果）
@@ -221,26 +248,29 @@ function handleSubmission_(payload) {
       }
 
       let approvalNotice = null;
-      try {
-        approvalNotice = notifySupervisorApprovalRequest_({
-          recordId,
-          submittedAt,
-          checkDate,
-          formType: payload.formType,
-          equipment,
-          inspector: payload.inspector,
-          incidentCount,
-          approvalUrl,
-        });
-      } catch (lineErr) {
-        Logger.log('[LINE approval push] 失敗: ' + lineErr + '\n' + (lineErr.stack || ''));
-        approvalNotice = { ok: false, reason: 'line_error' };
+      if (needsApproval) {
+        try {
+          approvalNotice = notifySupervisorApprovalRequest_({
+            recordId,
+            submittedAt,
+            checkDate,
+            formType: payload.formType,
+            equipment,
+            inspector: payload.inspector,
+            incidentCount,
+            approvalUrl,
+          });
+        } catch (lineErr) {
+          Logger.log('[LINE approval push] 失敗: ' + lineErr + '\n' + (lineErr.stack || ''));
+          approvalNotice = { ok: false, reason: 'line_error' };
+        }
       }
 
       return {
         ok: true,
         recordId,
-        approvalPending: true,
+        fileUrl,
+        approvalPending: needsApproval,
         approvalNotice,
         incidentCount,
       };
@@ -311,10 +341,19 @@ function createApprovalToken_() {
   return (Utilities.getUuid() + Utilities.getUuid()).replace(/-/g, '');
 }
 
+function requiresSupervisorApproval_(formType, equipment) {
+  if (formType !== 'monthly' || !equipment) return false;
+  return [
+    'CLASSROOM-LJ-MEAS-PPE',
+    'CLASSROOM-FX-MEAS-PPE',
+    'CLASSROOM-ZM-MEAS-PPE',
+  ].indexOf(String(equipment.equipmentId || '').trim().toUpperCase()) >= 0;
+}
+
 function buildApprovalUrl_(recordId, token) {
   const base = getSetting_('webAppUrl', '') || ScriptApp.getService().getUrl();
   if (!base || !/^https?:\/\//.test(base)) return '';
-  return base.replace(/\/+$/, '') +
+  return base.split('?')[0].replace(/\/+$/, '') +
     '?page=approve&recordId=' + encodeURIComponent(recordId) +
     '&token=' + encodeURIComponent(token);
 }
