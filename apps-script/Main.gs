@@ -413,12 +413,21 @@ function friendlyError_(err) {
 function approvalPageResponse_(e) {
   const params = (e && e.parameter) || {};
   const tpl = HtmlService.createTemplateFromFile('ApprovalPage');
-  tpl.approvalRecordIdJson = JSON.stringify(String(params.recordId || ''));
-  tpl.approvalTokenJson = JSON.stringify(String(params.token || ''));
+  tpl.approvalRecordIdJson = scriptSafeJson_(params.recordId);
+  tpl.approvalTokenJson = scriptSafeJson_(params.token);
   return tpl.evaluate()
     .setTitle('主管簽核')
     .addMetaTag('viewport', 'width=device-width, initial-scale=1, maximum-scale=1')
     .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.DEFAULT);
+}
+
+function scriptSafeJson_(value) {
+  return JSON.stringify(String(value || ''))
+    .replace(/</g, '\\u003c')
+    .replace(/>/g, '\\u003e')
+    .replace(/&/g, '\\u0026')
+    .replace(/\u2028/g, '\\u2028')
+    .replace(/\u2029/g, '\\u2029');
 }
 
 function getApprovalForPage(recordId, token) {
