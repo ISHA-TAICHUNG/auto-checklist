@@ -118,7 +118,8 @@ function cmdQRList_(replyToken) {
 }
 
 function cmdStatus_(replyToken) {
-  // 跑 dryRun 的 dailyReminderJob 拿狀態
+  // 跑 dryRun 的 dailyReminderJob 拿狀態（含 monthlyReminderJob_ 已過濾的月檢結果）
+  // 月檢設備：非應檢期(1-5)且非補填提醒期(25+)時，monthlyReminderJob_ 已完全不 push，狀態不會列
   const results = dailyReminderJob({ dryRun: true });
   const today = formatROCDate_(new Date());
   const lines = [`📅 ${today} 填表狀態`, ''];
@@ -130,9 +131,17 @@ function cmdStatus_(replyToken) {
   });
   Object.keys(byCat).forEach(cat => {
     const items = byCat[cat];
-    const filled = items.filter(r => r.reason === '該類別當日已填').length;
+    if (items.length === 0) return;
+    // 「已填」分子：日檢的「該類別當日已填」或月檢的「該類別本月已填」
+    const filled = items.filter(r =>
+      r.reason === '該類別當日已填' || r.reason === '該類別本月已填'
+    ).length;
     lines.push(`【${cat}】${filled}/${items.length} 完成`);
-    items.filter(r => !r.alreadyFilled && r.reason !== '該類別當日已填').forEach(r => {
+    items.filter(r =>
+      !r.alreadyFilled &&
+      r.reason !== '該類別當日已填' &&
+      r.reason !== '該類別本月已填'
+    ).forEach(r => {
       lines.push(`  ⚠ ${r.equipmentName || r.equipmentId} — ${r.reason || ''}`);
     });
   });
