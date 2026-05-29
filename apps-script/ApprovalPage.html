@@ -139,9 +139,13 @@
   </main>
 
   <script>
+    const injectedParams = {
+      recordId: <?!= approvalRecordIdJson ?>,
+      token: <?!= approvalTokenJson ?>,
+    };
     const params = new URLSearchParams(location.search);
-    const recordId = params.get('recordId') || '';
-    const token = params.get('token') || '';
+    const recordId = params.get('recordId') || injectedParams.recordId || '';
+    const token = params.get('token') || injectedParams.token || '';
     let record = null;
     let sigPad = null;
 

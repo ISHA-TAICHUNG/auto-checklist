@@ -24,7 +24,7 @@ function doGet(e) {
 
   try {
     if (e && e.parameter && e.parameter.page === 'approve') {
-      return approvalPageResponse_();
+      return approvalPageResponse_(e);
     }
 
     let result;
@@ -410,9 +410,12 @@ function friendlyError_(err) {
   return '系統處理失敗，請聯絡管理員';
 }
 
-function approvalPageResponse_() {
-  return HtmlService
-    .createHtmlOutputFromFile('ApprovalPage')
+function approvalPageResponse_(e) {
+  const params = (e && e.parameter) || {};
+  const tpl = HtmlService.createTemplateFromFile('ApprovalPage');
+  tpl.approvalRecordIdJson = JSON.stringify(String(params.recordId || ''));
+  tpl.approvalTokenJson = JSON.stringify(String(params.token || ''));
+  return tpl.evaluate()
     .setTitle('主管簽核')
     .addMetaTag('viewport', 'width=device-width, initial-scale=1, maximum-scale=1')
     .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.DEFAULT);
