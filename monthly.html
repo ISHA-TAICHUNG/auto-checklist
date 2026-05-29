@@ -35,6 +35,11 @@
 
     const urlParams = new URLSearchParams(location.search);
     const eqp = urlParams.get('eqp');
+    const classroomMonthlyIds = new Set([
+      'CLASSROOM-LJ-MEAS-PPE',
+      'CLASSROOM-FX-MEAS-PPE',
+      'CLASSROOM-ZM-MEAS-PPE',
+    ]);
 
     let formMeta = null;
     let lockedItems = [];   // [{ order, itemName, incidentId, reportDate, description, status }]
@@ -46,6 +51,10 @@
       showLegacyScbaNotice();
     } else {
       loadForm();
+    }
+
+    function isClassroomMonthlyForm() {
+      return classroomMonthlyIds.has(String(eqp || '').toUpperCase());
     }
 
     function showError(msg) {
@@ -114,11 +123,15 @@
       const grid = document.createElement('div');
       grid.className = 'meta-grid';
       const eqInfo = formMeta.equipment;
-      addGridRow(grid, '設備名稱', eqInfo.equipmentName);
-      addGridRow(grid, '設備類別', eqInfo.category);
-      addGridRow(grid, '機械編號', eqInfo.machineSerial);
-      addGridRow(grid, '型式規格', eqInfo.machineType);
-      addGridRow(grid, '所在位置', eqInfo.location);
+      if (isClassroomMonthlyForm()) {
+        addGridRow(grid, '所在教室', eqInfo.location);
+      } else {
+        addGridRow(grid, '設備名稱', eqInfo.equipmentName);
+        addGridRow(grid, '設備類別', eqInfo.category);
+        addGridRow(grid, '機械編號', eqInfo.machineSerial);
+        addGridRow(grid, '型式規格', eqInfo.machineType);
+        addGridRow(grid, '所在位置', eqInfo.location);
+      }
       infoCard.body.appendChild(grid);
       root.appendChild(infoCard.card);
 
@@ -168,6 +181,7 @@
         const display = getMonthlyItemDisplay(it);
         it._section = display.section;
         it._displayName = display.name;
+        const isClassroomRegularItem = isClassroomMonthlyForm() && display.section !== 'SCBA 空氣呼吸器檢查';
         if (hasSectionedItems && display.section !== lastSection) {
           itemsCard.body.appendChild(makeSectionHeader(display.section));
           lastSection = display.section;
@@ -196,13 +210,26 @@
           row.appendChild(banner);
         }
 
+        let resultGroup = null;
+        let metricGroups = null;
+
         // 檢查方法
         if (isSimple) {
-          // simple schema：method 是固定的字串（DB 預設），顯示給使用者看不可改
-          const methodLabel = document.createElement('div');
-          methodLabel.className = 'item-method';
-          methodLabel.textContent = '檢查方法：' + (it.method || '—');
-          row.appendChild(methodLabel);
+          // 教室月檢一般項目：數量 / 外觀 / 操作三項各自判定。
+          if (isClassroomRegularItem) {
+            const parsed = parseMonthlySafetyPpeMethod(it.method || '');
+            const methodLabel = document.createElement('div');
+            methodLabel.className = 'item-method';
+            const specText = parsed.spec ? `；廠牌規格或型號：${parsed.spec}` : '';
+            methodLabel.textContent = `檢查基準：應備${parsed.quantity || '—'}${parsed.unit || ''}${specText}`;
+            row.appendChild(methodLabel);
+          } else {
+            // simple schema：method 是固定的字串（DB 預設），顯示給使用者看不可改
+            const methodLabel = document.createElement('div');
+            methodLabel.className = 'item-method';
+            methodLabel.textContent = '檢查方法：' + (it.method || '—');
+            row.appendChild(methodLabel);
+          }
         } else {
           // crane_full：方法多選
           const methodGroup = document.createElement('div');
@@ -232,8 +259,18 @@
               { value: 'normal',   label: '正常',     cls: 'checked-good' },
               { value: 'abnormal', label: '異常',     cls: 'checked-bad' },
             ];
-        const resultGroup = makeRadioGroup('result_' + idx, radioOpts);
-        row.appendChild(resultGroup.el);
+
+        if (isClassroomRegularItem) {
+          metricGroups = {
+            quantity: makeMetricRadioRow(row, '數量', `metric_${idx}_quantity`, radioOpts),
+            appearance: makeMetricRadioRow(row, '外觀', `metric_${idx}_appearance`, radioOpts),
+            operation: makeMetricRadioRow(row, '操作', `metric_${idx}_operation`, radioOpts),
+          };
+          it._metricGroups = metricGroups;
+        } else {
+          resultGroup = makeRadioGroup('result_' + idx, radioOpts);
+          row.appendChild(resultGroup.el);
+        }
 
         // 異常說明 + 照片上傳（選 bad 才出現）
         const abnormalWrap = document.createElement('div');
@@ -287,33 +324,32 @@
         actField.input.placeholder = '無 / 處理方式說明';
         row.appendChild(actField.field);
 
+        const updateAbnormalVisibility = () => {
+          const hasBadMetric = metricGroups
+            ? Object.values(metricGroups).some(g => g.value === badValue)
+            : false;
+          const isBad = hasBadMetric || (resultGroup && resultGroup.value === badValue);
+          if (isBad) abnormalWrap.classList.add('show');
+          else abnormalWrap.classList.remove('show');
+        };
+
         // 套用鎖定：自動選 bad、disable 其他選項、預填說明
         if (lock) {
           const badForSchema = isSimple ? badValue : 'abnormal';
-          resultGroup.el.querySelectorAll('label').forEach(L => {
-            const v = L.dataset.value;
-            if (v !== badForSchema) {
-              L.style.opacity = '0.4';
-              L.style.cursor = 'not-allowed';
-              const inp = L.querySelector('input');
-              if (inp) inp.disabled = true;
-            } else {
-              const inp = L.querySelector('input');
-              if (inp) {
-                inp.checked = true;
-                L.classList.add(L.dataset.cls);
-              }
-            }
-          });
-          resultGroup.value = badForSchema;
+          if (metricGroups) {
+            Object.values(metricGroups).forEach(g => forceRadioGroupValue(g, badForSchema, true));
+          } else {
+            forceRadioGroupValue(resultGroup, badForSchema, true);
+          }
           ta.value = `[沒改善] ${lock.reportDate} 異常：${lock.description}`;
           abnormalWrap.classList.add('show');
         }
 
-        resultGroup.onChange = (v) => {
-          if (v === badValue) abnormalWrap.classList.add('show');
-          else abnormalWrap.classList.remove('show');
-        };
+        if (metricGroups) {
+          Object.values(metricGroups).forEach(g => { g.onChange = updateAbnormalVisibility; });
+        } else {
+          resultGroup.onChange = updateAbnormalVisibility;
+        }
 
         itemsCard.body.appendChild(row);
       });
@@ -391,6 +427,38 @@
       return div;
     }
 
+    function parseMonthlySafetyPpeMethod(methodText) {
+      let text = String(methodText || '').replace(/\s+/g, ' ').trim();
+      text = text.replace(/^數量\s*\/\s*外觀\s*\/\s*操作\s*[；;:：]?\s*/, '').trim();
+      const parts = text.split(/[；;]/).map(s => s.trim()).filter(Boolean);
+      let quantityUnit = '';
+      let spec = text;
+      if (parts.length > 0 && /^應備/.test(parts[0])) {
+        quantityUnit = parts.shift();
+        spec = parts.join('；').trim();
+      }
+      const m = quantityUnit.match(/^應備\s*([0-9０-９一二三四五六七八九十]+)\s*(.+)$/);
+      return {
+        quantity: m ? m[1] : '',
+        unit: m ? m[2] : '',
+        spec,
+      };
+    }
+
+    function makeMetricRadioRow(parent, labelText, name, options) {
+      const row = document.createElement('div');
+      row.className = 'metric-row';
+      const label = document.createElement('div');
+      label.className = 'metric-label';
+      label.textContent = labelText;
+      row.appendChild(label);
+      const group = makeRadioGroup(name, options);
+      group.el.classList.add('metric-radio');
+      row.appendChild(group.el);
+      parent.appendChild(row);
+      return group;
+    }
+
     function addGridRow(grid, label, value) {
       const l = document.createElement('div');
       l.className = 'label';
@@ -422,6 +490,8 @@
       const wrapper = { el, value: null, onChange: null };
       options.forEach(opt => {
         const lbl = document.createElement('label');
+        lbl.dataset.value = opt.value;
+        lbl.dataset.cls = opt.cls;
         lbl.textContent = opt.label;
         const input = document.createElement('input');
         input.type = 'radio';
@@ -439,6 +509,27 @@
         el.appendChild(lbl);
       });
       return wrapper;
+    }
+
+    function forceRadioGroupValue(group, value, locked) {
+      if (!group || !group.el) return;
+      group.el.querySelectorAll('label').forEach(L => {
+        const v = L.dataset.value;
+        const inp = L.querySelector('input');
+        L.classList.remove('checked-good', 'checked-bad', 'checked-na');
+        if (v === value) {
+          if (inp) inp.checked = true;
+          L.classList.add(L.dataset.cls);
+          group.value = value;
+        } else if (inp) {
+          inp.checked = false;
+        }
+        if (locked) {
+          L.style.opacity = v === value ? '1' : '0.4';
+          L.style.cursor = v === value ? 'default' : 'not-allowed';
+          if (inp && v !== value) inp.disabled = true;
+        }
+      });
     }
 
     async function onSubmit() {
@@ -460,7 +551,8 @@
       let problem = '';
       formMeta.items.forEach((it, idx) => {
         // simple: method 從 it 取（固定字串）；crane_full: methods 從 checkbox 取
-        let methods, method;
+        let methods, method, result, checkResults = null;
+        const isClassroomRegularItem = isClassroomMonthlyForm() && (it._section || '') !== 'SCBA 空氣呼吸器檢查';
         if (isSimple) {
           method = it.method || '';
           methods = method ? [method] : [];
@@ -468,7 +560,20 @@
           methods = Array.from(document.querySelectorAll(
             `input[type="checkbox"][data-item-idx="${idx}"]`)).filter(c => c.checked).map(c => c.dataset.method);
         }
-        const result = (document.querySelector(`input[name="result_${idx}"]:checked`) || {}).value;
+        if (isClassroomRegularItem) {
+          checkResults = {
+            quantity: (document.querySelector(`input[name="metric_${idx}_quantity"]:checked`) || {}).value || '',
+            appearance: (document.querySelector(`input[name="metric_${idx}_appearance"]:checked`) || {}).value || '',
+            operation: (document.querySelector(`input[name="metric_${idx}_operation"]:checked`) || {}).value || '',
+          };
+          const metricLabels = { quantity: '數量', appearance: '外觀', operation: '操作' };
+          Object.keys(checkResults).forEach(key => {
+            if (!checkResults[key] && !problem) problem = '第 ' + it.order + ' 項：' + metricLabels[key] + '未選擇結果';
+          });
+          result = Object.values(checkResults).some(v => v === badValue) ? badValue : resultOptions[0];
+        } else {
+          result = (document.querySelector(`input[name="result_${idx}"]:checked`) || {}).value;
+        }
         const risk = isSimple ? '' : ((document.querySelector(`input[name="risk_${idx}"]:checked`) || {}).value || '');
         const abnormalDesc = (document.querySelector(`textarea[data-item-idx="${idx}"][data-field="abnormalDesc"]`) || {}).value || '';
         const action = (document.querySelector(`input[data-item-idx="${idx}"][data-field="action"]`) || {}).value || '';
@@ -490,6 +595,7 @@
           methods,
           method,                                                 // simple schema 用
           result,
+          checkResults,
           abnormalDesc: abnormalDesc.trim(),
           risk,
           action: action.trim(),

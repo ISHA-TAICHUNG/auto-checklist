@@ -568,6 +568,27 @@ function isBadResult_(formType, result, allowedResults) {
   return false;
 }
 
+function formatCheckResultsSummary_(it) {
+  const checks = (it && it.checkResults) || null;
+  if (!checks || typeof checks !== 'object') return '';
+  const labels = [
+    ['quantity', '數量'],
+    ['appearance', '外觀'],
+    ['operation', '操作'],
+  ];
+  const parts = labels
+    .filter(([key]) => checks[key])
+    .map(([key, label]) => `${label}：${checks[key]}`);
+  return parts.length ? parts.join('、') : '';
+}
+
+function abnormalDescriptionWithCheckResults_(it) {
+  const summary = formatCheckResultsSummary_(it);
+  const base = String((it && (it.abnormalDesc || it.note)) || '').trim();
+  if (summary && base) return summary + '\n' + base;
+  return summary || base || '';
+}
+
 /**
  * 把該次填報的所有異常項，透過 LINE 即時通報
  * （sendIncidentAlert_ 在 LineNotify.gs，會自動判斷有沒 token 並決定是否真的 push）
@@ -589,7 +610,7 @@ function notifyLineIncidents_(recordId, submittedAt, checkDate, payload, equipme
       order: it.order,
       itemName: itemNameWithSection_(it),
       result: it.result,
-      description: it.abnormalDesc || it.note || '(無說明)',
+      description: abnormalDescriptionWithCheckResults_(it) || '(無說明)',
       photoCount: Array.isArray(it.photos) ? it.photos.length : 0,
       status: '待處理',
       reportDate: checkDateStr,
@@ -640,7 +661,7 @@ function writeIncidents_({ recordId, submittedAt, checkDate, formType, equipment
     setCol('項目名稱', itemNameWithSection_(it));
     setCol('結果代號', it.result);
     // monthly 用 abnormalDesc，daily 用 note
-    setCol('異常說明', it.abnormalDesc || it.note || '');
+    setCol('異常說明', abnormalDescriptionWithCheckResults_(it));
     setCol('照片數', Array.isArray(it.photos) ? it.photos.length : 0);
     setCol('PDF連結', fileUrl);
     setCol('紀錄ID', recordId);

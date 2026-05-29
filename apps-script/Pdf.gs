@@ -362,7 +362,7 @@ function appendClassroomMonthlySafetyPpePdf_(body, ctx, rocDateStr, submittedAtS
       parsed.quantity,
       parsed.unit,
       parsed.spec,
-      formatClassroomMonthlyResult_(it.result),
+      formatClassroomMonthlyResult_(it),
       formatClassroomMonthlyAction_(it),
     ]);
   });
@@ -453,10 +453,13 @@ function parseMonthlySafetyPpeMethod_(methodText) {
   };
 }
 
-function formatClassroomMonthlyResult_(result) {
-  const r = String(result || '').trim();
-  if (!r) return '數量：\n外觀：\n操作：';
-  return `數量：${r}\n外觀：${r}\n操作：${r}`;
+function formatClassroomMonthlyResult_(it) {
+  const fallback = String((it && it.result) || '').trim();
+  const checks = (it && it.checkResults) || {};
+  const quantity = String(checks.quantity || fallback || '').trim();
+  const appearance = String(checks.appearance || fallback || '').trim();
+  const operation = String(checks.operation || fallback || '').trim();
+  return `數量：${quantity}\n外觀：${appearance}\n操作：${operation}`;
 }
 
 function formatClassroomMonthlyAction_(it) {

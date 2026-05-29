@@ -194,6 +194,23 @@ body {
 .item-title .text { flex: 1; padding-top: 3px; line-height: 1.4; }
 .item-method { color: #5f6368; font-size: 14px; margin-left: 42px; margin-bottom: 10px; }
 
+.metric-row {
+  display: grid;
+  grid-template-columns: 52px 1fr;
+  gap: 10px;
+  align-items: center;
+  margin: 8px 0 0 42px;
+}
+.metric-label {
+  font-weight: 800;
+  color: #3c4043;
+}
+.metric-row .radio-group { margin-left: 0; }
+.metric-row .radio-group label {
+  min-height: 48px;
+  font-size: 16px;
+}
+
 /* ---- radio 選項組 ---- */
 .radio-group { display: flex; gap: 10px; margin-left: 42px; flex-wrap: wrap; }
 .radio-group label {
@@ -411,3 +428,14 @@ body {
 .result-icon { font-size: 64px; text-align: center; margin: 28px 0 14px; }
 .result-title { text-align: center; font-size: 22px; font-weight: 800; margin-bottom: 10px; }
 .result-meta { text-align: center; font-size: 15px; color: #5f6368; margin-bottom: 28px; word-break: break-all; }
+
+@media (max-width: 520px) {
+  .item-method, .radio-group, .abnormal-input, .lock-banner,
+  .method-group, .risk-row {
+    margin-left: 0;
+  }
+  .metric-row {
+    grid-template-columns: 1fr;
+    margin-left: 0;
+  }
+}

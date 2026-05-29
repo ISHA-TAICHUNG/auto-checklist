@@ -118,6 +118,7 @@
         selectLabel: '選擇教室：',
         match: e => classroomMonthlyIds.has(String(e.equipmentId || '').toUpperCase()) && e.hasMonthly !== false,
         showForCat: cat => !cat || /教室/.test(cat),
+        optionLabel: e => e.location || e.equipmentName || e.equipmentId,
         actions: [
           {
             text: '填寫月檢',
@@ -165,7 +166,7 @@
       equipments.forEach(e => {
         const opt = document.createElement('option');
         opt.value = e.equipmentId;
-        opt.textContent = e.equipmentName || e.equipmentId;
+        opt.textContent = def.optionLabel ? def.optionLabel(e) : (e.equipmentName || e.equipmentId);
         select.appendChild(opt);
       });
       field.appendChild(label);
