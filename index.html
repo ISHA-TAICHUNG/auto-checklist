@@ -16,23 +16,7 @@
   </header>
 
   <main class="container">
-    <!-- 防護具檢點區（按場地下拉選擇）-->
-    <div id="ppeSection" style="display:none; margin-bottom:24px;">
-      <h2 class="card-title">防護具每日檢點</h2>
-      <div class="equip-card" style="background:#fef7e0; border-left:4px solid #f9ab00;">
-        <div class="equip-name">🦺 安全帽 / 安全背心 等</div>
-        <div class="equip-meta" style="margin-bottom:12px;">每堂課實習結束後檢點</div>
-        <div style="margin-bottom:12px;">
-          <label for="ppeVenue" style="display:block; font-size:14px; color:#5f6368; margin-bottom:6px;">選擇場地：</label>
-          <select id="ppeVenue" style="width:100%; padding:10px; font-size:16px; border:2px solid #dadce0; border-radius:8px; background:#fff;">
-            <option value="">— 請選擇 —</option>
-          </select>
-        </div>
-        <div class="equip-actions">
-          <a id="ppeSubmitBtn" class="btn-daily" href="#" onclick="return goPpe()">填寫今日</a>
-        </div>
-      </div>
-    </div>
+    <div id="groupSections"></div>
 
     <h2 class="card-title" id="listTitle">請選擇設備</h2>
     <div id="content">
@@ -70,6 +54,146 @@
       div.className = 'alert alert-info';
       div.textContent = '尚未建立任何設備。請先到 Google Sheets「設備清單」工作表新增。';
       root.appendChild(div);
+    }
+
+    const classroomMonthlyIds = new Set([
+      'CLASSROOM-LJ-MEAS-PPE',
+      'CLASSROOM-FX-MEAS-PPE',
+      'CLASSROOM-ZM-MEAS-PPE',
+    ]);
+
+    const groupDefs = [
+      {
+        key: 'ppe-daily',
+        title: '防護具每日檢點',
+        name: '🦺 安全帽 / 安全背心 等',
+        meta: '每堂課實習結束後檢點',
+        selectLabel: '選擇場地：',
+        buttonText: '填寫今日',
+        buttonClass: 'btn-daily',
+        href: id => 'daily.html?eqp=' + encodeURIComponent(id),
+        match: e => e.category === '防護具檢點' && e.hasDaily !== false,
+        showForCat: cat => !cat,
+      },
+      {
+        key: 'forklift-daily',
+        title: '堆高機每日檢點',
+        name: '🚜 堆高機 A-F 號',
+        meta: '每日使用前檢點',
+        selectLabel: '選擇堆高機：',
+        buttonText: '填寫今日',
+        buttonClass: 'btn-daily',
+        href: id => 'daily.html?eqp=' + encodeURIComponent(id),
+        match: e => e.category === '堆高機' && e.hasDaily !== false,
+        showForCat: cat => !cat || cat === '堆高機',
+      },
+      {
+        key: 'forklift-monthly',
+        title: '堆高機每月檢查',
+        name: '🚜 堆高機 A-F 號',
+        meta: '每月定期檢查',
+        selectLabel: '選擇堆高機：',
+        buttonText: '填寫月檢',
+        buttonClass: 'btn-monthly',
+        href: id => 'monthly.html?eqp=' + encodeURIComponent(id),
+        match: e => e.category === '堆高機' && e.hasMonthly !== false,
+        showForCat: cat => !cat || cat === '堆高機',
+      },
+      {
+        key: 'classroom-monthly',
+        title: '教室量測設備及個人防護具月檢',
+        name: '📋 龍井 / 復興 / 忠明教室',
+        meta: '每月 1-5 日應檢；SCBA 已併入表單下方區塊',
+        selectLabel: '選擇教室：',
+        buttonText: '填寫月檢',
+        buttonClass: 'btn-monthly',
+        href: id => 'monthly.html?eqp=' + encodeURIComponent(id),
+        match: e => classroomMonthlyIds.has(String(e.equipmentId || '').toUpperCase()) && e.hasMonthly !== false,
+        showForCat: cat => !cat || /教室安全衛生量測設備及個人防護具/.test(cat),
+      },
+    ];
+
+    function renderGroupedSelector(def, equipments) {
+      const section = document.createElement('div');
+      section.className = 'selector-section';
+
+      const title = document.createElement('h2');
+      title.className = 'card-title';
+      title.textContent = def.title;
+      section.appendChild(title);
+
+      const card = document.createElement('div');
+      card.className = 'equip-card selector-card';
+
+      const name = document.createElement('div');
+      name.className = 'equip-name';
+      name.textContent = def.name;
+      card.appendChild(name);
+
+      const meta = document.createElement('div');
+      meta.className = 'equip-meta';
+      meta.textContent = def.meta;
+      card.appendChild(meta);
+
+      const field = document.createElement('div');
+      field.className = 'selector-field';
+      const label = document.createElement('label');
+      label.setAttribute('for', def.key);
+      label.textContent = def.selectLabel;
+      const select = document.createElement('select');
+      select.id = def.key;
+      select.className = 'selector-control';
+      const empty = document.createElement('option');
+      empty.value = '';
+      empty.textContent = '— 請選擇 —';
+      select.appendChild(empty);
+      equipments.forEach(e => {
+        const opt = document.createElement('option');
+        opt.value = e.equipmentId;
+        opt.textContent = e.equipmentName || e.equipmentId;
+        select.appendChild(opt);
+      });
+      field.appendChild(label);
+      field.appendChild(select);
+      card.appendChild(field);
+
+      const actions = document.createElement('div');
+      actions.className = 'equip-actions';
+      const link = document.createElement('a');
+      link.className = def.buttonClass;
+      link.href = '#';
+      link.textContent = def.buttonText;
+      link.onclick = () => {
+        if (!select.value) {
+          alert(def.selectLabel.replace('：', ''));
+          return false;
+        }
+        location.href = def.href(select.value);
+        return false;
+      };
+      actions.appendChild(link);
+      card.appendChild(actions);
+
+      section.appendChild(card);
+      return section;
+    }
+
+    function renderGroupSections(equipments) {
+      const root = document.getElementById('groupSections');
+      root.textContent = '';
+      let count = 0;
+      groupDefs.forEach(def => {
+        if (!def.showForCat(urlCat)) return;
+        const items = equipments.filter(def.match);
+        if (!items.length) return;
+        root.appendChild(renderGroupedSelector(def, items));
+        count++;
+      });
+      return count;
+    }
+
+    function isGroupedEquipment(e) {
+      return groupDefs.some(def => def.match(e));
     }
 
     function renderList(equipments) {
@@ -123,42 +247,31 @@
       });
     }
 
-    function goPpe() {
-      const v = document.getElementById('ppeVenue').value;
-      if (!v) { alert('請先選擇場地'); return false; }
-      location.href = 'daily.html?eqp=' + encodeURIComponent(v);
-      return false;
-    }
-
     (async () => {
       try {
         const r = await API.listEquipments();
         if (!r.ok) return renderError(r.error || '取得設備清單失敗');
         if (!r.equipments || !r.equipments.length) return renderEmpty();
 
-        // 防護具檢點區與一般設備分開渲染
-        const ppeVenues = r.equipments.filter(e => e.category === '防護具檢點');
-        const normalEquipments = r.equipments.filter(e => e.category !== '防護具檢點');
+        const renderedGroups = renderGroupSections(r.equipments);
 
-        // 顯示防護具區塊（如果有場地）
-        if (ppeVenues.length > 0 && !urlCat) {
-          const sel = document.getElementById('ppeVenue');
-          ppeVenues.forEach(v => {
-            const opt = document.createElement('option');
-            opt.value = v.equipmentId;
-            opt.textContent = v.equipmentName;
-            sel.appendChild(opt);
-          });
-          document.getElementById('ppeSection').style.display = 'block';
+        // 其他設備列表（支援 URL ?cat=xxx 過濾；已收進下拉選單的設備不重複顯示）
+        const filtered = urlCat
+          ? r.equipments.filter(e => e.category === urlCat && !isGroupedEquipment(e))
+          : r.equipments.filter(e => !isGroupedEquipment(e));
+
+        const listTitle = document.getElementById('listTitle');
+        if (filtered.length) {
+          listTitle.style.display = '';
+          listTitle.textContent = urlCat ? '其他' + urlCat : '其他設備';
+          renderList(filtered);
+        } else {
+          listTitle.style.display = 'none';
+          document.getElementById('content').textContent = '';
         }
 
-        // 一般設備列表（支援 URL ?cat=xxx 過濾）
-        const filtered = urlCat
-          ? normalEquipments.filter(e => e.category === urlCat)
-          : normalEquipments;
-        if (!filtered.length && !urlCat && ppeVenues.length === 0) return renderEmpty();
-        if (!filtered.length && urlCat) return renderError('找不到類別「' + urlCat + '」的設備');
-        renderList(filtered);
+        if (!filtered.length && renderedGroups === 0 && !urlCat) return renderEmpty();
+        if (!filtered.length && renderedGroups === 0 && urlCat) return renderError('找不到類別「' + urlCat + '」的設備');
       } catch (err) {
         renderError('連線後端失敗：' + err.message);
       }

@@ -86,6 +86,35 @@ body {
 .btn-daily { background: #e8f0fe; color: #1967d2; }
 .btn-monthly { background: #fef7e0; color: #b06000; }
 
+/* ---- 首頁下拉式設備入口 ---- */
+.selector-section { margin-bottom: 24px; }
+.selector-card {
+  background: #fef7e0;
+  border-left: 4px solid #f9ab00;
+}
+.selector-field { margin-bottom: 12px; }
+.selector-field label {
+  display: block;
+  font-size: 14px;
+  color: #5f6368;
+  margin-bottom: 6px;
+  font-weight: 700;
+}
+.selector-control {
+  width: 100%;
+  padding: 12px;
+  font-size: 17px;
+  font-family: inherit;
+  border: 2px solid #dadce0;
+  border-radius: 8px;
+  background: #fff;
+}
+.selector-control:focus {
+  outline: none;
+  border-color: #1a73e8;
+  box-shadow: 0 0 0 3px rgba(26,115,232,0.18);
+}
+
 /* ---- meta 資訊塊 ---- */
 .meta-grid {
   display: grid;
