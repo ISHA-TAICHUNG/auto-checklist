@@ -39,6 +39,12 @@ function createChecklistDoc_(formType, ctx) {
     // ----- 頁面設定（A4，邊界小一點容納內容）-----
     body.setMarginTop(36).setMarginBottom(36).setMarginLeft(36).setMarginRight(36);
 
+    if (isClassroomMonthlySafetyPpePdf_(formType, ctx)) {
+      appendClassroomMonthlySafetyPpePdf_(body, ctx, rocDateStr, submittedAtStr);
+      doc.saveAndClose();
+      return { docId, docName };
+    }
+
     // ----- 標題 -----
     // codex P2: 用 DB 模板的 templateName，未來新增機具不會錯
     const fallbackTitle = isDaily ? '每日作業前檢點表' : '每月定期檢查紀錄';
@@ -298,6 +304,221 @@ function appendSupervisorApprovalToDoc_(docId, supervisorName, supervisorSignatu
   doc.saveAndClose();
 }
 
+function isClassroomMonthlySafetyPpePdf_(formType, ctx) {
+  if (formType !== 'monthly' || !ctx || !ctx.equipment) return false;
+  const id = String(ctx.equipment.equipmentId || '').trim().toUpperCase();
+  return [
+    'CLASSROOM-LJ-MEAS-PPE',
+    'CLASSROOM-FX-MEAS-PPE',
+    'CLASSROOM-ZM-MEAS-PPE',
+  ].indexOf(id) >= 0;
+}
+
+function appendClassroomMonthlySafetyPpePdf_(body, ctx, rocDateStr, submittedAtStr) {
+  const eq = ctx.equipment || {};
+  const rocDateZh = `${rocDateStr.substring(0, 3)}年${rocDateStr.substring(3, 5)}月${rocDateStr.substring(5, 7)}日`;
+
+  const orgP = body.appendParagraph(getOrgHeader_());
+  orgP.setAlignment(DocumentApp.HorizontalAlignment.CENTER);
+  orgP.editAsText().setFontSize(12).setBold(true);
+
+  const titleP = body.appendParagraph('置備之安全衛生量測設備及個人防護具每月檢核表');
+  titleP.setAlignment(DocumentApp.HorizontalAlignment.CENTER);
+  titleP.editAsText().setFontSize(15).setBold(true);
+
+  body.appendParagraph('');
+
+  const infoTable = body.appendTable([
+    ['所在教室', eq.location || '', '檢查或校正日', rocDateZh],
+  ]);
+  styleClassroomMonthlyInfoTable_(infoTable);
+
+  body.appendParagraph('');
+
+  const regularItems = [];
+  const scbaItems = [];
+  (ctx.payload.items || []).forEach(it => {
+    const section = getPdfItemSection_(it);
+    if (section === 'SCBA 空氣呼吸器檢查') scbaItems.push(it);
+    else regularItems.push(it);
+  });
+
+  const resultOptions = (ctx.template && ctx.template.resultOptions) || ['ˇ', 'X'];
+  const regularRows = [[
+    '序號',
+    '量測設備或個人防護具名稱',
+    '應備數量',
+    '單位',
+    '廠牌規格或型號',
+    '檢核結果',
+    '異常處理情形',
+  ]];
+
+  regularItems.forEach(it => {
+    const parsed = parseMonthlySafetyPpeMethod_(getClassroomMonthlyMethodText_(it));
+    regularRows.push([
+      String(it.order || ''),
+      getPdfItemName_(it),
+      parsed.quantity,
+      parsed.unit,
+      parsed.spec,
+      formatClassroomMonthlyResult_(it.result),
+      formatClassroomMonthlyAction_(it),
+    ]);
+  });
+
+  const regularTitle = body.appendParagraph('安全衛生量測設備及個人防護具');
+  regularTitle.editAsText().setFontSize(11).setBold(true);
+  const regularTable = body.appendTable(regularRows);
+  styleClassroomMonthlyPpeTable_(regularTable, resultOptions);
+
+  if (scbaItems.length > 0) {
+    body.appendParagraph('');
+    const scbaTitle = body.appendParagraph('SCBA 空氣呼吸器檢查');
+    scbaTitle.editAsText().setFontSize(11).setBold(true);
+
+    const scbaRows = [['項次', '檢查項目', '檢查方法', '檢查結果', '異常處理情形']];
+    scbaItems.forEach(it => {
+      scbaRows.push([
+        String(it.order || ''),
+        getPdfItemName_(it),
+        getClassroomMonthlyMethodText_(it),
+        it.result || '',
+        formatClassroomMonthlyAction_(it),
+      ]);
+    });
+    const scbaTable = body.appendTable(scbaRows);
+    styleClassroomMonthlyScbaTable_(scbaTable, resultOptions);
+  }
+
+  body.appendParagraph('');
+  const ruleText = (ctx.template && ctx.template.rule)
+    ? '填寫規則：' + ctx.template.rule
+    : '填寫規則：正常打「ˇ」/ 異常打「X」；異常需填寫說明與改善措施';
+  const ruleP = body.appendParagraph(ruleText);
+  ruleP.editAsText().setFontSize(9).setForegroundColor('#555555');
+
+  body.appendParagraph('');
+  const sigLabel = body.appendParagraph('檢查人員簽名：');
+  sigLabel.editAsText().setFontSize(11).setBold(true);
+
+  let signatureInserted = false;
+  if (ctx.payload.signature) {
+    const sigBlob = dataUrlToBlob_(ctx.payload.signature, 'sig.png');
+    if (!sigBlob) throw new Error('dataUrlToBlob_ 回 null，signature 開頭: ' + ctx.payload.signature.substring(0, 50));
+    const img = body.appendImage(sigBlob);
+    const maxW = 260;
+    if (img.getWidth() > maxW) {
+      const ratio = img.getHeight() / img.getWidth();
+      img.setWidth(maxW);
+      img.setHeight(Math.round(maxW * ratio));
+    }
+    signatureInserted = true;
+  }
+  if (!signatureInserted) {
+    const noSig = body.appendParagraph('（無簽名）');
+    noSig.editAsText().setFontSize(10).setForegroundColor('#c5221f');
+  }
+
+  const inspectorP = body.appendParagraph(ctx.payload.inspector || '');
+  inspectorP.editAsText().setFontSize(11);
+
+  body.appendParagraph('');
+  const submitP = body.appendParagraph('送出時間：' + submittedAtStr + '   系統自動產製');
+  submitP.editAsText().setFontSize(9).setForegroundColor('#888888');
+  submitP.setAlignment(DocumentApp.HorizontalAlignment.RIGHT);
+
+  appendPhotoAttachments_(body, ctx.payload.items || []);
+}
+
+function getClassroomMonthlyMethodText_(it) {
+  return String((it && (it.method || (it.methods || [])[0])) || '').trim();
+}
+
+function parseMonthlySafetyPpeMethod_(methodText) {
+  let text = String(methodText || '').replace(/\s+/g, ' ').trim();
+  text = text.replace(/^數量\s*\/\s*外觀\s*\/\s*操作\s*[；;:：]?\s*/, '').trim();
+  const parts = text.split(/[；;]/).map(s => s.trim()).filter(Boolean);
+  let quantityUnit = '';
+  let spec = text;
+  if (parts.length > 0 && /^應備/.test(parts[0])) {
+    quantityUnit = parts.shift();
+    spec = parts.join('；').trim();
+  }
+  const m = quantityUnit.match(/^應備\s*([0-9０-９一二三四五六七八九十]+)\s*(.+)$/);
+  return {
+    quantity: m ? m[1] : '',
+    unit: m ? m[2] : '',
+    spec,
+  };
+}
+
+function formatClassroomMonthlyResult_(result) {
+  const r = String(result || '').trim();
+  if (!r) return '數量：\n外觀：\n操作：';
+  return `數量：${r}\n外觀：${r}\n操作：${r}`;
+}
+
+function formatClassroomMonthlyAction_(it) {
+  const abnormalDesc = String((it && it.abnormalDesc) || '').trim();
+  const action = String((it && it.action) || '').trim();
+  if (abnormalDesc && action) return abnormalDesc + '\n' + action;
+  return action || abnormalDesc || '';
+}
+
+function appendPhotoAttachments_(body, items) {
+  const itemsWithPhotos = (items || []).filter(
+    it => Array.isArray(it.photos) && it.photos.length > 0
+  );
+  if (itemsWithPhotos.length <= 0) return;
+
+  body.appendPageBreak();
+  const attachTitle = body.appendParagraph('異常照片附件');
+  attachTitle.setHeading(DocumentApp.ParagraphHeading.HEADING1);
+  attachTitle.setAlignment(DocumentApp.HorizontalAlignment.CENTER);
+
+  let photoPageIdx = 0;
+  itemsWithPhotos.forEach(it => {
+    it.photos.forEach((p, pi) => {
+      if (photoPageIdx > 0) body.appendPageBreak();
+      photoPageIdx++;
+
+      const labelP = body.appendParagraph(`第 ${it.order} 項：${itemNameWithPdfSection_(it)}`);
+      labelP.editAsText().setFontSize(12).setBold(true).setForegroundColor('#1a73e8');
+
+      if (it.abnormalDesc || it.note) {
+        const descP = body.appendParagraph('異常說明：' + (it.abnormalDesc || it.note));
+        descP.editAsText().setFontSize(10).setForegroundColor('#c5221f');
+      }
+
+      try {
+        const photoBlob = dataUrlToBlob_(p, `item${it.order}_photo${pi + 1}.jpg`);
+        if (photoBlob) {
+          body.appendParagraph('');
+          const photoImg = body.appendImage(photoBlob);
+          const maxW = 480, maxH = 600;
+          const w = photoImg.getWidth(), h = photoImg.getHeight();
+          if (w > maxW || h > maxH) {
+            const scale = Math.min(maxW / w, maxH / h);
+            photoImg.setWidth(Math.round(w * scale));
+            photoImg.setHeight(Math.round(h * scale));
+          }
+          const cap = body.appendParagraph(`照片 ${pi + 1} / ${it.photos.length}`);
+          cap.editAsText().setFontSize(9).setForegroundColor('#888888');
+          cap.setAlignment(DocumentApp.HorizontalAlignment.CENTER);
+        } else {
+          const errP = body.appendParagraph('（照片載入失敗，原始資料請查詢 DB 完整資料JSON）');
+          errP.editAsText().setFontSize(10).setForegroundColor('#c5221f');
+        }
+      } catch (e) {
+        Logger.log(`第 ${it.order} 項照片 ${pi + 1} 嵌入失敗：` + e);
+        const errP = body.appendParagraph('（照片嵌入時發生錯誤）');
+        errP.editAsText().setFontSize(10).setForegroundColor('#c5221f');
+      }
+    });
+  });
+}
+
 function getPdfItemSection_(it) {
   const explicit = String((it && it.section) || '').trim();
   if (explicit) return explicit;
@@ -317,6 +538,65 @@ function itemNameWithPdfSection_(it) {
   const name = getPdfItemName_(it);
   if (!section || section === '安全衛生量測設備及個人防護具') return name;
   return `${section}：${name}`;
+}
+
+function styleClassroomMonthlyInfoTable_(table) {
+  const row = table.getRow(0);
+  for (let c = 0; c < row.getNumCells(); c++) {
+    const cell = row.getCell(c);
+    cell.setPaddingTop(4).setPaddingBottom(4).setPaddingLeft(8).setPaddingRight(8);
+    const text = cell.editAsText();
+    text.setFontSize(10);
+    if (c === 0 || c === 2) {
+      cell.setBackgroundColor('#f0f0f0');
+      text.setBold(true);
+      cell.setWidth(75);
+    } else {
+      cell.setWidth(c === 1 ? 165 : 190);
+    }
+  }
+}
+
+function styleClassroomMonthlyPpeTable_(table, resultOptions) {
+  const widths = [25, 88, 38, 24, 135, 90, 105]; // total 505pt
+  styleClassroomMonthlyGenericTable_(table, widths, resultOptions, 5);
+}
+
+function styleClassroomMonthlyScbaTable_(table, resultOptions) {
+  const widths = [25, 220, 55, 70, 120]; // total 490pt
+  styleClassroomMonthlyGenericTable_(table, widths, resultOptions, 3);
+}
+
+function styleClassroomMonthlyGenericTable_(table, widths, resultOptions, resultCol) {
+  const HCenter = DocumentApp.HorizontalAlignment.CENTER;
+  const opts = (resultOptions && resultOptions.length) ? resultOptions : ['ˇ', 'X'];
+  const goodValue = opts[0];
+  const badValue = opts[opts.length - 1];
+
+  for (let r = 0; r < table.getNumRows(); r++) {
+    const row = table.getRow(r);
+    for (let c = 0; c < row.getNumCells(); c++) {
+      const cell = row.getCell(c);
+      if (widths[c]) cell.setWidth(widths[c]);
+      cell.setPaddingTop(3).setPaddingBottom(3).setPaddingLeft(4).setPaddingRight(4);
+      const text = cell.editAsText();
+      text.setFontSize(8);
+      if (r === 0) {
+        cell.setBackgroundColor('#e8eaed');
+        text.setBold(true).setForegroundColor('#202124');
+        try { cell.getChild(0).asParagraph().setAlignment(HCenter); } catch (_) {}
+        continue;
+      }
+      if (c === 0 || c === 2 || c === 3 || c === resultCol) {
+        try { cell.getChild(0).asParagraph().setAlignment(HCenter); } catch (_) {}
+      }
+      if (c === resultCol) {
+        const v = text.getText();
+        if (v.indexOf(badValue) >= 0) text.setForegroundColor('#c5221f').setBold(true);
+        else if (v.indexOf(goodValue) >= 0) text.setForegroundColor('#137333').setBold(true);
+      }
+    }
+  }
 }
 
 /** 設備資訊表樣式：label 灰底、border、字 10pt */
