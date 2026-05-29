@@ -12,6 +12,7 @@ body {
   -webkit-text-size-adjust: 100%;
   line-height: 1.55;
   font-size: 17px;             /* 全域基準字體放大（原 14-15px → 17px）*/
+  overflow-x: hidden;
 }
 
 /* ---- 版頭 ---- */
@@ -31,6 +32,7 @@ body {
   font-size: 15px;             /* 原 12px */
   opacity: 0.94;
   font-weight: 500;
+  overflow-wrap: anywhere;
 }
 .header .back {
   display: inline-block;
@@ -43,7 +45,7 @@ body {
 }
 .header .back::before { content: '← '; }
 
-.container { max-width: 760px; margin: 0 auto; padding: 18px; }
+.container { width: 100%; max-width: 760px; margin: 0 auto; padding: 18px; }
 
 /* ---- 卡片 ---- */
 .card {
@@ -74,6 +76,7 @@ body {
 .equip-actions { display: flex; gap: 10px; }
 .equip-actions a {
   flex: 1;
+  min-width: 0;
   text-align: center;
   padding: 16px;               /* 原 11px — 變大方便老人點 */
   border-radius: 8px;

@@ -62,54 +62,69 @@
       'CLASSROOM-ZM-MEAS-PPE',
     ]);
 
-    const groupDefs = [
+    const sectionDefs = [
       {
+        type: 'selector',
+        key: 'forklift',
+        title: '堆高機',
+        name: '🚜 堆高機 A-F 號',
+        meta: '每日使用前檢點 / 每月定期檢查',
+        selectLabel: '選擇堆高機：',
+        match: e => e.category === '堆高機' && (e.hasDaily !== false || e.hasMonthly !== false),
+        showForCat: cat => !cat || cat === '堆高機',
+        actions: [
+          {
+            text: '填寫今日',
+            className: 'btn-daily',
+            href: id => 'daily.html?eqp=' + encodeURIComponent(id),
+          },
+          {
+            text: '填寫月檢',
+            className: 'btn-monthly',
+            href: id => 'monthly.html?eqp=' + encodeURIComponent(id),
+          },
+        ],
+      },
+      {
+        type: 'cards',
+        key: 'crane',
+        title: '固定式起重機',
+        match: e => e.category === '固定式起重機',
+        showForCat: cat => !cat || cat === '固定式起重機',
+      },
+      {
+        type: 'selector',
         key: 'ppe-daily',
         title: '防護具每日檢點',
         name: '🦺 安全帽 / 安全背心 等',
         meta: '每堂課實習結束後檢點',
         selectLabel: '選擇場地：',
-        buttonText: '填寫今日',
-        buttonClass: 'btn-daily',
-        href: id => 'daily.html?eqp=' + encodeURIComponent(id),
         match: e => e.category === '防護具檢點' && e.hasDaily !== false,
-        showForCat: cat => !cat,
+        showForCat: cat => !cat || cat === '防護具檢點',
+        actions: [
+          {
+            text: '填寫今日',
+            className: 'btn-daily',
+            href: id => 'daily.html?eqp=' + encodeURIComponent(id),
+          },
+        ],
       },
       {
-        key: 'forklift-daily',
-        title: '堆高機每日檢點',
-        name: '🚜 堆高機 A-F 號',
-        meta: '每日使用前檢點',
-        selectLabel: '選擇堆高機：',
-        buttonText: '填寫今日',
-        buttonClass: 'btn-daily',
-        href: id => 'daily.html?eqp=' + encodeURIComponent(id),
-        match: e => e.category === '堆高機' && e.hasDaily !== false,
-        showForCat: cat => !cat || cat === '堆高機',
-      },
-      {
-        key: 'forklift-monthly',
-        title: '堆高機每月檢查',
-        name: '🚜 堆高機 A-F 號',
-        meta: '每月定期檢查',
-        selectLabel: '選擇堆高機：',
-        buttonText: '填寫月檢',
-        buttonClass: 'btn-monthly',
-        href: id => 'monthly.html?eqp=' + encodeURIComponent(id),
-        match: e => e.category === '堆高機' && e.hasMonthly !== false,
-        showForCat: cat => !cat || cat === '堆高機',
-      },
-      {
+        type: 'selector',
         key: 'classroom-monthly',
         title: '教室量測設備及個人防護具月檢',
         name: '📋 龍井 / 復興 / 忠明教室',
         meta: '每月 1-5 日應檢；SCBA 已併入表單下方區塊',
         selectLabel: '選擇教室：',
-        buttonText: '填寫月檢',
-        buttonClass: 'btn-monthly',
-        href: id => 'monthly.html?eqp=' + encodeURIComponent(id),
         match: e => classroomMonthlyIds.has(String(e.equipmentId || '').toUpperCase()) && e.hasMonthly !== false,
-        showForCat: cat => !cat || /教室安全衛生量測設備及個人防護具/.test(cat),
+        showForCat: cat => !cat || /教室/.test(cat),
+        actions: [
+          {
+            text: '填寫月檢',
+            className: 'btn-monthly',
+            href: id => 'monthly.html?eqp=' + encodeURIComponent(id),
+          },
+        ],
       },
     ];
 
@@ -158,23 +173,85 @@
       card.appendChild(field);
 
       const actions = document.createElement('div');
-      actions.className = 'equip-actions';
-      const link = document.createElement('a');
-      link.className = def.buttonClass;
-      link.href = '#';
-      link.textContent = def.buttonText;
-      link.onclick = () => {
-        if (!select.value) {
-          alert(def.selectLabel.replace('：', ''));
+      actions.className = 'equip-actions selector-actions';
+      def.actions.forEach(action => {
+        const link = document.createElement('a');
+        link.className = action.className;
+        link.href = '#';
+        link.textContent = action.text;
+        link.onclick = () => {
+          if (!select.value) {
+            alert(def.selectLabel.replace('：', ''));
+            return false;
+          }
+          location.href = action.href(select.value);
           return false;
-        }
-        location.href = def.href(select.value);
-        return false;
-      };
-      actions.appendChild(link);
+        };
+        actions.appendChild(link);
+      });
       card.appendChild(actions);
 
       section.appendChild(card);
+      return section;
+    }
+
+    function renderEquipmentCard(e) {
+      const card = document.createElement('div');
+      card.className = 'equip-card';
+
+      const name = document.createElement('div');
+      name.className = 'equip-name';
+      name.textContent = e.equipmentName || e.equipmentId;
+      card.appendChild(name);
+
+      const meta = document.createElement('div');
+      meta.className = 'equip-meta';
+      meta.textContent = [e.category, e.location, e.equipmentId].filter(Boolean).join(' ｜ ');
+      card.appendChild(meta);
+
+      const actions = document.createElement('div');
+      actions.className = 'equip-actions';
+
+      const hasDaily = e.hasDaily !== false;
+      const hasMonthly = e.hasMonthly !== false;
+
+      if (hasDaily) {
+        const dailyLink = document.createElement('a');
+        dailyLink.className = 'btn-daily';
+        dailyLink.textContent = '每日檢點';
+        dailyLink.href = 'daily.html?eqp=' + encodeURIComponent(e.equipmentId);
+        actions.appendChild(dailyLink);
+      }
+
+      if (hasMonthly) {
+        const monthlyLink = document.createElement('a');
+        monthlyLink.className = 'btn-monthly';
+        monthlyLink.textContent = '每月檢查';
+        monthlyLink.href = 'monthly.html?eqp=' + encodeURIComponent(e.equipmentId);
+        actions.appendChild(monthlyLink);
+      }
+
+      if (!hasDaily && !hasMonthly) {
+        const muted = document.createElement('span');
+        muted.className = 'equip-meta';
+        muted.textContent = '尚未啟用表單';
+        actions.appendChild(muted);
+      }
+
+      card.appendChild(actions);
+      return card;
+    }
+
+    function renderCardSection(def, equipments) {
+      const section = document.createElement('div');
+      section.className = 'selector-section';
+
+      const title = document.createElement('h2');
+      title.className = 'card-title';
+      title.textContent = def.title;
+      section.appendChild(title);
+
+      equipments.forEach(e => section.appendChild(renderEquipmentCard(e)));
       return section;
     }
 
@@ -182,68 +259,27 @@
       const root = document.getElementById('groupSections');
       root.textContent = '';
       let count = 0;
-      groupDefs.forEach(def => {
+      sectionDefs.forEach(def => {
         if (!def.showForCat(urlCat)) return;
         const items = equipments.filter(def.match);
         if (!items.length) return;
-        root.appendChild(renderGroupedSelector(def, items));
+        root.appendChild(def.type === 'selector'
+          ? renderGroupedSelector(def, items)
+          : renderCardSection(def, items));
         count++;
       });
       return count;
     }
 
-    function isGroupedEquipment(e) {
-      return groupDefs.some(def => def.match(e));
+    function isPrimarySectionEquipment(e) {
+      return sectionDefs.some(def => def.match(e));
     }
 
     function renderList(equipments) {
       const root = document.getElementById('content');
       root.textContent = '';
       equipments.forEach(e => {
-        const card = document.createElement('div');
-        card.className = 'equip-card';
-
-        const name = document.createElement('div');
-        name.className = 'equip-name';
-        name.textContent = e.equipmentName || e.equipmentId;
-        card.appendChild(name);
-
-        const meta = document.createElement('div');
-        meta.className = 'equip-meta';
-        meta.textContent = [e.category, e.location, e.equipmentId].filter(Boolean).join(' ｜ ');
-        card.appendChild(meta);
-
-        const actions = document.createElement('div');
-        actions.className = 'equip-actions';
-
-        const hasDaily = e.hasDaily !== false;
-        const hasMonthly = e.hasMonthly !== false;
-
-        if (hasDaily) {
-          const dailyLink = document.createElement('a');
-          dailyLink.className = 'btn-daily';
-          dailyLink.textContent = '每日檢點';
-          dailyLink.href = 'daily.html?eqp=' + encodeURIComponent(e.equipmentId);
-          actions.appendChild(dailyLink);
-        }
-
-        if (hasMonthly) {
-          const monthlyLink = document.createElement('a');
-          monthlyLink.className = 'btn-monthly';
-          monthlyLink.textContent = '每月檢查';
-          monthlyLink.href = 'monthly.html?eqp=' + encodeURIComponent(e.equipmentId);
-          actions.appendChild(monthlyLink);
-        }
-
-        if (!hasDaily && !hasMonthly) {
-          const muted = document.createElement('span');
-          muted.className = 'equip-meta';
-          muted.textContent = '尚未啟用表單';
-          actions.appendChild(muted);
-        }
-
-        card.appendChild(actions);
-        root.appendChild(card);
+        root.appendChild(renderEquipmentCard(e));
       });
     }
 
@@ -257,13 +293,13 @@
 
         // 其他設備列表（支援 URL ?cat=xxx 過濾；已收進下拉選單的設備不重複顯示）
         const filtered = urlCat
-          ? r.equipments.filter(e => e.category === urlCat && !isGroupedEquipment(e))
-          : r.equipments.filter(e => !isGroupedEquipment(e));
+          ? r.equipments.filter(e => e.category === urlCat && !isPrimarySectionEquipment(e))
+          : r.equipments.filter(e => !isPrimarySectionEquipment(e));
 
         const listTitle = document.getElementById('listTitle');
         if (filtered.length) {
           listTitle.style.display = '';
-          listTitle.textContent = urlCat ? '其他' + urlCat : '其他設備';
+          listTitle.textContent = urlCat ? urlCat : '其他設備';
           renderList(filtered);
         } else {
           listTitle.style.display = 'none';
