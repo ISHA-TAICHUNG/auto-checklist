@@ -190,7 +190,7 @@ function handleSubmission_(payload) {
           recordId, submittedAt, checkDate, equipment, payload, template: tplMeta,
         });
         pdfBlob.setName(buildPdfFilename_(payload.formType, checkDate, equipment));
-        const folder = getOrCreateArchiveFolder_(equipment.category, checkDate);
+        const folder = getOrCreateArchiveFolderForSubmission_(payload.formType, equipment, checkDate);
         const file = folder.createFile(pdfBlob);
         fileUrl = file.getUrl();
       }
@@ -407,7 +407,7 @@ function handleApprovalSubmission_(payload) {
     const pdfBlob = exportChecklistDocToPdf_(rec.draftDocId);
     const fileName = buildPdfFilename_(rec.formType, checkDate, equipment);
     pdfBlob.setName(fileName);
-    const folder = getOrCreateArchiveFolder_(rec.category, checkDate);
+    const folder = getOrCreateArchiveFolderForSubmission_(rec.formType, equipment, checkDate);
     const file = folder.createFile(pdfBlob);
     const fileUrl = file.getUrl();
 

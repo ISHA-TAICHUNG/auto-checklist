@@ -11,17 +11,15 @@
  *                 └─ 1150531_<設備名稱>_月檢.pdf
  *     └─ 堆高機/             ← 未來新增機具時自動建立
  *         └─ 115年/05月/
+ *     └─ 置備之安全衛生量測設備及個人防護具每月檢核表/
+ *         └─ 115年/06月/龍井教室/
  */
 
 /**
  * 取得（或建立）某機具類別、某年某月的歸檔資料夾
  */
 function getOrCreateArchiveFolder_(category, date) {
-  const rootId = CONFIG.ARCHIVE_ROOT_FOLDER_ID;
-  if (!rootId || rootId.startsWith('REPLACE_')) {
-    throw new Error('尚未設定 ARCHIVE_ROOT_FOLDER_ID，請到 Config.gs 填入 Drive 資料夾 ID');
-  }
-  const root = DriveApp.getFolderById(rootId);
+  const root = getArchiveRootFolder_();
 
   const categoryFolder = getOrCreateSubFolder_(root, category);
   const yearFolder = getOrCreateSubFolder_(categoryFolder, formatROCYear_(date));
@@ -31,15 +29,59 @@ function getOrCreateArchiveFolder_(category, date) {
 }
 
 /**
+ * 取得正式 PDF 歸檔資料夾。
+ * 三間教室月檢集中在同一個表單資料夾，再依「年份 / 月份 / 教室」分類。
+ * 其他機具沿用原本「設備類別 / 年 / 月」結構。
+ */
+function getOrCreateArchiveFolderForSubmission_(formType, equipment, date) {
+  if (isClassroomMonthlySafetyPpeArchive_(formType, equipment)) {
+    return getOrCreateClassroomMonthlySafetyPpeArchiveFolder_(equipment, date);
+  }
+  return getOrCreateArchiveFolder_(equipment.category, date);
+}
+
+function getOrCreateClassroomMonthlySafetyPpeArchiveFolder_(equipment, date) {
+  const root = getArchiveRootFolder_();
+  const formFolder = getOrCreateSubFolder_(root, '置備之安全衛生量測設備及個人防護具每月檢核表');
+  const yearFolder = getOrCreateSubFolder_(formFolder, formatROCYear_(date));
+  const monthFolder = getOrCreateSubFolder_(yearFolder, formatROCMonth_(date));
+  return getOrCreateSubFolder_(monthFolder, classroomArchiveName_(equipment));
+}
+
+function isClassroomMonthlySafetyPpeArchive_(formType, equipment) {
+  if (formType !== 'monthly') return false;
+  const id = String((equipment && equipment.equipmentId) || '').trim().toUpperCase();
+  return [
+    'CLASSROOM-LJ-MEAS-PPE',
+    'CLASSROOM-FX-MEAS-PPE',
+    'CLASSROOM-ZM-MEAS-PPE',
+  ].indexOf(id) >= 0;
+}
+
+function classroomArchiveName_(equipment) {
+  const location = String((equipment && equipment.location) || '').trim();
+  if (location) return cleanDriveFolderName_(location);
+  const id = String((equipment && equipment.equipmentId) || '').trim().toUpperCase();
+  if (id.indexOf('CLASSROOM-LJ-') === 0) return '龍井教室';
+  if (id.indexOf('CLASSROOM-FX-') === 0) return '復興教室';
+  if (id.indexOf('CLASSROOM-ZM-') === 0) return '忠明教室';
+  return '未指定教室';
+}
+
+/**
  * 待主管簽核草稿放在歸檔根資料夾下方，避免尚未簽核的文件混入正式年月歸檔。
  */
 function getOrCreatePendingApprovalFolder_() {
+  const root = getArchiveRootFolder_();
+  return getOrCreateSubFolder_(root, '_待主管簽核');
+}
+
+function getArchiveRootFolder_() {
   const rootId = CONFIG.ARCHIVE_ROOT_FOLDER_ID;
   if (!rootId || rootId.startsWith('REPLACE_')) {
     throw new Error('尚未設定 ARCHIVE_ROOT_FOLDER_ID，請到 Config.gs 填入 Drive 資料夾 ID');
   }
-  const root = DriveApp.getFolderById(rootId);
-  return getOrCreateSubFolder_(root, '_待主管簽核');
+  return DriveApp.getFolderById(rootId);
 }
 
 /**
@@ -49,6 +91,10 @@ function getOrCreateSubFolder_(parent, name) {
   const it = parent.getFoldersByName(name);
   if (it.hasNext()) return it.next();
   return parent.createFolder(name);
+}
+
+function cleanDriveFolderName_(name) {
+  return String(name || '').replace(/[\\/:*?"<>|]/g, '／').trim() || '未命名';
 }
 
 /**
