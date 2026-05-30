@@ -452,7 +452,30 @@ function sendReminder_(category, equipments, webFrontendUrl, opts) {
 
 function sendSupervisorReminder_(category, equipments, webFrontendUrl, opts) {
   const flex = buildReminderFlex_(category, equipments, webFrontendUrl || '', opts);
-  return linePushToSupervisors_(withQuickReply_(flex));
+  const messages = [flex];
+  const text = buildSupervisorReminderLinkText_(equipments, webFrontendUrl || '', opts);
+  if (text) messages.push({ type: 'text', text });
+  return linePushToSupervisors_(withQuickReply_(messages));
+}
+
+function buildSupervisorReminderLinkText_(equipments, webFrontendUrl, opts) {
+  const validUrl = webFrontendUrl && /^https?:\/\//.test(webFrontendUrl) ? webFrontendUrl : '';
+  if (!validUrl) return '';
+  opts = opts || {};
+  const label = opts.buttonLabel || '填寫';
+  const names = (equipments || []).slice(0, 5).map(eq => {
+    const location = eq.location ? `（${eq.location}）` : '';
+    return `• ${eq.equipmentName}${location}`;
+  });
+  const more = equipments && equipments.length > 5 ? `\n• ... 還有 ${equipments.length - 5} 筆` : '';
+  return [
+    `📋 ${label}網址（可轉貼給承辦）`,
+    ...names,
+    more,
+    validUrl,
+    '',
+    '主管不用填寫；若需請承辦補填，可直接轉貼上方網址。',
+  ].filter(Boolean).join('\n');
 }
 
 /**

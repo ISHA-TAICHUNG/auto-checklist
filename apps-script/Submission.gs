@@ -343,11 +343,15 @@ function createApprovalToken_() {
 
 function requiresSupervisorApproval_(formType, equipment) {
   if (formType !== 'monthly' || !equipment) return false;
-  return [
+  const equipmentId = String(equipment.equipmentId || '').trim().toUpperCase();
+  if ([
     'CLASSROOM-LJ-MEAS-PPE',
     'CLASSROOM-FX-MEAS-PPE',
     'CLASSROOM-ZM-MEAS-PPE',
-  ].indexOf(String(equipment.equipmentId || '').trim().toUpperCase()) >= 0;
+  ].indexOf(equipmentId) >= 0) {
+    return true;
+  }
+  return ['堆高機', '固定式起重機'].indexOf(String(equipment.category || '').trim()) >= 0;
 }
 
 function buildApprovalUrl_(recordId, token) {
