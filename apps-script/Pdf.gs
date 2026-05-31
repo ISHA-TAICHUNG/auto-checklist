@@ -576,6 +576,16 @@ function styleClassroomMonthlyGenericTable_(table, widths, resultOptions, result
   const goodValue = opts[0];
   const badValue = opts[opts.length - 1];
 
+  // 對齊「整個 cell 的所有段落」— 修正多行(數量/外觀/操作)只置中第一行造成的左右錯位
+  const alignAllParagraphs = (cell, alignment) => {
+    for (let i = 0; i < cell.getNumChildren(); i++) {
+      const child = cell.getChild(i);
+      if (child.getType() === DocumentApp.ElementType.PARAGRAPH) {
+        try { child.asParagraph().setAlignment(alignment); } catch (_) {}
+      }
+    }
+  };
+
   for (let r = 0; r < table.getNumRows(); r++) {
     const row = table.getRow(r);
     for (let c = 0; c < row.getNumCells(); c++) {
@@ -587,19 +597,45 @@ function styleClassroomMonthlyGenericTable_(table, widths, resultOptions, result
       if (r === 0) {
         cell.setBackgroundColor('#e8eaed');
         text.setBold(true).setForegroundColor('#202124');
-        try { cell.getChild(0).asParagraph().setAlignment(HCenter); } catch (_) {}
+        alignAllParagraphs(cell, HCenter);
         continue;
       }
       if (c === 0 || c === 2 || c === 3 || c === resultCol) {
-        try { cell.getChild(0).asParagraph().setAlignment(HCenter); } catch (_) {}
+        alignAllParagraphs(cell, HCenter);
       }
       if (c === resultCol) {
-        const v = text.getText();
-        if (v.indexOf(badValue) >= 0) text.setForegroundColor('#c5221f').setBold(true);
-        else if (v.indexOf(goodValue) >= 0) text.setForegroundColor('#137333').setBold(true);
+        // 三指標逐行美化：ˇ/X 放大加粗、依結果各行上色，主管一眼可辨
+        styleClassroomMonthlyResultCell_(cell, goodValue, badValue);
       }
     }
   }
+}
+
+/**
+ * 教室月檢「檢核結果」儲存格符號美化
+ *   - 把每個結果符號(ˇ/X)放大到 14pt 並加粗，解決主管看不清的問題
+ *   - 良好(綠) / 不良(紅) 各自上色 — 單一指標不良時只有該符號紅，標籤(數量/外觀/操作：)不受影響
+ *
+ * codex P1 修正：原本以 Paragraph 為單位、從「：」套到段尾。但 DocumentApp 可能把
+ * formatClassroomMonthlyResult_() 回傳的「數量：X\n外觀：ˇ\n操作：ˇ」放在「同一個」
+ * Paragraph（\n 轉成 line-break），導致從第一個「：」一路套到整格尾端、後續行被一起放大染色。
+ * 改為掃整格文字、只對每個 goodValue / badValue「字串本身」的精準 range 套樣式，
+ * 不依賴三行是否被拆成多個 Paragraph，1 段或 3 段都正確。
+ */
+function styleClassroomMonthlyResultCell_(cell, goodValue, badValue) {
+  const t = cell.editAsText();
+  const full = t.getText();
+  if (!full) return;
+  // 只標符號本身（標籤「數量/外觀/操作：」不含 ˇ/X，不會被誤標）
+  const paintAll = (token, color) => {
+    if (!token) return;
+    for (let idx = full.indexOf(token); idx >= 0; idx = full.indexOf(token, idx + token.length)) {
+      const end = idx + token.length - 1;
+      t.setFontSize(idx, end, 14).setBold(idx, end, true).setForegroundColor(idx, end, color);
+    }
+  };
+  paintAll(goodValue, '#137333');
+  paintAll(badValue, '#c5221f');
 }
 
 /** 設備資訊表樣式：label 灰底、border、字 10pt */
