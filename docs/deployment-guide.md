@@ -25,14 +25,14 @@
 
 ### A-1. 建立 DB 試算表（系統資料庫）
 
-1. 開新的 Google Sheets，取名「自動檢查表-DB」
+1. 開新的 Google Sheets，取名「ISHA 檢查與通報資料庫」
 2. 從網址抓 Sheet ID（網址中 `/d/` 後面那串）
    - 例：`https://docs.google.com/spreadsheets/d/1ABCxxxxxxxxxx/edit` → ID 是 `1ABCxxxxxxxxxx`
 3. **暫存這個 ID，等等要填到 Config.gs**
 
 ### A-2. 建立 PDF 歸檔資料夾
 
-1. 開 Google Drive，建一個資料夾「自動檢查表-PDF歸檔」
+1. 開 Google Drive，建一個資料夾「ISHA 檢查與通報歸檔」
 2. 進入資料夾，從網址抓 Folder ID（網址中 `/folders/` 後面那串）
 3. **暫存這個 ID**
 
@@ -45,10 +45,10 @@
 
 1. Google Drive → 右鍵新增 → 更多 → Google Apps Script
    （若沒看到，「連結更多應用程式」搜尋 Apps Script 啟用）
-2. 進入後左上角專案名稱改成「自動檢查表-API」
+2. 進入後左上角專案名稱改成「ISHA 檢查與通報 API」
 3. **設定時區**：左側「專案設定」→ 勾選「在編輯器中顯示『appsscript.json』資訊清單檔案」
 4. 回到編輯器，點開 `appsscript.json`，把內容換成 `apps-script/appsscript.json` 的內容（含 `"timeZone": "Asia/Taipei"`）
-5. 把 `apps-script/` 資料夾內**所有 10 個 .gs 檔**逐一貼進去（PDF 已改用 DocumentApp，不再需要 HTML 模板）：
+5. 把 `apps-script/` 資料夾內所有 `.gs` 與 `.html` 檔逐一貼進去（`.gs` 是 source；使用 `clasp` 部署時會以同名 `.js` 上傳）：
 
 | 在 Apps Script 編輯器點「＋」→ | 選 | 命名 | 貼上對應檔內容 |
 |---|---|---|---|
@@ -62,6 +62,13 @@
 | Calendar.gs | 指令碼 | `Calendar` | `apps-script/Calendar.gs` |
 | Reminder.gs | 指令碼 | `Reminder` | `apps-script/Reminder.gs` |
 | Setup.gs | 指令碼 | `Setup` | `apps-script/Setup.gs` |
+| MonthlySafetyPpe.gs | 指令碼 | `MonthlySafetyPpe` | `apps-script/MonthlySafetyPpe.gs` |
+| LineNotify.gs | 指令碼 | `LineNotify` | `apps-script/LineNotify.gs` |
+| LineWebhook.gs | 指令碼 | `LineWebhook` | `apps-script/LineWebhook.gs` |
+| DailyIncident.gs | 指令碼 | `DailyIncident` | `apps-script/DailyIncident.gs` |
+| ApprovalPage.html | HTML | `ApprovalPage` | `apps-script/ApprovalPage.html` |
+| IncidentUpdatePage.html | HTML | `IncidentUpdatePage` | `apps-script/IncidentUpdatePage.html` |
+| IncidentApprovalPage.html | HTML | `IncidentApprovalPage` | `apps-script/IncidentApprovalPage.html` |
 
 （預設那個 `Code.gs` 可以刪掉）
 
@@ -94,7 +101,9 @@ API_TOKEN:              'REPLACE_WITH_RANDOM_TOKEN_...',     // ← A-5-1 產的
 1. 上方下拉式選單選 `initializeDatabase`
 2. 點「執行」
 3. 第一次會跳「需要授權」→ 同意（要勾選 Drive、Sheets、Gmail 權限）
-4. 執行完打開 A-1 的試算表，會看到 6 個工作表已建好、預設資料已填入
+4. 執行完打開 A-1 的試算表，會看到系統工作表已建好、預設資料已填入
+
+既有系統升級時也可以重新執行 `initializeDatabase`。這個函式是 idempotent，會補上缺少的欄位、設定與「日常異常事件通報」分頁，不會清掉既有填報資料。
 
 ### A-7. 部署為 Web App
 
@@ -144,6 +153,8 @@ API_TOKEN: '<A-5-1 產的 token，必須與 Config.gs 完全一致>',
 
 GitHub Pages 啟用後（B-4），記得回到 DB 試算表「系統設定」工作表，把 `webFrontendUrl` 那一格填入 `https://<your-github-username>.github.io/auto-checklist`（提醒信中的「前往填寫」按鈕會用這個）。
 
+日常異常事件模組也會使用同一個 `webFrontendUrl` 產生 `/通報` 連結，不需要另外新增前端網址設定。
+
 ### B-3. 推上去
 
 ⚠ **推送前確認**：`js/config.js` 的 `API_TOKEN` 已填，`Config.gs` 已不在 staging 區（這個檔含敏感 token）— 但 `Config.gs` 是部署到 Apps Script 才有實際值，git 上的版本是 `REPLACE_...`，所以可以 push。
@@ -184,7 +195,7 @@ git push -u origin main
 1. 點「每日檢點」
 2. 隨便填、簽名、送出
 3. 看到「✓ 檢點表已送出」+ PDF 連結
-4. 打開 Drive，到「自動檢查表-PDF歸檔/固定式起重機/115年/05月/」，PDF 應該在裡面，檔名類似 `1150518_<設備名稱>_日檢.pdf`
+4. 打開 Drive，到「ISHA 檢查與通報歸檔/固定式起重機/115年/05月/」，PDF 應該在裡面，檔名類似 `1150518_<設備名稱>_日檢.pdf`
 
 ### C-3. 試提醒信
 

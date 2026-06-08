@@ -78,7 +78,7 @@ body {
 /* ---- 工作台分頁 ---- */
 .workspace-overview {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
   margin-bottom: 24px;
 }
@@ -97,7 +97,6 @@ body {
 }
 .module-card.checks { border-top: 5px solid #1a73e8; }
 .module-card.incident { border-top: 5px solid #d93025; }
-.module-card.tracking { border-top: 5px solid #188038; }
 .module-eyebrow {
   font-size: 12px;
   font-weight: 900;
@@ -126,10 +125,6 @@ body {
   font-weight: 900;
   letter-spacing: 0;
 }
-.tracking-card {
-  border-left: 4px solid #188038;
-}
-
 /* ---- 卡片 ---- */
 .card {
   background: #fff;
@@ -523,7 +518,7 @@ body {
   .header { padding: 20px 14px; }
   .site-tabs {
     display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 6px;
   }
   .site-tabs a {

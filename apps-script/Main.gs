@@ -23,8 +23,15 @@ function doGet(e) {
   const api = (e && e.parameter && e.parameter.api) || 'health';
 
   try {
-    if (e && e.parameter && e.parameter.page === 'approve') {
-      return approvalPageResponse_(e);
+    if (e && e.parameter && e.parameter.page) {
+      switch (e.parameter.page) {
+        case 'approve':
+          return approvalPageResponse_(e);
+        case 'incident-update':
+          return dailyIncidentUpdatePageResponse_(e);
+        case 'incident-approve':
+          return dailyIncidentApprovalPageResponse_(e);
+      }
     }
 
     let result;
@@ -91,7 +98,9 @@ function doGet(e) {
                                'setEquipmentField', 'addPpe', 'setLineProps',
                                'testLineIncident', 'markCompleted', 'fetchPdf',
                                'addMonthlySafetyPpeForms', 'syncSupervisorIds',
-                               'supervisorStatus', 'updateMonthlySettingNotes'];
+                               'supervisorStatus', 'updateMonthlySettingNotes',
+                               'applyProjectResourceNames', 'installRichMenu',
+                               'deleteRichMenu', 'richMenuStatus'];
         // 破壞性 actions — 需 ADMIN_TOKEN + ALLOW_DESTRUCTIVE_HTTP=YES kill switch
         const DESTRUCTIVE_ACTIONS = ['cleanupAll', 'cleanupDate'];
         if (WRITE_ACTIONS.indexOf(action) >= 0 || DESTRUCTIVE_ACTIONS.indexOf(action) >= 0) {
@@ -201,6 +210,38 @@ function doGet(e) {
               ok: true,
               action,
               ...updateMonthlySettingNotes_(),
+            };
+            break;
+          }
+          case 'applyProjectResourceNames': {
+            result = {
+              ok: true,
+              action,
+              ...applyProjectResourceNames(),
+            };
+            break;
+          }
+          case 'installRichMenu': {
+            result = {
+              ok: true,
+              action,
+              ...installDefaultLineRichMenu(),
+            };
+            break;
+          }
+          case 'deleteRichMenu': {
+            result = {
+              ok: true,
+              action,
+              ...deleteInstalledLineRichMenu(),
+            };
+            break;
+          }
+          case 'richMenuStatus': {
+            result = {
+              ok: true,
+              action,
+              ...getLineRichMenuStatus(),
             };
             break;
           }
@@ -374,9 +415,26 @@ function doPost(e) {
     // 移除 payload._debug stack 回傳（codex 2026-05-26 P1）— 避免任何拿到 API_TOKEN 的人能拉到 stack
     delete payload._debug;
 
-    const result = payload.action === 'approveRecord'
-      ? handleApprovalSubmission_(payload)
-      : handleSubmission_(payload);
+    let result;
+    switch (payload.action || '') {
+      case 'approveRecord':
+        result = handleApprovalSubmission_(payload);
+        break;
+      case 'submitDailyIncident':
+        result = handleDailyIncidentSubmission_(payload);
+        break;
+      case 'updateDailyIncident':
+        result = updateDailyIncident_(payload);
+        break;
+      case 'submitDailyIncidentForApproval':
+        result = submitDailyIncidentForApproval_(payload);
+        break;
+      case 'approveDailyIncident':
+        result = approveDailyIncident_(payload);
+        break;
+      default:
+        result = handleSubmission_(payload);
+    }
     return jsonResponse_(result);
 
   } catch (err) {
@@ -400,9 +458,12 @@ function friendlyError_(err) {
     // 修 P2.2: 補白名單（讓使用者看到真因而非「請聯絡管理員」）
     '結果值不合法', '風險值不合法', '照片超過', '照片過大', '照片格式錯誤',
     '設備已停用', '找不到模板', '檢查表模板缺必要欄位',
-    '日期格式', 'cleanupAll dryRun 需帶', 'cleanupDate dryRun 需帶', 'cleanupDate 實刪需帶',
+    '日期格式', '處理狀況', '日常事件', '更新連結', '審核連結',
+    '處理完成後才能陳核', '缺少陳核主管', '請填寫陳核主管', '審核決定不合法',
+    'cleanupAll dryRun 需帶', 'cleanupDate dryRun 需帶', 'cleanupDate 實刪需帶',
     // admin 用錯誤訊息
     '該檔案非', '需要 fileId', '未知 admin action', '未知的 api',
+    'LINE_CHANNEL_ACCESS_TOKEN', 'LINE Rich Menu', '圖文選單圖片',
     // 新增安全分層相關 (codex 2026-05-26)
     'adminToken', '此 action 需 adminToken', '破壞性 action', 'ADMIN_TOKEN', 'ALLOW_DESTRUCTIVE_HTTP',
     'webhook_token', 'invalid_webhook_token'];
@@ -417,6 +478,28 @@ function approvalPageResponse_(e) {
   tpl.approvalTokenJson = scriptSafeJson_(params.token);
   return tpl.evaluate()
     .setTitle('主管簽核')
+    .addMetaTag('viewport', 'width=device-width, initial-scale=1, maximum-scale=1')
+    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.DEFAULT);
+}
+
+function dailyIncidentUpdatePageResponse_(e) {
+  const params = (e && e.parameter) || {};
+  const tpl = HtmlService.createTemplateFromFile('IncidentUpdatePage');
+  tpl.incidentIdJson = scriptSafeJson_(params.incidentId);
+  tpl.incidentTokenJson = scriptSafeJson_(params.token);
+  return tpl.evaluate()
+    .setTitle('日常事件處理回報')
+    .addMetaTag('viewport', 'width=device-width, initial-scale=1, maximum-scale=1')
+    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.DEFAULT);
+}
+
+function dailyIncidentApprovalPageResponse_(e) {
+  const params = (e && e.parameter) || {};
+  const tpl = HtmlService.createTemplateFromFile('IncidentApprovalPage');
+  tpl.incidentIdJson = scriptSafeJson_(params.incidentId);
+  tpl.incidentTokenJson = scriptSafeJson_(params.token);
+  return tpl.evaluate()
+    .setTitle('日常事件主管審核')
     .addMetaTag('viewport', 'width=device-width, initial-scale=1, maximum-scale=1')
     .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.DEFAULT);
 }

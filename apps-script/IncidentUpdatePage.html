@@ -1,0 +1,424 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: #f8fafd;
+      color: #202124;
+      font-family: Arial, "Noto Sans TC", sans-serif;
+      line-height: 1.55;
+    }
+    .header {
+      background: #1a73e8;
+      color: #fff;
+      padding: 18px 16px;
+      text-align: center;
+    }
+    .header h1 { margin: 0; font-size: 22px; letter-spacing: 0; }
+    .container { width: min(760px, 100%); margin: 0 auto; padding: 16px; }
+    .card {
+      background: #fff;
+      border: 1px solid #e0e3eb;
+      border-radius: 8px;
+      padding: 16px;
+      margin-bottom: 16px;
+      box-shadow: 0 1px 3px rgba(60, 64, 67, .12);
+    }
+    .card-title { margin: 0 0 12px; font-size: 18px; letter-spacing: 0; }
+    .meta-grid {
+      display: grid;
+      grid-template-columns: 112px 1fr;
+      gap: 8px 12px;
+      font-size: 15px;
+    }
+    .meta-label { color: #5f6368; }
+    .meta-value { font-weight: 600; overflow-wrap: anywhere; white-space: pre-wrap; }
+    .field { margin-bottom: 14px; }
+    .field label { display: block; color: #5f6368; font-size: 14px; margin-bottom: 6px; font-weight: 700; }
+    input, select, textarea {
+      width: 100%;
+      padding: 12px;
+      border: 1px solid #dadce0;
+      border-radius: 6px;
+      font-size: 16px;
+      font-family: inherit;
+      background: #fff;
+    }
+    textarea { min-height: 110px; resize: vertical; }
+    .actions { display: grid; gap: 10px; }
+    .btn {
+      border: 0;
+      border-radius: 6px;
+      padding: 13px 16px;
+      font-size: 16px;
+      font-weight: 700;
+      cursor: pointer;
+      text-align: center;
+      text-decoration: none;
+      display: block;
+    }
+    .btn-primary { background: #1a73e8; color: #fff; }
+    .btn-secondary { background: #eef3fb; color: #174ea6; }
+    .btn-danger { background: #d93025; color: #fff; }
+    .alert { border-radius: 8px; padding: 12px; line-height: 1.5; margin-bottom: 16px; }
+    .alert-error { background: #fce8e6; color: #b31412; border: 1px solid #f6b8b2; }
+    .alert-info { background: #e8f0fe; color: #174ea6; border: 1px solid #c7d7fe; }
+    .loading { text-align: center; color: #5f6368; padding: 28px; }
+    .result-icon { font-size: 48px; text-align: center; color: #34a853; }
+    .result-title { text-align: center; font-size: 22px; font-weight: 700; margin: 8px 0; }
+    .photo-list { color: #5f6368; font-size: 14px; margin-top: 8px; }
+  </style>
+</head>
+<body>
+  <header class="header">
+    <h1>日常事件處理回報</h1>
+  </header>
+  <main class="container">
+    <div id="content" class="loading">載入中...</div>
+  </main>
+
+  <script>
+    const injectedParams = {
+      incidentId: <?!= incidentIdJson ?>,
+      token: <?!= incidentTokenJson ?>,
+    };
+    const params = new URLSearchParams(location.search);
+    const incidentId = params.get('incidentId') || injectedParams.incidentId || '';
+    const token = params.get('token') || injectedParams.token || '';
+    let incident = null;
+    let photos = [];
+
+    if (!incidentId || !token) {
+      showError('處理回報連結缺少必要參數，請從最新 LINE 連結重新開啟');
+    } else {
+      google.script.run
+        .withSuccessHandler(res => {
+          if (!res || !res.ok) return showError((res && res.error) || '取得日常事件資料失敗');
+          incident = res.incident;
+          renderPage();
+        })
+        .withFailureHandler(err => showError(err.message || String(err)))
+        .getDailyIncidentForUpdatePage(incidentId, token);
+    }
+
+    function renderPage() {
+      const root = document.getElementById('content');
+      root.className = '';
+      root.textContent = '';
+      root.appendChild(infoCard());
+      if (incident.pdfUrl) root.appendChild(linkButton('查看目前 PDF', incident.pdfUrl));
+
+      if (incident.reviewStatus === '已結案') {
+        root.appendChild(doneCard('此事件已結案', incident.pdfUrl));
+        return;
+      }
+      if (incident.reviewStatus === '待主管審核') {
+        const info = document.createElement('div');
+        info.className = 'alert alert-info';
+        info.textContent = '此事件已送主管審核，暫時不能更新。';
+        root.appendChild(info);
+        const resend = document.createElement('button');
+        resend.type = 'button';
+        resend.className = 'btn btn-primary';
+        resend.textContent = '重新通知主管審核';
+        resend.onclick = resendSupervisorNotice;
+        root.appendChild(resend);
+        return;
+      }
+
+      const form = card('處理狀況');
+      form.appendChild(selectField('處理狀況', 'processStatus', ['待處理', '處理中', '處理完成'], incident.processStatus || '待處理'));
+      form.appendChild(textareaField('處理說明', 'processNote', incident.processNote || '', '請填寫目前處理情形、改善方式或需要補充的內容'));
+      form.appendChild(inputField('處理完成日期', 'completedDate', 'date', incident.completedDate || todayIso()));
+      form.appendChild(inputField('陳核主管', 'supervisor', 'text', incident.supervisor || '', '請填寫主管姓名'));
+      form.appendChild(photoField());
+      root.appendChild(form);
+
+      const actions = document.createElement('div');
+      actions.className = 'actions';
+      const save = document.createElement('button');
+      save.type = 'button';
+      save.className = 'btn btn-secondary';
+      save.textContent = '更新處理狀況';
+      save.onclick = () => submitUpdate(false);
+      const submit = document.createElement('button');
+      submit.type = 'button';
+      submit.className = 'btn btn-primary';
+      submit.textContent = '處理完成並陳核主管';
+      submit.onclick = () => submitUpdate(true);
+      actions.appendChild(save);
+      actions.appendChild(submit);
+      root.appendChild(actions);
+    }
+
+    function submitUpdate(sendApproval) {
+      const status = valueOf('processStatus');
+      const note = valueOf('processNote');
+      const completedDate = valueOf('completedDate');
+      const supervisor = valueOf('supervisor');
+      if (sendApproval && status !== '處理完成') return alert('要陳核主管前，處理狀況需先選「處理完成」');
+      if (sendApproval && !supervisor) return alert('請填寫陳核主管');
+
+      setBusy(true, sendApproval ? '送審中...' : '更新中...');
+      google.script.run
+        .withSuccessHandler(res => {
+          if (!res || !res.ok) {
+            setBusy(false);
+            return alert('更新失敗：' + ((res && res.error) || '未知錯誤'));
+          }
+          if (!sendApproval) {
+            incident = res.incident;
+            photos = [];
+            renderResult('處理狀況已更新', incident.pdfUrl);
+            return;
+          }
+          google.script.run
+            .withSuccessHandler(r2 => {
+              setBusy(false);
+              if (!r2 || !r2.ok) return alert('陳核失敗：' + ((r2 && r2.error) || '未知錯誤'));
+              incident = r2.incident;
+              renderResult('已送主管審核', incident.pdfUrl, r2.approvalNotice);
+            })
+            .withFailureHandler(err => {
+              setBusy(false);
+              alert('陳核失敗：' + (err.message || String(err)));
+            })
+            .submitDailyIncidentForApprovalFromPage({ incidentId, token, supervisor });
+        })
+        .withFailureHandler(err => {
+          setBusy(false);
+          alert('更新失敗：' + (err.message || String(err)));
+        })
+        .updateDailyIncidentFromPage({
+          incidentId,
+          token,
+          processStatus: status,
+          processNote: note,
+          completedDate,
+          supervisor,
+          photos,
+        });
+    }
+
+    function resendSupervisorNotice() {
+      setBusy(true, '通知中...');
+      google.script.run
+        .withSuccessHandler(res => {
+          setBusy(false);
+          if (!res || !res.ok) return alert('重新通知失敗：' + ((res && res.error) || '未知錯誤'));
+          incident = res.incident || incident;
+          renderResult('已重新通知主管', incident.pdfUrl, res.approvalNotice);
+        })
+        .withFailureHandler(err => {
+          setBusy(false);
+          alert('重新通知失敗：' + (err.message || String(err)));
+        })
+        .submitDailyIncidentForApprovalFromPage({ incidentId, token, supervisor: incident.supervisor });
+    }
+
+    function infoCard() {
+      const c = card('事件摘要');
+      const grid = document.createElement('div');
+      grid.className = 'meta-grid';
+      addRow(grid, '事件ID', incident.incidentId);
+      addRow(grid, '填報日期', incident.reportDate);
+      addRow(grid, '發生地點', incident.location);
+      addRow(grid, '填報事項', incident.subject);
+      addRow(grid, '異常事情', incident.description);
+      addRow(grid, '處理狀況', incident.processStatus);
+      addRow(grid, '審核狀態', incident.reviewStatus);
+      addRow(grid, '照片數', String(incident.photoCount || 0));
+      c.appendChild(grid);
+      return c;
+    }
+
+    function photoField() {
+      const wrap = document.createElement('div');
+      wrap.className = 'field';
+      const label = document.createElement('label');
+      label.textContent = '補充照片（最多累計 8 張）';
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = 'image/*';
+      input.multiple = true;
+      const list = document.createElement('div');
+      list.className = 'photo-list';
+      list.textContent = '尚未選擇照片';
+      input.onchange = async () => {
+        photos = [];
+        const files = Array.from(input.files || []);
+        for (const file of files) {
+          if (photos.length >= 8) break;
+          photos.push(await compressImage(file, 1280, 0.7));
+        }
+        list.textContent = photos.length ? `已選擇 ${photos.length} 張照片` : '尚未選擇照片';
+      };
+      wrap.appendChild(label);
+      wrap.appendChild(input);
+      wrap.appendChild(list);
+      return wrap;
+    }
+
+    function compressImage(file, maxDim, quality) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          const img = new Image();
+          img.onload = () => {
+            let w = img.width, h = img.height;
+            if (w > h && w > maxDim) { h = h * (maxDim / w); w = maxDim; }
+            else if (h >= w && h > maxDim) { w = w * (maxDim / h); h = maxDim; }
+            const canvas = document.createElement('canvas');
+            canvas.width = Math.round(w);
+            canvas.height = Math.round(h);
+            canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+            resolve(canvas.toDataURL('image/jpeg', quality));
+          };
+          img.onerror = () => reject(new Error('image load error'));
+          img.src = reader.result;
+        };
+        reader.onerror = () => reject(new Error('file read error'));
+        reader.readAsDataURL(file);
+      });
+    }
+
+    function card(title) {
+      const c = document.createElement('div');
+      c.className = 'card';
+      const h = document.createElement('h2');
+      h.className = 'card-title';
+      h.textContent = title;
+      c.appendChild(h);
+      return c;
+    }
+    function addRow(grid, label, value) {
+      const l = document.createElement('div');
+      l.className = 'meta-label';
+      l.textContent = label;
+      const v = document.createElement('div');
+      v.className = 'meta-value';
+      v.textContent = value || '—';
+      grid.appendChild(l);
+      grid.appendChild(v);
+    }
+    function inputField(labelText, id, type, value, placeholder) {
+      const f = document.createElement('div');
+      f.className = 'field';
+      const label = document.createElement('label');
+      label.textContent = labelText;
+      const input = document.createElement('input');
+      input.id = id;
+      input.type = type;
+      input.value = value || '';
+      input.placeholder = placeholder || '';
+      f.appendChild(label);
+      f.appendChild(input);
+      return f;
+    }
+    function textareaField(labelText, id, value, placeholder) {
+      const f = document.createElement('div');
+      f.className = 'field';
+      const label = document.createElement('label');
+      label.textContent = labelText;
+      const input = document.createElement('textarea');
+      input.id = id;
+      input.value = value || '';
+      input.placeholder = placeholder || '';
+      f.appendChild(label);
+      f.appendChild(input);
+      return f;
+    }
+    function selectField(labelText, id, options, value) {
+      const f = document.createElement('div');
+      f.className = 'field';
+      const label = document.createElement('label');
+      label.textContent = labelText;
+      const sel = document.createElement('select');
+      sel.id = id;
+      options.forEach(opt => {
+        const o = document.createElement('option');
+        o.value = opt;
+        o.textContent = opt;
+        if (opt === value) o.selected = true;
+        sel.appendChild(o);
+      });
+      f.appendChild(label);
+      f.appendChild(sel);
+      return f;
+    }
+    function valueOf(id) { return (document.getElementById(id).value || '').trim(); }
+    function todayIso() {
+      const d = new Date();
+      const pad = n => String(n).padStart(2, '0');
+      return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+    }
+    function setBusy(disabled, text) {
+      document.querySelectorAll('button').forEach(btn => {
+        btn.disabled = disabled;
+        if (disabled && text) btn.textContent = text;
+      });
+    }
+    function renderResult(title, fileUrl, notice) {
+      const root = document.getElementById('content');
+      root.textContent = '';
+      root.appendChild(doneCard(title, fileUrl, notice));
+    }
+    function doneCard(title, fileUrl, notice) {
+      const c = card('');
+      const icon = document.createElement('div');
+      icon.className = 'result-icon';
+      icon.textContent = '✓';
+      const t = document.createElement('div');
+      t.className = 'result-title';
+      t.textContent = title;
+      c.appendChild(icon);
+      c.appendChild(t);
+      const noticeEl = noticeAlert(notice);
+      if (noticeEl) c.appendChild(noticeEl);
+      if (fileUrl) c.appendChild(linkButton('查看 PDF', fileUrl));
+      return c;
+    }
+    function noticeAlert(notice) {
+      if (!notice) return null;
+      const d = document.createElement('div');
+      d.className = notice.ok ? 'alert alert-info' : 'alert alert-error';
+      d.textContent = noticeText(notice);
+      return d;
+    }
+    function noticeText(notice) {
+      if (!notice) return '';
+      if (notice.skipped) return '主管 LINE 通知設定目前關閉，事件已送審但未推播。';
+      if (notice.ok) {
+        if (notice.targetMode === 'named') return `主管 LINE 通知已送出：${notice.supervisorName || '指定主管'}`;
+        if (notice.targetMode === 'fallback') return `主管 LINE 通知已送出，但找不到指定主管 LINE ID，已改通知啟用主管 ${notice.targetCount || ''} 人。`;
+        return '主管 LINE 通知已送出。';
+      }
+      if (notice.reason === 'supervisor_not_found') return `找不到「${notice.supervisorName || '指定主管'}」的 LINE_USER_ID，且沒有可用的 fallback 主管。請確認「主管清單」。`;
+      if (notice.reason === 'no_supervisor') return '沒有啟用的主管 LINE_USER_ID，請確認「主管清單」或 SUPERVISOR_USER_IDS。';
+      if (notice.reason === 'no_token') return 'LINE_CHANNEL_ACCESS_TOKEN 未設定，主管通知未送出。';
+      return '主管 LINE 通知未送出，請確認 LINE 設定或手動轉貼審核連結。';
+    }
+    function linkButton(text, url) {
+      const a = document.createElement('a');
+      a.className = 'btn btn-primary';
+      a.href = url;
+      a.target = '_blank';
+      a.rel = 'noopener';
+      a.textContent = text;
+      return a;
+    }
+    function showError(msg) {
+      const root = document.getElementById('content');
+      root.className = '';
+      root.textContent = '';
+      const d = document.createElement('div');
+      d.className = 'alert alert-error';
+      d.textContent = msg;
+      root.appendChild(d);
+    }
+  </script>
+</body>
+</html>

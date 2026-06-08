@@ -141,6 +141,19 @@ function isMonthlySafetyPpeReminderCategory_(category) {
   return getMonthlySafetyPpeReminderCategories_().indexOf(category) >= 0;
 }
 
+function getMonthlyEquipmentReminderCategories_() {
+  return ['固定式起重機', '堆高機'];
+}
+
+function getMonthlyReminderCategories_() {
+  return getMonthlySafetyPpeReminderCategories_()
+    .concat(getMonthlyEquipmentReminderCategories_());
+}
+
+function isMonthlyReminderCategory_(category) {
+  return getMonthlyReminderCategories_().indexOf(String(category || '').trim()) >= 0;
+}
+
 function addMonthlySafetyPpeForms() {
   const ss = SpreadsheetApp.openById(CONFIG.DB_SHEET_ID);
   const defs = getMonthlySafetyPpeDefinitions_();
@@ -341,7 +354,7 @@ function getMonthlyReminderStartDay_() {
 }
 
 /**
- * 教室月檢「應檢期」(window)：當期可填的時段
+ * 月檢「應檢期」(window)：當期可填的時段
  * 預設每月 1~5 號（依承辦實務「月初填寫」設定）
  * 可在 DB 系統設定 monthlyCheckWindowStart / monthlyCheckWindowEnd 覆蓋
  */
@@ -367,7 +380,7 @@ function monthlyReminderJob_(opts) {
   for (const eqp of equipments) {
     const full = getEquipmentById_(eqp.equipmentId);
     if (!full || !full.active) continue;
-    if (!isMonthlySafetyPpeReminderCategory_(full.category)) continue;
+    if (!isMonthlyReminderCategory_(full.category)) continue;
 
     const base = {
       equipmentId: full.equipmentId,

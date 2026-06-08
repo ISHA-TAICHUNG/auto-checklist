@@ -20,6 +20,8 @@
  */
 
 const LINE_API = 'https://api.line.me/v2/bot';
+const LINE_API_DATA = 'https://api-data.line.me/v2/bot';
+const LINE_RICH_MENU_IMAGE_DEFAULT_URL = 'https://isha-taichung.github.io/auto-checklist/assets/line-rich-menu-main.png';
 
 /**
  * 取得 LINE 配置（每次 fresh 讀 properties — 避免 warm start 拿到舊值）
@@ -63,6 +65,60 @@ function getSupervisorUserIdsFromSheet_() {
     Logger.log('[LINE] 讀取主管清單失敗，改用 SUPERVISOR_USER_IDS: ' + err);
     return [];
   }
+}
+
+function getSupervisorUserIdsByName_(supervisorName) {
+  const target = String(supervisorName || '').trim();
+  if (!target) return [];
+  try {
+    if (!CONFIG.DB_SHEET_ID || CONFIG.DB_SHEET_ID.startsWith('REPLACE_')) return [];
+    const sheet = SpreadsheetApp.openById(CONFIG.DB_SHEET_ID).getSheetByName('主管清單');
+    if (!sheet || sheet.getLastRow() < 2) return [];
+    const data = sheet.getDataRange().getValues();
+    const headers = data[0].map(h => String(h || '').trim());
+    const nameCol = headers.indexOf('姓名');
+    const idCol = headers.indexOf('LINE_USER_ID');
+    const activeCol = headers.indexOf('是否啟用');
+    if (nameCol < 0 || idCol < 0) return [];
+    const ids = [];
+    data.slice(1).forEach(row => {
+      const name = String(row[nameCol] || '').trim();
+      const id = String(row[idCol] || '').trim();
+      const active = activeCol < 0 ? true : isActiveValue_(row[activeCol]);
+      if (id && active && name && (name === target || target.indexOf(name) >= 0 || name.indexOf(target) >= 0)) ids.push(id);
+    });
+    return Array.from(new Set(ids));
+  } catch (err) {
+    Logger.log('[LINE] 依主管姓名讀取 LINE_USER_ID 失敗: ' + err);
+    return [];
+  }
+}
+
+function linePushToSupervisorName_(supervisorName, messages) {
+  const cfg = getLineConfig_();
+  if (!cfg.token) return { ok: false, reason: 'no_token' };
+  if (!Array.isArray(messages)) messages = [messages];
+  const ids = getSupervisorUserIdsByName_(supervisorName);
+  if (ids.length > 1) {
+    const res = lineMulticast_(ids, messages);
+    return Object.assign({ targetMode: 'named', targetCount: ids.length, supervisorName }, res);
+  }
+  if (ids.length === 1) {
+    const res = linePushTo_(ids[0], messages, 'push');
+    return Object.assign({ targetMode: 'named', targetCount: 1, supervisorName }, res);
+  }
+
+  const fallbackIds = getSupervisorUserIds_();
+  if (fallbackIds.length > 1) {
+    const res = lineMulticast_(fallbackIds, messages);
+    return Object.assign({ targetMode: 'fallback', targetCount: fallbackIds.length, supervisorName }, res);
+  }
+  if (fallbackIds.length === 1) {
+    const res = linePushTo_(fallbackIds[0], messages, 'push');
+    return Object.assign({ targetMode: 'fallback', targetCount: 1, supervisorName }, res);
+  }
+  Logger.log('[LINE supervisor] 找不到指定主管 LINE_USER_ID，且無 fallback 主管: ' + supervisorName);
+  return { ok: false, reason: 'supervisor_not_found', supervisorName, targetMode: 'none', targetCount: 0 };
 }
 
 function linePushToSupervisors_(messages) {
@@ -161,9 +217,10 @@ function defaultQuickReply_() {
     items: [
       { type: 'action', action: { type: 'message', label: '📊 狀態',    text: '狀態' } },
       { type: 'action', action: { type: 'message', label: '🚨 異常',    text: '異常' } },
+      { type: 'action', action: { type: 'message', label: '📝 通報',    text: '通報' } },
+      { type: 'action', action: { type: 'message', label: '📌 待處理',  text: '待處理' } },
       { type: 'action', action: { type: 'message', label: '📷 QR 選單', text: 'QR選單' } },
       { type: 'action', action: { type: 'message', label: '❓ 幫助',    text: '幫助' } },
-      { type: 'action', action: { type: 'message', label: '📍 這裡',    text: '這裡' } },
     ],
   };
 }
@@ -441,6 +498,196 @@ function buildApprovalRequestFlex_(record) {
   };
 }
 
+function dailyIncidentFlexField_(label, value, opts) {
+  opts = opts || {};
+  return {
+    type: 'box',
+    layout: 'baseline',
+    spacing: 'sm',
+    contents: [
+      { type: 'text', text: label, flex: 2, size: 'sm', color: '#666666' },
+      {
+        type: 'text',
+        text: trimLineText_(value || '—', opts.maxLen || 120),
+        flex: 5,
+        size: 'sm',
+        color: opts.color || '#202124',
+        weight: opts.weight || 'regular',
+        wrap: true,
+      },
+    ],
+  };
+}
+
+function buildDailyIncidentCreatedFlex_(incident) {
+  const incidentId = incident.incidentId || '';
+  const updateUrl = incident.updateUrl && /^https?:\/\//.test(incident.updateUrl) ? incident.updateUrl : '';
+  const pdfUrl = incident.pdfUrl && /^https?:\/\//.test(incident.pdfUrl) ? incident.pdfUrl : '';
+  const updateAction = updateUrl
+    ? { type: 'uri', label: '處理回報', uri: updateUrl }
+    : { type: 'message', label: '處理回報', text: `/更新${incidentId}` };
+  const approvalAction = updateUrl
+    ? { type: 'uri', label: '處理完成送審', uri: updateUrl }
+    : { type: 'message', label: '處理完成送審', text: `/陳核${incidentId}` };
+  return {
+    type: 'flex',
+    altText: `🚨 日常異常事件通報 ${incidentId}`,
+    contents: {
+      type: 'bubble',
+      header: {
+        type: 'box', layout: 'vertical',
+        backgroundColor: '#D32F2F',
+        paddingAll: 'md',
+        contents: [
+          { type: 'text', text: '🚨 日常異常事件通報', color: '#ffffff', weight: 'bold', size: 'lg' },
+          { type: 'text', text: incidentId, color: '#FFEBEE', size: 'sm' },
+        ],
+      },
+      body: {
+        type: 'box', layout: 'vertical', spacing: 'sm',
+        contents: [
+          dailyIncidentFlexField_('地點', incident.location, { weight: 'bold' }),
+          dailyIncidentFlexField_('事項', incident.subject),
+          dailyIncidentFlexField_('填報人', incident.reporter),
+          dailyIncidentFlexField_('承辦人', incident.owner),
+          dailyIncidentFlexField_('狀態', incident.processStatus || '待處理', { color: '#D32F2F', weight: 'bold' }),
+          dailyIncidentFlexField_('審核', incident.reviewStatus || '未送審'),
+          { type: 'separator', margin: 'md' },
+          { type: 'text', text: '異常事情', size: 'sm', color: '#666666', margin: 'md' },
+          { type: 'text', text: trimLineText_(incident.description || '—', 260), size: 'md', color: '#D32F2F', weight: 'bold', wrap: true },
+          { type: 'text', text: incident.photoCount > 0 ? `📷 附 ${incident.photoCount} 張照片` : '📷 無照片', size: 'xs', color: '#666666', margin: 'sm' },
+        ],
+      },
+      footer: {
+        type: 'box', layout: 'vertical', spacing: 'sm',
+        contents: [
+          {
+            type: 'button',
+            style: 'primary',
+            color: '#D32F2F',
+            action: updateAction,
+          },
+          ...(pdfUrl ? [{
+            type: 'button',
+            style: 'secondary',
+            action: { type: 'uri', label: '查看PDF', uri: pdfUrl },
+          }] : []),
+          {
+            type: 'button',
+            style: 'secondary',
+            action: approvalAction,
+          },
+        ],
+      },
+    },
+  };
+}
+
+function buildDailyIncidentReturnedFlex_(incident) {
+  const incidentId = incident.incidentId || '';
+  const updateUrl = incident.updateUrl && /^https?:\/\//.test(incident.updateUrl) ? incident.updateUrl : '';
+  const pdfUrl = incident.pdfUrl && /^https?:\/\//.test(incident.pdfUrl) ? incident.pdfUrl : '';
+  const updateAction = updateUrl
+    ? { type: 'uri', label: '補正處理', uri: updateUrl }
+    : { type: 'message', label: '補正處理', text: `/更新${incidentId}` };
+  return {
+    type: 'flex',
+    altText: `↩ 日常異常事件退回補正 ${incidentId}`,
+    contents: {
+      type: 'bubble',
+      header: {
+        type: 'box', layout: 'vertical',
+        backgroundColor: '#B3261E',
+        paddingAll: 'md',
+        contents: [
+          { type: 'text', text: '↩ 主管退回補正', color: '#ffffff', weight: 'bold', size: 'lg' },
+          { type: 'text', text: incidentId, color: '#FCE8E6', size: 'sm' },
+        ],
+      },
+      body: {
+        type: 'box', layout: 'vertical', spacing: 'sm',
+        contents: [
+          dailyIncidentFlexField_('地點', incident.location, { weight: 'bold' }),
+          dailyIncidentFlexField_('事項', incident.subject),
+          dailyIncidentFlexField_('承辦人', incident.owner),
+          dailyIncidentFlexField_('主管', incident.supervisor),
+          dailyIncidentFlexField_('狀態', incident.processStatus || '處理完成', { color: '#B3261E', weight: 'bold' }),
+          { type: 'separator', margin: 'md' },
+          { type: 'text', text: '退回意見', size: 'sm', color: '#666666', margin: 'md' },
+          { type: 'text', text: trimLineText_(incident.reviewComment || '請補正後重新送審', 260), size: 'md', color: '#B3261E', weight: 'bold', wrap: true },
+        ],
+      },
+      footer: {
+        type: 'box', layout: 'vertical', spacing: 'sm',
+        contents: [
+          {
+            type: 'button',
+            style: 'primary',
+            color: '#B3261E',
+            action: updateAction,
+          },
+          ...(pdfUrl ? [{
+            type: 'button',
+            style: 'secondary',
+            action: { type: 'uri', label: '查看退回PDF', uri: pdfUrl },
+          }] : []),
+        ],
+      },
+    },
+  };
+}
+
+function buildDailyIncidentApprovalFlex_(incident) {
+  const approvalUrl = incident.approvalUrl || '';
+  const footerButtons = [{
+    type: 'button',
+    style: 'primary',
+    color: '#1a73e8',
+    action: { type: 'uri', label: '主管審核', uri: approvalUrl },
+  }];
+  if (incident.pdfUrl && /^https?:\/\//.test(incident.pdfUrl)) {
+    footerButtons.push({
+      type: 'button',
+      style: 'secondary',
+      action: { type: 'uri', label: '查看待審PDF', uri: incident.pdfUrl },
+    });
+  }
+  return {
+    type: 'flex',
+    altText: `🖊 日常異常事件待審 ${incident.incidentId || ''}`,
+    contents: {
+      type: 'bubble',
+      header: {
+        type: 'box', layout: 'vertical',
+        backgroundColor: '#1a73e8',
+        paddingAll: 'md',
+        contents: [
+          { type: 'text', text: '🖊 日常異常事件待審', color: '#ffffff', weight: 'bold', size: 'lg' },
+          { type: 'text', text: incident.incidentId || '', color: '#e8f0fe', size: 'sm' },
+        ],
+      },
+      body: {
+        type: 'box', layout: 'vertical', spacing: 'sm',
+        contents: [
+          dailyIncidentFlexField_('地點', incident.location, { weight: 'bold' }),
+          dailyIncidentFlexField_('事項', incident.subject),
+          dailyIncidentFlexField_('承辦人', incident.owner),
+          dailyIncidentFlexField_('主管', incident.supervisor),
+          dailyIncidentFlexField_('完成日', incident.completedDate || '—'),
+          { type: 'separator', margin: 'md' },
+          { type: 'text', text: '處理說明', size: 'sm', color: '#666666', margin: 'md' },
+          { type: 'text', text: trimLineText_(incident.processNote || '—', 260), size: 'md', color: '#174ea6', weight: 'bold', wrap: true },
+          { type: 'text', text: incident.photoCount > 0 ? `📷 附 ${incident.photoCount} 張照片` : '📷 無照片', size: 'xs', color: '#666666', margin: 'sm' },
+        ],
+      },
+      footer: {
+        type: 'box', layout: 'vertical', spacing: 'sm',
+        contents: footerButtons,
+      },
+    },
+  };
+}
+
 /**
  * 高層 API：寄未填提醒（給 Reminder.gs 用）
  * 自動加 Quick Reply 按鈕
@@ -500,10 +747,177 @@ function sendApprovalRequest_(record) {
   return linePushToSupervisors_(messages);
 }
 
+function sendDailyIncidentCreated_(incident) {
+  const flex = buildDailyIncidentCreatedFlex_(incident);
+  return linePush_(withQuickReply_(flex));
+}
+
+function sendDailyIncidentReturned_(incident) {
+  const flex = buildDailyIncidentReturnedFlex_(incident);
+  return linePush_(withQuickReply_(flex));
+}
+
+function sendDailyIncidentApprovalRequest_(incident) {
+  const approvalUrl = incident.approvalUrl || '';
+  if (!approvalUrl || !/^https?:\/\//.test(approvalUrl)) {
+    return { ok: false, reason: 'invalid_daily_incident_approval_url' };
+  }
+  const flex = buildDailyIncidentApprovalFlex_(incident);
+  return linePushToSupervisorName_(incident.supervisor, withQuickReply_(flex));
+}
+
+function trimLineText_(text, maxLen) {
+  const s = String(text || '');
+  const limit = maxLen || 1000;
+  return s.length > limit ? s.substring(0, limit - 1) + '…' : s;
+}
+
 /**
  * 簡單文字訊息（debug / fallback）
  * 自動加 Quick Reply 按鈕
  */
 function sendLineText_(text) {
   return linePush_(withQuickReply_({ type: 'text', text }));
+}
+
+// ===================================================================
+// LINE 圖文選單（Rich Menu）管理
+// ===================================================================
+
+function buildDefaultLineRichMenu_() {
+  const frontend = String(getSetting_('webFrontendUrl', '') || CONFIG.DEFAULT_WEB_FRONTEND_URL || '')
+    .replace(/\/$/, '');
+  const indexUrl = frontend ? `${frontend}/index.html` : 'https://isha-taichung.github.io/auto-checklist/index.html';
+  const incidentUrl = frontend ? `${frontend}/incident.html` : 'https://isha-taichung.github.io/auto-checklist/incident.html';
+  return {
+    size: { width: 2500, height: 1686 },
+    selected: true,
+    name: 'ISHA 檢查與通報工作台',
+    chatBarText: 'ISHA 工作台',
+    areas: [
+      lineRichMenuArea_(0, 0, 834, 843, { type: 'uri', uri: indexUrl }),
+      lineRichMenuArea_(834, 0, 833, 843, { type: 'uri', uri: incidentUrl }),
+      lineRichMenuArea_(1667, 0, 833, 843, { type: 'message', text: '狀態' }),
+      lineRichMenuArea_(0, 843, 834, 843, { type: 'message', text: '異常' }),
+      lineRichMenuArea_(834, 843, 833, 843, { type: 'message', text: '待處理' }),
+      lineRichMenuArea_(1667, 843, 833, 843, { type: 'message', text: 'QR選單' }),
+    ],
+  };
+}
+
+function lineRichMenuArea_(x, y, width, height, action) {
+  return { bounds: { x, y, width, height }, action };
+}
+
+function installDefaultLineRichMenu() {
+  const cfg = getLineConfig_();
+  if (!cfg.token) throw new Error('LINE_CHANNEL_ACCESS_TOKEN 未設定，無法建立圖文選單');
+  const props = PropertiesService.getScriptProperties();
+  const oldId = props.getProperty('LINE_DEFAULT_RICH_MENU_ID') || '';
+  if (oldId) {
+    try { lineRichMenuDelete_(oldId); } catch (err) { Logger.log('[LINE richmenu] 刪除舊選單失敗，繼續建立新版：' + err); }
+  }
+
+  const spec = buildDefaultLineRichMenu_();
+  const createRes = lineRichMenuCreate_(spec);
+  const richMenuId = createRes.richMenuId;
+  const imageUrl = getSetting_('lineRichMenuImageUrl', '') || LINE_RICH_MENU_IMAGE_DEFAULT_URL;
+  const imageRes = UrlFetchApp.fetch(imageUrl, { muteHttpExceptions: true });
+  const imageCode = imageRes.getResponseCode();
+  if (imageCode < 200 || imageCode >= 300) {
+    try { lineRichMenuDelete_(richMenuId); } catch (_) {}
+    throw new Error('圖文選單圖片下載失敗：HTTP ' + imageCode);
+  }
+  const blob = imageRes.getBlob().setName('line-rich-menu-main.png');
+  lineRichMenuUploadImage_(richMenuId, blob);
+  lineRichMenuSetDefault_(richMenuId);
+  props.setProperty('LINE_DEFAULT_RICH_MENU_ID', richMenuId);
+  props.setProperty('LINE_DEFAULT_RICH_MENU_IMAGE_URL', imageUrl);
+  return { ok: true, richMenuId, imageUrl, areas: spec.areas.length };
+}
+
+function getLineRichMenuStatus() {
+  const props = PropertiesService.getScriptProperties();
+  const configuredId = props.getProperty('LINE_DEFAULT_RICH_MENU_ID') || '';
+  let defaultId = '';
+  let list = [];
+  try { defaultId = lineRichMenuGetDefaultId_(); } catch (err) { Logger.log('[LINE richmenu] 讀取 default 失敗：' + err); }
+  try { list = lineRichMenuList_(); } catch (err) { Logger.log('[LINE richmenu] 讀取清單失敗：' + err); }
+  return {
+    ok: true,
+    configuredId,
+    defaultId,
+    count: list.length,
+    richMenus: list.map(m => ({
+      richMenuId: m.richMenuId,
+      name: m.name,
+      chatBarText: m.chatBarText,
+      selected: m.selected,
+    })),
+  };
+}
+
+function deleteInstalledLineRichMenu() {
+  const props = PropertiesService.getScriptProperties();
+  const richMenuId = props.getProperty('LINE_DEFAULT_RICH_MENU_ID') || '';
+  if (!richMenuId) return { ok: true, skipped: true, reason: 'no_installed_rich_menu_id' };
+  lineRichMenuDelete_(richMenuId);
+  props.deleteProperty('LINE_DEFAULT_RICH_MENU_ID');
+  return { ok: true, deleted: richMenuId };
+}
+
+function lineRichMenuCreate_(spec) {
+  const res = lineRichMenuFetch_('/richmenu', {
+    method: 'post',
+    contentType: 'application/json',
+    payload: JSON.stringify(spec),
+  });
+  return JSON.parse(res.getContentText() || '{}');
+}
+
+function lineRichMenuUploadImage_(richMenuId, blob) {
+  lineRichMenuDataFetch_(`/richmenu/${encodeURIComponent(richMenuId)}/content`, {
+    method: 'post',
+    contentType: 'image/png',
+    payload: blob.getBytes(),
+  });
+}
+
+function lineRichMenuSetDefault_(richMenuId) {
+  lineRichMenuFetch_(`/user/all/richmenu/${encodeURIComponent(richMenuId)}`, { method: 'post' });
+}
+
+function lineRichMenuGetDefaultId_() {
+  const res = lineRichMenuFetch_('/user/all/richmenu', { method: 'get' });
+  return (JSON.parse(res.getContentText() || '{}') || {}).richMenuId || '';
+}
+
+function lineRichMenuList_() {
+  const res = lineRichMenuFetch_('/richmenu/list', { method: 'get' });
+  return (JSON.parse(res.getContentText() || '{}') || {}).richmenus || [];
+}
+
+function lineRichMenuDelete_(richMenuId) {
+  lineRichMenuFetch_(`/richmenu/${encodeURIComponent(richMenuId)}`, { method: 'delete' });
+}
+
+function lineRichMenuFetch_(path, options) {
+  return lineRichMenuFetchBase_(LINE_API + path, options);
+}
+
+function lineRichMenuDataFetch_(path, options) {
+  return lineRichMenuFetchBase_(LINE_API_DATA + path, options);
+}
+
+function lineRichMenuFetchBase_(url, options) {
+  const cfg = getLineConfig_();
+  if (!cfg.token) throw new Error('LINE_CHANNEL_ACCESS_TOKEN 未設定');
+  const opts = Object.assign({ muteHttpExceptions: true }, options || {});
+  opts.headers = Object.assign({}, opts.headers || {}, { Authorization: 'Bearer ' + cfg.token });
+  const res = UrlFetchApp.fetch(url, opts);
+  const code = res.getResponseCode();
+  if (code < 200 || code >= 300) {
+    throw new Error(`LINE Rich Menu API 失敗：HTTP ${code} ${res.getContentText()}`);
+  }
+  return res;
 }

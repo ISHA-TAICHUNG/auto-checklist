@@ -69,10 +69,14 @@ function initializeDatabase() {
     ['webFrontendUrl', '', 'GitHub Pages 前端網址（提醒信會帶這連結）例：https://<your-github-username>.github.io/auto-checklist'],
   ]);
   ensureSystemSettingDefaults_(ss, [
-    ['monthlyCheckWindowStart', '1', '教室月檢應檢期起始日（狀態顯示用）'],
-    ['monthlyCheckWindowEnd', '5', '教室月檢應檢期結束日（狀態顯示用）'],
-    ['monthlyReminderStartDay', '25', '教室月檢補填提醒起始日'],
+    ['monthlyCheckWindowStart', '1', '月檢應檢期起始日（教室/堆高機/固定式起重機狀態顯示用）'],
+    ['monthlyCheckWindowEnd', '5', '月檢應檢期結束日（教室/堆高機/固定式起重機狀態顯示用）'],
+    ['monthlyReminderStartDay', '25', '月檢補填提醒起始日（教室/堆高機/固定式起重機）'],
+    ['lineRichMenuImageUrl', 'https://isha-taichung.github.io/auto-checklist/assets/line-rich-menu-main.png', 'LINE 圖文選單圖片網址（2500x1686 PNG）'],
   ]);
+  if (typeof ensureDailyIncidentSettings_ === 'function') {
+    ensureDailyIncidentSettings_(ss);
+  }
 
   setupSupervisorSheet_(ss);
 
@@ -186,6 +190,10 @@ function initializeDatabase() {
   // 對「狀態」欄加下拉資料驗證
   setupIncidentStatusValidation_(ss);
 
+  if (typeof setupDailyIncidentSheet_ === 'function') {
+    setupDailyIncidentSheet_(ss);
+  }
+
   // 套用欄寬與文字換行（讓 Sheet 視覺更舒適）
   try { applyColumnWidthsAndWrap_(); } catch (e) { Logger.log('套用欄寬失敗：' + e); }
 
@@ -193,6 +201,48 @@ function initializeDatabase() {
   try { applyChineseSettingsAndDropdowns(); } catch (e) { Logger.log('套用下拉驗證失敗：' + e); }
 
   Logger.log('資料庫初始化完成。請接著到 Sheets 確認 → 回 Apps Script 執行 installDailyReminderTrigger');
+}
+
+function applyProjectResourceNames() {
+  const result = {
+    ok: true,
+    spreadsheetName: '',
+    archiveRootName: '',
+    scriptProjectName: '',
+    dailyIncidentSheetName: '',
+    dailyIncidentArchiveFolderName: '',
+  };
+
+  const ss = SpreadsheetApp.openById(CONFIG.DB_SHEET_ID);
+  ss.rename('ISHA 檢查與通報資料庫');
+  result.spreadsheetName = ss.getName();
+
+  try {
+    const root = DriveApp.getFolderById(CONFIG.ARCHIVE_ROOT_FOLDER_ID);
+    root.setName('ISHA 檢查與通報歸檔');
+    result.archiveRootName = root.getName();
+  } catch (err) {
+    result.archiveRootName = 'rename_failed: ' + String(err.message || err);
+  }
+
+  try {
+    DriveApp.getFileById(ScriptApp.getScriptId()).setName('ISHA 檢查與通報 API');
+    result.scriptProjectName = 'ISHA 檢查與通報 API';
+  } catch (err) {
+    result.scriptProjectName = 'rename_failed: ' + String(err.message || err);
+  }
+
+  if (typeof setupDailyIncidentSheet_ === 'function') {
+    setupDailyIncidentSheet_(ss);
+    const sheet = getDailyIncidentSheet_(ss);
+    result.dailyIncidentSheetName = sheet ? sheet.getName() : '';
+  }
+  if (typeof ensureDailyIncidentSettings_ === 'function') {
+    ensureDailyIncidentSettings_(ss);
+    result.dailyIncidentArchiveFolderName = getSetting_('dailyIncidentArchiveFolderName', '');
+  }
+
+  return result;
 }
 
 /**
@@ -270,9 +320,9 @@ function ensureSystemSettingDefaults_(ss, rows) {
 
 function updateMonthlySettingNotes_() {
   const notes = {
-    monthlyCheckWindowStart: '教室月檢應檢期起始日；應檢期內 LINE「狀態」顯示尚未填，應檢期後到補填日前靜默隱藏，補填日起再次顯示並提醒',
-    monthlyCheckWindowEnd: '教室月檢應檢期結束日；應檢期內 LINE「狀態」顯示尚未填，應檢期後到補填日前靜默隱藏，補填日起再次顯示並提醒',
-    monthlyReminderStartDay: '教室月檢補填提醒起始日；本月未填時，從此日起重新顯示於 LINE「狀態」並推播補填提醒',
+    monthlyCheckWindowStart: '月檢應檢期起始日；適用三間教室、堆高機、固定式起重機；應檢期內 LINE「狀態」顯示尚未填，應檢期後到補填日前靜默隱藏，補填日起再次顯示並提醒',
+    monthlyCheckWindowEnd: '月檢應檢期結束日；適用三間教室、堆高機、固定式起重機；應檢期內 LINE「狀態」顯示尚未填，應檢期後到補填日前靜默隱藏，補填日起再次顯示並提醒',
+    monthlyReminderStartDay: '月檢補填提醒起始日；適用三間教室、堆高機、固定式起重機；本月未填時，從此日起重新顯示於 LINE「狀態」並推播補填提醒',
   };
   const ss = SpreadsheetApp.openById(CONFIG.DB_SHEET_ID);
   const sheet = ss.getSheetByName('系統設定');
@@ -774,6 +824,14 @@ function applyColumnWidthsAndWrap_() {
       '異常說明': 260, '照片數': 60, 'PDF連結': 140, '紀錄ID': 90,
       '狀態': 100, '預計完成日': 110, '實際完成日': 110, '負責人': 90, '備註': 200,
     },
+    '日常異常事件通報': {
+      '事件ID': 130, '建立時間': 150, '填報日期': 100, '發生地點': 140,
+      '填報人': 100, '承辦人': 100, '填報事項': 120, '異常事情': 280,
+      '處理狀況': 100, '處理說明': 280, '處理完成日期': 110,
+      '陳核主管': 100, '審核狀態': 120, '主管審核意見': 240, '主管審核時間': 150,
+      '照片數': 70, '照片資料夾連結': 160, 'PDF連結': 160, '待審PDF檔案ID': 160,
+      '承辦更新Token': 180, '主管審核Token': 180, 'clientSubmissionId': 130, '流程紀錄': 320, '備註': 180,
+    },
     '填報紀錄': {
       '紀錄ID': 90, '送出時間': 140, '檢查日期': 100, '表單類型': 80,
       '設備代號': 110, '設備名稱': 140, '設備類別': 90, '檢點人員': 100,
@@ -799,7 +857,8 @@ function applyColumnWidthsAndWrap_() {
   // 這些欄位文字較長，要開「自動換行」
   const wrapCols = ['項目名稱', '表單名稱', '異常說明', '填寫規則', '法規依據',
                     '完整資料JSON', '備註', '型式規格', '場地表分頁', '值',
-                    '草稿Doc連結', 'PDF連結'];
+                    '草稿Doc連結', 'PDF連結', '異常事情', '處理說明',
+                    '主管審核意見', '照片資料夾連結'];
 
   Object.keys(profiles).forEach(sheetName => {
     const sheet = ss.getSheetByName(sheetName);
@@ -941,6 +1000,11 @@ function applyChineseSettingsAndDropdowns() {
     ],
     '主管清單': [
       { col: '是否啟用', options: ['是', '否'],       migrate: { TRUE: '是', FALSE: '否' } },
+    ],
+    '日常異常事件通報': [
+      { col: '填報事項', options: DAILY_INCIDENT_SUBJECTS || ['環境設施', '場地使用', '安全衛生', '人員反映', '其他'], strict: false },
+      { col: '處理狀況', options: DAILY_INCIDENT_PROCESS_STATUSES || ['待處理', '處理中', '處理完成'], strict: true },
+      { col: '審核狀態', options: DAILY_INCIDENT_REVIEW_STATUSES || ['未送審', '待主管審核', '已結案', '退回補正'], strict: true },
     ],
   };
 

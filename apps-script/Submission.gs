@@ -106,6 +106,7 @@ function handleSubmission_(payload) {
         note: sanitizeText_(it.note),
         methods,
         method: sanitizeText_(it.method, 40),                 // simple schema 用
+        checkResults: sanitizeCheckResults_(it.checkResults),
         abnormalDesc: sanitizeText_(it.abnormalDesc),
         risk,
         action: sanitizeText_(it.action),
@@ -524,6 +525,7 @@ function getApprovalSummary_(recordId, token) {
       inspector: rec.inspector,
       incidentCount: rec.incidentCount,
       fileUrl: rec.fileUrl,
+      items: approvalCheckItems_(rec),
     },
   };
 }
@@ -548,6 +550,35 @@ function itemNameWithSection_(it) {
   const name = String((it && it.name) || '').trim();
   if (!section || section === '安全衛生量測設備及個人防護具') return name;
   return `${section}：${name}`;
+}
+
+function sanitizeCheckResults_(value) {
+  if (!value || typeof value !== 'object') return null;
+  const out = {
+    quantity: sanitizeText_(value.quantity, 20),
+    appearance: sanitizeText_(value.appearance, 20),
+    operation: sanitizeText_(value.operation, 20),
+  };
+  return (out.quantity || out.appearance || out.operation) ? out : null;
+}
+
+function approvalCheckItems_(rec) {
+  const payload = rec && rec.payload;
+  if (!payload || !Array.isArray(payload.items)) return [];
+  return payload.items.map(it => ({
+    order: Number(it.order || 0),
+    section: sanitizeText_(it.section, 80),
+    name: sanitizeText_(it.name, 200),
+    methods: Array.isArray(it.methods) ? it.methods.map(m => sanitizeText_(m, 20)).filter(Boolean) : [],
+    method: sanitizeText_(it.method, 80),
+    result: sanitizeText_(it.result, 30),
+    checkResults: sanitizeCheckResults_(it.checkResults),
+    abnormalDesc: sanitizeText_(it.abnormalDesc || it.note, 1000),
+    risk: sanitizeText_(it.risk, 30),
+    action: sanitizeText_(it.action, 500),
+    review: sanitizeText_(it.review, 500),
+    photoCount: Array.isArray(it.photos) ? it.photos.length : 0,
+  }));
 }
 
 /**

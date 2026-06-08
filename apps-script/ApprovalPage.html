@@ -128,6 +128,58 @@
       text-align: center;
       text-decoration: none;
     }
+    .check-list {
+      display: grid;
+      gap: 10px;
+    }
+    .check-item {
+      border: 1px solid #e0e3eb;
+      border-radius: 8px;
+      padding: 12px;
+      background: #fff;
+    }
+    .check-item.abnormal {
+      border-color: #f6b8b2;
+      background: #fff8f7;
+    }
+    .check-title {
+      display: flex;
+      gap: 8px;
+      align-items: flex-start;
+      margin-bottom: 8px;
+      font-weight: 700;
+      line-height: 1.45;
+    }
+    .check-order {
+      flex: 0 0 auto;
+      min-width: 28px;
+      padding: 2px 7px;
+      border-radius: 999px;
+      background: #e8f0fe;
+      color: #174ea6;
+      text-align: center;
+      font-size: 13px;
+    }
+    .check-item.abnormal .check-order {
+      background: #fce8e6;
+      color: #b31412;
+    }
+    .check-section {
+      color: #5f6368;
+      font-size: 13px;
+      margin: -2px 0 8px 36px;
+    }
+    .check-grid {
+      display: grid;
+      grid-template-columns: 86px 1fr;
+      gap: 6px 10px;
+      font-size: 14px;
+      line-height: 1.5;
+    }
+    .check-label { color: #5f6368; }
+    .check-value { overflow-wrap: anywhere; white-space: pre-wrap; }
+    .check-value.result-good { color: #137333; font-weight: 700; }
+    .check-value.result-bad { color: #b31412; font-weight: 700; }
   </style>
 </head>
 <body>
@@ -281,6 +333,7 @@
       root.textContent = '';
 
       root.appendChild(infoCard());
+      root.appendChild(checkItemsCard());
       if (record.status === '已簽核歸檔') {
         root.appendChild(doneCard('此紀錄已完成簽核', record.fileUrl || ''));
         return;
@@ -374,6 +427,111 @@
       addRow(grid, '簽核狀態', record.status);
       c.appendChild(grid);
       return c;
+    }
+
+    function checkItemsCard() {
+      const items = Array.isArray(record.items) ? record.items : [];
+      const c = card('檢查內容（' + items.length + ' 項）');
+      if (!items.length) {
+        const empty = document.createElement('div');
+        empty.className = 'alert alert-error';
+        empty.textContent = '此筆紀錄未帶出檢查項目，請由最新主管簽核連結重新開啟。';
+        c.appendChild(empty);
+        return c;
+      }
+      const list = document.createElement('div');
+      list.className = 'check-list';
+      items.forEach(item => list.appendChild(checkItemRow(item)));
+      c.appendChild(list);
+      return c;
+    }
+
+    function checkItemRow(item) {
+      const row = document.createElement('div');
+      row.className = 'check-item' + (isAbnormalResult(item.result) ? ' abnormal' : '');
+
+      const title = document.createElement('div');
+      title.className = 'check-title';
+      const order = document.createElement('span');
+      order.className = 'check-order';
+      order.textContent = item.order || '';
+      const name = document.createElement('span');
+      name.textContent = item.name || '未命名項目';
+      title.appendChild(order);
+      title.appendChild(name);
+      row.appendChild(title);
+
+      if (item.section) {
+        const section = document.createElement('div');
+        section.className = 'check-section';
+        section.textContent = item.section;
+        row.appendChild(section);
+      }
+
+      const grid = document.createElement('div');
+      grid.className = 'check-grid';
+      addDetail(grid, '方法', methodText(item));
+      addDetail(grid, '結果', resultText(item.result), isAbnormalResult(item.result) ? 'result-bad' : 'result-good');
+      addDetail(grid, '細項', checksText(item.checkResults));
+      addDetail(grid, '風險', riskText(item.risk));
+      addDetail(grid, '異常說明', item.abnormalDesc);
+      addDetail(grid, '改善措施', item.action);
+      addDetail(grid, '檢討', item.review);
+      if (Number(item.photoCount || 0) > 0) addDetail(grid, '照片', item.photoCount + ' 張');
+      row.appendChild(grid);
+      return row;
+    }
+
+    function addDetail(grid, label, value, valueClass) {
+      if (!value) return;
+      const l = document.createElement('div');
+      l.className = 'check-label';
+      l.textContent = label;
+      const v = document.createElement('div');
+      v.className = 'check-value' + (valueClass ? ' ' + valueClass : '');
+      v.textContent = value;
+      grid.appendChild(l);
+      grid.appendChild(v);
+    }
+
+    function methodText(item) {
+      const methods = Array.isArray(item.methods) ? item.methods.filter(Boolean) : [];
+      if (methods.length) return methods.join(' / ');
+      return item.method || '';
+    }
+
+    function checksText(checks) {
+      if (!checks) return '';
+      const parts = [
+        ['quantity', '數量'],
+        ['appearance', '外觀'],
+        ['operation', '操作'],
+      ].filter(pair => checks[pair[0]]).map(pair => pair[1] + '：' + resultText(checks[pair[0]]));
+      return parts.join('、');
+    }
+
+    function resultText(value) {
+      const s = String(value || '');
+      const map = {
+        normal: '正常',
+        abnormal: '異常',
+        'ˇ': '良好',
+        X: '異常',
+        V: '良好',
+        '/': '無此項',
+        '○': '良好',
+        '△': '尚可',
+      };
+      return map[s] ? map[s] + '（' + s + '）' : s;
+    }
+
+    function riskText(value) {
+      const map = { severe: 'V 嚴重', possible: '? 可能', none: '— 無危害' };
+      return map[value] || value || '';
+    }
+
+    function isAbnormalResult(value) {
+      return ['abnormal', 'X'].indexOf(String(value || '')) >= 0;
     }
 
     function card(title) {

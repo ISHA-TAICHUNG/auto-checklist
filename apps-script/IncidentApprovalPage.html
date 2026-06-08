@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: #f8fafd;
+      color: #202124;
+      font-family: Arial, "Noto Sans TC", sans-serif;
+      line-height: 1.55;
+    }
+    .header {
+      background: #1a73e8;
+      color: #fff;
+      padding: 18px 16px;
+      text-align: center;
+    }
+    .header h1 { margin: 0; font-size: 22px; letter-spacing: 0; }
+    .container { width: min(760px, 100%); margin: 0 auto; padding: 16px; }
+    .card {
+      background: #fff;
+      border: 1px solid #e0e3eb;
+      border-radius: 8px;
+      padding: 16px;
+      margin-bottom: 16px;
+      box-shadow: 0 1px 3px rgba(60, 64, 67, .12);
+    }
+    .card-title { margin: 0 0 12px; font-size: 18px; letter-spacing: 0; }
+    .meta-grid {
+      display: grid;
+      grid-template-columns: 112px 1fr;
+      gap: 8px 12px;
+      font-size: 15px;
+    }
+    .meta-label { color: #5f6368; }
+    .meta-value { font-weight: 600; overflow-wrap: anywhere; white-space: pre-wrap; }
+    .field { margin-bottom: 14px; }
+    .field label { display: block; color: #5f6368; font-size: 14px; margin-bottom: 6px; font-weight: 700; }
+    textarea {
+      width: 100%;
+      min-height: 110px;
+      padding: 12px;
+      border: 1px solid #dadce0;
+      border-radius: 6px;
+      font-size: 16px;
+      font-family: inherit;
+      resize: vertical;
+    }
+    .actions { display: grid; gap: 10px; }
+    .btn {
+      border: 0;
+      border-radius: 6px;
+      padding: 13px 16px;
+      font-size: 16px;
+      font-weight: 700;
+      cursor: pointer;
+      text-align: center;
+      text-decoration: none;
+      display: block;
+    }
+    .btn-primary { background: #1a73e8; color: #fff; }
+    .btn-secondary { background: #eef3fb; color: #174ea6; }
+    .btn-danger { background: #d93025; color: #fff; }
+    .alert { border-radius: 8px; padding: 12px; line-height: 1.5; margin-bottom: 16px; }
+    .alert-error { background: #fce8e6; color: #b31412; border: 1px solid #f6b8b2; }
+    .alert-info { background: #e8f0fe; color: #174ea6; border: 1px solid #c7d7fe; }
+    .loading { text-align: center; color: #5f6368; padding: 28px; }
+    .result-icon { font-size: 48px; text-align: center; color: #34a853; }
+    .result-title { text-align: center; font-size: 22px; font-weight: 700; margin: 8px 0; }
+  </style>
+</head>
+<body>
+  <header class="header">
+    <h1>日常事件主管審核</h1>
+  </header>
+  <main class="container">
+    <div id="content" class="loading">載入中...</div>
+  </main>
+
+  <script>
+    const injectedParams = {
+      incidentId: <?!= incidentIdJson ?>,
+      token: <?!= incidentTokenJson ?>,
+    };
+    const params = new URLSearchParams(location.search);
+    const incidentId = params.get('incidentId') || injectedParams.incidentId || '';
+    const token = params.get('token') || injectedParams.token || '';
+    let incident = null;
+
+    if (!incidentId || !token) {
+      showError('主管審核連結缺少必要參數，請從最新 LINE 連結重新開啟');
+    } else {
+      google.script.run
+        .withSuccessHandler(res => {
+          if (!res || !res.ok) return showError((res && res.error) || '取得日常事件資料失敗');
+          incident = res.incident;
+          renderPage();
+        })
+        .withFailureHandler(err => showError(err.message || String(err)))
+        .getDailyIncidentForApprovalPage(incidentId, token);
+    }
+
+    function renderPage() {
+      const root = document.getElementById('content');
+      root.className = '';
+      root.textContent = '';
+      root.appendChild(infoCard());
+
+      if (incident.reviewStatus === '已結案') {
+        root.appendChild(doneCard('此事件已結案', incident.pdfUrl));
+        return;
+      }
+      if (incident.reviewStatus !== '待主管審核') {
+        const info = document.createElement('div');
+        info.className = 'alert alert-info';
+        info.textContent = '此事件目前不是待主管審核狀態。';
+        root.appendChild(info);
+        return;
+      }
+
+      if (incident.pdfUrl) {
+        root.appendChild(linkButton('查看待審 PDF', incident.pdfUrl));
+      }
+
+      const form = card('審核意見');
+      const field = document.createElement('div');
+      field.className = 'field';
+      const label = document.createElement('label');
+      label.textContent = '主管審核意見';
+      const textarea = document.createElement('textarea');
+      textarea.id = 'reviewComment';
+      textarea.placeholder = '可填寫同意結案、補正事項或其他意見';
+      field.appendChild(label);
+      field.appendChild(textarea);
+      form.appendChild(field);
+      root.appendChild(form);
+
+      const actions = document.createElement('div');
+      actions.className = 'actions';
+      const approve = document.createElement('button');
+      approve.type = 'button';
+      approve.className = 'btn btn-primary';
+      approve.textContent = '同意結案';
+      approve.onclick = () => submitDecision('approve');
+      const reject = document.createElement('button');
+      reject.type = 'button';
+      reject.className = 'btn btn-danger';
+      reject.textContent = '退回補正';
+      reject.onclick = () => submitDecision('return');
+      actions.appendChild(approve);
+      actions.appendChild(reject);
+      root.appendChild(actions);
+    }
+
+    function submitDecision(decision) {
+      const comment = (document.getElementById('reviewComment').value || '').trim();
+      if (decision === 'return' && !comment) return alert('退回補正請填寫審核意見');
+      document.querySelectorAll('button').forEach(btn => {
+        btn.disabled = true;
+        btn.textContent = decision === 'approve' ? '結案中...' : '退回中...';
+      });
+      google.script.run
+        .withSuccessHandler(res => {
+          if (!res || !res.ok) return alert('審核失敗：' + ((res && res.error) || '未知錯誤'));
+          renderResult(
+            res.returned ? '已退回補正' : '已審核結案',
+            res.fileUrl || (res.incident && res.incident.pdfUrl),
+            res.returnNotice
+          );
+        })
+        .withFailureHandler(err => alert('審核失敗：' + (err.message || String(err))))
+        .approveDailyIncidentFromPage({
+          incidentId,
+          token,
+          decision,
+          reviewComment: comment,
+        });
+    }
+
+    function infoCard() {
+      const c = card('事件摘要');
+      const grid = document.createElement('div');
+      grid.className = 'meta-grid';
+      addRow(grid, '事件ID', incident.incidentId);
+      addRow(grid, '填報日期', incident.reportDate);
+      addRow(grid, '發生地點', incident.location);
+      addRow(grid, '填報事項', incident.subject);
+      addRow(grid, '異常事情', incident.description);
+      addRow(grid, '處理狀況', incident.processStatus);
+      addRow(grid, '處理說明', incident.processNote);
+      addRow(grid, '承辦人', incident.owner);
+      addRow(grid, '審核狀態', incident.reviewStatus);
+      addRow(grid, '照片數', String(incident.photoCount || 0));
+      c.appendChild(grid);
+      return c;
+    }
+
+    function card(title) {
+      const c = document.createElement('div');
+      c.className = 'card';
+      const h = document.createElement('h2');
+      h.className = 'card-title';
+      h.textContent = title;
+      c.appendChild(h);
+      return c;
+    }
+    function addRow(grid, label, value) {
+      const l = document.createElement('div');
+      l.className = 'meta-label';
+      l.textContent = label;
+      const v = document.createElement('div');
+      v.className = 'meta-value';
+      v.textContent = value || '—';
+      grid.appendChild(l);
+      grid.appendChild(v);
+    }
+    function linkButton(text, url) {
+      const a = document.createElement('a');
+      a.className = 'btn btn-secondary';
+      a.href = url;
+      a.target = '_blank';
+      a.rel = 'noopener';
+      a.textContent = text;
+      return a;
+    }
+    function renderResult(title, fileUrl, notice) {
+      const root = document.getElementById('content');
+      root.textContent = '';
+      root.appendChild(doneCard(title, fileUrl, notice));
+    }
+    function doneCard(title, fileUrl, notice) {
+      const c = card('');
+      const icon = document.createElement('div');
+      icon.className = 'result-icon';
+      icon.textContent = '✓';
+      const t = document.createElement('div');
+      t.className = 'result-title';
+      t.textContent = title;
+      c.appendChild(icon);
+      c.appendChild(t);
+      const noticeEl = noticeAlert(notice);
+      if (noticeEl) c.appendChild(noticeEl);
+      if (fileUrl) c.appendChild(linkButton('查看 PDF', fileUrl));
+      return c;
+    }
+    function noticeAlert(notice) {
+      if (!notice) return null;
+      const d = document.createElement('div');
+      d.className = notice.ok ? 'alert alert-info' : 'alert alert-error';
+      d.textContent = noticeText(notice);
+      return d;
+    }
+    function noticeText(notice) {
+      if (!notice) return '';
+      if (notice.skipped) return 'LINE 通知設定目前關閉，請手動轉貼補正連結給承辦。';
+      if (notice.ok) return '已發送退回補正通知，承辦可從 LINE 圖卡回到處理頁補正。';
+      if (notice.reason === 'no_target') return 'LINE 未設定群組或收件人，請手動轉貼補正連結給承辦。';
+      if (notice.reason === 'no_token') return 'LINE_CHANNEL_ACCESS_TOKEN 未設定，退回補正通知未送出。';
+      return '退回補正通知未送出，請確認 LINE 設定或手動轉貼補正連結。';
+    }
+    function showError(msg) {
+      const root = document.getElementById('content');
+      root.className = '';
+      root.textContent = '';
+      const d = document.createElement('div');
+      d.className = 'alert alert-error';
+      d.textContent = msg;
+      root.appendChild(d);
+    }
+  </script>
+</body>
+</html>

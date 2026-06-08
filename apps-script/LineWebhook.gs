@@ -6,6 +6,11 @@
  * 支援指令（傳給 bot 的 text message）：
  *   - 狀態 / status         今日填表進度
  *   - 異常 / open           待處理異常事件清單
+ *   - 通報 / incident       日常異常事件通報表
+ *   - 待處理 / incidents    日常異常事件未結案清單
+ *   - 事件 事件ID           查詢日常異常事件
+ *   - 更新 事件ID           取得日常異常事件處理回報連結
+ *   - 陳核 事件ID           日常異常事件送主管審核
  *   - QR 設備代號          QR Code (附連結)
  *   - 完成 事件ID          標記異常已完成
  *   - 我的ID / myid         回應自己的 userId（debug 用）
@@ -51,11 +56,32 @@ function dispatchLineEvent_(ev) {
   if (source.type === 'group' || source.type === 'room') {
     if (!text.startsWith('/') && !text.startsWith('@')) return;
   }
-  const cmd = text.replace(/^[/@]+/, '').trim();
+  const cmd = normalizeLineCommand_(text);
 
   // 指令路由
   if (/^(狀態|status)$/i.test(cmd))    return cmdStatus_(replyToken);
   if (/^(異常|open)$/i.test(cmd))      return cmdOpenIncidents_(replyToken);
+  if (/^(通報|incident)$/i.test(cmd))  return cmdDailyIncidentReport_(replyToken);
+  if (/^(待處理|incidents)$/i.test(cmd)) return cmdDailyIncidentList_(replyToken);
+  let dailyMatch = matchDailyIncidentLineCommand_(cmd, '事件');
+  if (dailyMatch) {
+    const incId = dailyMatch;
+    return cmdDailyIncidentDetail_(replyToken, incId);
+  }
+  dailyMatch = matchDailyIncidentLineCommand_(cmd, '更新');
+  if (dailyMatch) {
+    const incId = dailyMatch;
+    return cmdDailyIncidentUpdate_(replyToken, incId);
+  }
+  dailyMatch = matchDailyIncidentLineCommand_(cmd, '陳核');
+  if (dailyMatch) {
+    const incId = dailyMatch;
+    return cmdDailyIncidentSubmitApproval_(replyToken, incId);
+  }
+  dailyMatch = matchDailyIncidentLineCommand_(cmd, '結案');
+  if (dailyMatch) {
+    return lineReply_(replyToken, { type: 'text', text: '日常事件結案請由主管開啟審核連結後按「同意結案」。' });
+  }
   if (/^QR\s*(選單|列表|menu|list)$/i.test(cmd)) return cmdQRList_(replyToken);
   if (/^QR\s*(.+)$/i.test(cmd)) {
     const eqp = cmd.match(/^QR\s*(.+)$/i)[1].trim();
@@ -79,6 +105,29 @@ function dispatchLineEvent_(ev) {
   }
 }
 
+function normalizeLineCommand_(text) {
+  let s = String(text || '').trim();
+  try { s = s.normalize('NFKC'); } catch (_) {}
+  return s
+    .replace(/[\u200B-\u200D\uFEFF]/g, '')
+    .replace(/^[\/@]+/, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function normalizeDailyIncidentCommandId_(value) {
+  return String(value || '')
+    .replace(/[‐‑‒–—－]/g, '-')
+    .replace(/\s+/g, '')
+    .toUpperCase();
+}
+
+function matchDailyIncidentLineCommand_(cmd, verb) {
+  const re = new RegExp('^' + verb + '\\s*(INC[\\s\\-‐‑‒–—－]*\\d{7}[\\s\\-‐‑‒–—－]*\\d{3})$', 'i');
+  const m = String(cmd || '').match(re);
+  return m ? normalizeDailyIncidentCommandId_(m[1]) : '';
+}
+
 // ===== 指令實作 =====
 
 function cmdHelp_(replyToken) {
@@ -89,6 +138,11 @@ function cmdHelp_(replyToken) {
       '',
       '• 狀態 — 今日/月檢填表進度',
       '• 異常 — 待處理異常清單',
+      '• 通報 — 日常異常事件通報表',
+      '• 待處理 — 日常異常事件未結案清單',
+      '• 事件 <事件ID> — 查詢日常事件',
+      '• 更新 <事件ID> — 日常事件處理回報連結',
+      '• 陳核 <事件ID> — 處理完成後送主管審核',
       '• QR選單 — 日檢/月檢 QR Code 選單',
       '• QR <設備代號> — 產 QR 圖',
       '• 完成 <事件ID> — 標記異常已完成',
@@ -169,6 +223,104 @@ function cmdOpenIncidents_(replyToken) {
   if (incidents.length > 10) lines.push(`... 還有 ${incidents.length - 10} 筆`);
   lines.push('回覆「完成 <ID>」標記處理完成');
   return lineReply_(replyToken, { type: 'text', text: lines.join('\n') });
+}
+
+function cmdDailyIncidentReport_(replyToken) {
+  const url = (typeof buildDailyIncidentPublicUrl_ === 'function') ? buildDailyIncidentPublicUrl_() : '';
+  if (!url) return lineReply_(replyToken, { type: 'text', text: '✗ 系統設定 webFrontendUrl 未填，無法建立日常事件通報連結' });
+  return lineReply_(replyToken, { type: 'text', text: '📝 日常異常事件通報表\n' + url });
+}
+
+function cmdDailyIncidentList_(replyToken) {
+  const res = listOpenDailyIncidents_();
+  const incidents = res.incidents || [];
+  if (incidents.length === 0) {
+    return lineReply_(replyToken, { type: 'text', text: '✓ 目前沒有未結案的日常異常事件' });
+  }
+  const lines = [`🚨 日常異常事件待處理 ${incidents.length} 筆`, ''];
+  incidents.slice(0, 10).forEach(inc => {
+    lines.push(`• [${inc.reportDate}] ${inc.location}｜${inc.subject}`);
+    lines.push(`  狀態：${inc.processStatus} / ${inc.reviewStatus}`);
+    lines.push(`  ID：${inc.incidentId}`);
+    lines.push('');
+  });
+  if (incidents.length > 10) lines.push(`... 還有 ${incidents.length - 10} 筆`);
+  lines.push('查詢請輸入：/事件 <事件ID>');
+  return lineReply_(replyToken, { type: 'text', text: lines.join('\n') });
+}
+
+function cmdDailyIncidentDetail_(replyToken, incidentId) {
+  try {
+    const inc = getDailyIncidentPublicDetail_(incidentId);
+    const lines = [
+      `📌 日常異常事件 ${inc.incidentId}`,
+      '',
+      `填報日期：${inc.reportDate}`,
+      `發生地點：${inc.location || '—'}`,
+      `填報事項：${inc.subject || '—'}`,
+      `承辦人：${inc.owner || '—'}`,
+      `處理狀況：${inc.processStatus || '—'}`,
+      `審核狀態：${inc.reviewStatus || '—'}`,
+      '',
+      '異常事情：',
+      trimLineText_(inc.description || '—', 600),
+      '',
+      inc.processNote ? '處理說明：\n' + trimLineText_(inc.processNote, 600) + '\n' : '',
+      inc.pdfUrl ? `PDF：${inc.pdfUrl}` : '',
+      inc.photoFolderUrl ? `照片：${inc.photoFolderUrl}` : '',
+      '',
+      `更新：/更新 ${inc.incidentId}`,
+      `陳核：/陳核 ${inc.incidentId}`,
+    ].filter(Boolean);
+    return lineReply_(replyToken, { type: 'text', text: lines.join('\n') });
+  } catch (err) {
+    return lineReply_(replyToken, { type: 'text', text: '✗ ' + friendlyError_(err) });
+  }
+}
+
+function cmdDailyIncidentUpdate_(replyToken, incidentId) {
+  try {
+    const inc = getDailyIncidentPublicDetail_(incidentId);
+    if (!inc.updateUrl) return lineReply_(replyToken, { type: 'text', text: '✗ 系統設定 webAppUrl 未填，無法建立處理回報連結' });
+    return lineReply_(replyToken, { type: 'text', text: `🛠 日常事件處理回報\n${inc.incidentId}\n${inc.updateUrl}` });
+  } catch (err) {
+    return lineReply_(replyToken, { type: 'text', text: '✗ ' + friendlyError_(err) });
+  }
+}
+
+function cmdDailyIncidentSubmitApproval_(replyToken, incidentId) {
+  try {
+    const res = submitDailyIncidentForApproval_({ incidentId });
+    if (!res.ok) return lineReply_(replyToken, { type: 'text', text: '✗ 陳核失敗' });
+    const inc = res.incident;
+    const notice = res.approvalNotice;
+    const suffix = formatDailyIncidentApprovalNoticeForLine_(notice);
+    return lineReply_(replyToken, {
+      type: 'text',
+      text: [
+        `✓ ${inc.incidentId} 已送主管審核`,
+        suffix,
+        inc.pdfUrl ? `待審 PDF：${inc.pdfUrl}` : '',
+        inc.approvalUrl ? `審核連結：${inc.approvalUrl}` : '',
+      ].filter(Boolean).join('\n'),
+    });
+  } catch (err) {
+    return lineReply_(replyToken, { type: 'text', text: '✗ ' + friendlyError_(err) });
+  }
+}
+
+function formatDailyIncidentApprovalNoticeForLine_(notice) {
+  if (!notice) return '但主管 LINE 通知狀態不明，請確認主管是否收到審核圖卡。';
+  if (notice.skipped) return '但主管 LINE 通知設定目前關閉。';
+  if (notice.ok) {
+    if (notice.targetMode === 'named') return '已通知指定主管。';
+    if (notice.targetMode === 'fallback') return `找不到指定主管 LINE ID，已改通知啟用主管 ${notice.targetCount || ''} 人。`;
+    return '已通知主管。';
+  }
+  if (notice.reason === 'supervisor_not_found') return `但找不到「${notice.supervisorName || '指定主管'}」的 LINE_USER_ID，也沒有可用的 fallback 主管。`;
+  if (notice.reason === 'no_supervisor') return '但沒有啟用的主管 LINE_USER_ID。';
+  if (notice.reason === 'no_token') return '但 LINE_CHANNEL_ACCESS_TOKEN 未設定。';
+  return '但主管 LINE 通知未送出，請確認 LINE 設定或手動轉貼審核連結。';
 }
 
 function cmdQR_(replyToken, eqp) {
