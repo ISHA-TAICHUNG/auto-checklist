@@ -116,10 +116,13 @@ function normalizeLineCommand_(text) {
 }
 
 function normalizeDailyIncidentCommandId_(value) {
-  return String(value || '')
+  const normalized = String(value || '')
     .replace(/[‐‑‒–—－]/g, '-')
     .replace(/\s+/g, '')
     .toUpperCase();
+  const compact = normalized.replace(/-/g, '');
+  const m = compact.match(/^INC(\d{7})(\d{3})$/);
+  return m ? `INC-${m[1]}-${m[2]}` : normalized;
 }
 
 function matchDailyIncidentLineCommand_(cmd, verb) {

@@ -1,0 +1,11 @@
+exclude:
+  - apps-script/
+  - docs/
+  - starter-kit/
+  - "*.doc"
+  - "*.docx"
+  - "*.xls"
+  - "*.xlsx"
+  - "*.zip"
+  - README.md
+  - 分享訊息範本.md
