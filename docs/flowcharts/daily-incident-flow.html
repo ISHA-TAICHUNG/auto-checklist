@@ -347,10 +347,10 @@
 
   <section class="page" id="handler-flow-page">
     <h2>承辦流程</h2>
-    <p>承辦從公開表單建立事件，後續處理都由 LINE 圖卡或指令進入 token 頁面。</p>
+    <p>承辦從公開表單建立事件，後續處理都由 LINE 圖卡或指令進入安全連結頁。</p>
     <div class="flow">
       <div class="step"><div class="num">1</div><h3>填寫通報</h3><p>填發生地點、事項、異常事情、承辦人、處理狀況與照片。</p></div>
-      <div class="step"><div class="num">2</div><h3>產生 PDF</h3><p>系統建立事件 ID，產生初版 PDF，照片進 Drive 子資料夾。</p></div>
+      <div class="step"><div class="num">2</div><h3>產生 PDF</h3><p>系統建立事件 ID，產生初版 PDF，照片納入事件紀錄。</p></div>
       <div class="step"><div class="num">3</div><h3>LINE 圖卡</h3><p>待處理或處理中會推送日常事件圖卡，可查詢或處理回報。</p></div>
       <div class="step"><div class="num">4</div><h3>處理回報</h3><p>承辦開啟處理頁，更新狀態、說明、完成日與補充照片。</p></div>
       <div class="step"><div class="num">5</div><h3>陳核主管</h3><p>處理完成且有主管姓名時，送出主管審核通知。</p></div>
@@ -404,8 +404,8 @@
         <h3>承辦按鈕對應</h3>
         <table>
           <tr><th>LINE 動作</th><th>系統行為</th></tr>
-          <tr><td>查詢事件</td><td>顯示事件摘要與 PDF 連結。</td></tr>
-          <tr><td>處理回報</td><td>開啟 GAS token 頁，回到該事件處理單。</td></tr>
+          <tr><td>查詢事件</td><td>顯示事件摘要與 PDF 預覽。</td></tr>
+          <tr><td>處理回報</td><td>開啟安全連結頁，回到該事件處理單。</td></tr>
           <tr><td>陳核主管</td><td>處理完成後通知事件單上指定主管。</td></tr>
           <tr><td>待處理</td><td>列出尚未結案的日常異常事件。</td></tr>
         </table>
@@ -419,7 +419,7 @@
     <p>主管只在承辦標示處理完成並陳核後收到通知。主管審核頁會顯示事件摘要、處理紀錄、PDF 與審核操作。</p>
     <div class="flow five">
       <div class="step"><div class="num">1</div><h3>收到圖卡</h3><p>指定主管收到待審核 LINE 圖卡。</p></div>
-      <div class="step"><div class="num">2</div><h3>開啟審核頁</h3><p>由 token 連結進入主管審核頁。</p></div>
+      <div class="step"><div class="num">2</div><h3>開啟審核頁</h3><p>由安全連結進入主管審核頁。</p></div>
       <div class="step"><div class="num">3</div><h3>檢視資料</h3><p>確認事件、處理說明、照片與 PDF 時序。</p></div>
       <div class="step decision"><div class="num">4</div><h3>審核判斷</h3><p>同意結案或填意見退回補正。</p></div>
       <div class="step"><div class="num">5</div><h3>系統通知</h3><p>同意後重產正式 PDF；退回則通知承辦補正。</p></div>
@@ -461,7 +461,7 @@
           <div class="bubble me">開啟主管審核</div>
           <div class="bubble">審核頁已載入，請確認處理內容與 PDF。</div>
           <div class="bubble me">同意結案</div>
-          <div class="bubble">已結案，正式 PDF 已重產並移至已結案資料夾。</div>
+          <div class="bubble">已結案，正式 PDF 已更新，事件狀態改為已結案。</div>
           <div class="bubble me">或退回補正</div>
           <div class="bubble">已通知承辦補正，事件狀態改為退回補正。</div>
         </div>
@@ -481,19 +481,19 @@
   </section>
 
   <section class="page">
-    <h2>PDF 與 Drive 時序</h2>
+    <h2>PDF 與處理時序</h2>
     <p>日常異常事件每個重要階段都會產生或重產 PDF，方便追蹤處理過程。</p>
     <table>
-      <tr><th>時序</th><th>觸發時機</th><th>PDF / Drive 階段</th><th>LINE 通知</th></tr>
-      <tr><td>1</td><td>承辦送出通報表</td><td>通報紀錄、待處理或處理中</td><td>推播群組圖卡</td></tr>
-      <tr><td>2</td><td>承辦更新處理狀況</td><td>依狀態重產：待處理、處理中、處理完成</td><td>圖卡可查詢最新事件</td></tr>
-      <tr><td>3</td><td>承辦處理完成並陳核</td><td>待主管審核</td><td>推播指定主管</td></tr>
-      <tr><td>4A</td><td>主管同意結案</td><td>已結案正式版</td><td>事件完成</td></tr>
-      <tr><td>4B</td><td>主管退回補正</td><td>退回補正</td><td>通知承辦補正</td></tr>
+      <tr><th>時序</th><th>觸發時機</th><th>系統紀錄</th><th>LINE 通知</th></tr>
+      <tr><td>1</td><td>承辦送出通報表</td><td>建立初版事件紀錄</td><td>推播群組圖卡</td></tr>
+      <tr><td>2</td><td>承辦更新處理狀況</td><td>更新處理進度與 PDF</td><td>圖卡可查詢最新事件</td></tr>
+      <tr><td>3</td><td>承辦處理完成並陳核</td><td>轉為等待主管審核</td><td>推播指定主管</td></tr>
+      <tr><td>4A</td><td>主管同意結案</td><td>事件狀態改為已結案</td><td>事件完成</td></tr>
+      <tr><td>4B</td><td>主管退回補正</td><td>事件狀態改為退回補正</td><td>通知承辦補正</td></tr>
     </table>
     <div class="three-col" style="margin-top: 18px;">
       <div class="panel"><span class="tag">事件 ID</span><p>`INC-1150608-001`，民國年月日加流水號。</p></div>
-      <div class="panel"><span class="tag">照片</span><p>照片依上傳順序排序，每張下方標示階段與檔名。</p></div>
+      <div class="panel"><span class="tag">照片</span><p>照片依上傳順序呈現，每張下方標示處理階段。</p></div>
       <div class="panel"><span class="tag">結案</span><p>只有主管同意後，日常事件才算結案。</p></div>
     </div>
   </section>

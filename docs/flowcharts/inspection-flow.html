@@ -404,7 +404,7 @@
       <div class="step"><div class="num">3</div><h3>上傳照片</h3><p>異常項目需填說明；必要時附照片作佐證。</p></div>
       <div class="step"><div class="num">4</div><h3>檢查人簽名</h3><p>日檢與一般檢查由檢查人簽名後送出。</p></div>
       <div class="step decision"><div class="num">5</div><h3>判斷異常</h3><p>有異常則建立設備異常事件，LINE 推播異常圖卡。</p></div>
-      <div class="step"><div class="num">6</div><h3>PDF 歸檔</h3><p>日檢直接正式歸檔；需主管簽核的月檢先產待簽核草稿。</p></div>
+      <div class="step"><div class="num">6</div><h3>PDF 產生</h3><p>日檢送出後產生正式 PDF；需主管簽核的月檢先保留待簽核版本。</p></div>
     </div>
     <div class="two-col">
       <div class="screen">
@@ -468,10 +468,10 @@
     <p>主管主要負責月檢簽核。固定式起重機、堆高機、龍井/復興/忠明教室置備月檢送出後，會建立待主管簽核紀錄並推播 LINE。</p>
     <div class="flow five">
       <div class="step"><div class="num">1</div><h3>收到通知</h3><p>主管收到待簽核 LINE 圖卡，內含設備、日期、檢查人與異常數。</p></div>
-      <div class="step"><div class="num">2</div><h3>開啟簽核頁</h3><p>由 token 連結進入 GAS 主管簽核頁。</p></div>
+      <div class="step"><div class="num">2</div><h3>開啟簽核頁</h3><p>由安全連結進入主管簽核頁。</p></div>
       <div class="step"><div class="num">3</div><h3>檢視內容</h3><p>確認檢查表內容、異常項目與照片。</p></div>
       <div class="step decision"><div class="num">4</div><h3>手寫簽名</h3><p>主管填姓名並在簽名區簽名。</p></div>
-      <div class="step"><div class="num">5</div><h3>正式歸檔</h3><p>系統匯出正式 PDF，簽核狀態改為已簽核歸檔。</p></div>
+      <div class="step"><div class="num">5</div><h3>完成簽核</h3><p>系統匯出正式 PDF，簽核狀態改為已完成。</p></div>
     </div>
     <div class="two-col">
       <div class="screen">
@@ -508,7 +508,7 @@
           <div class="bubble me">開啟主管簽核</div>
           <div class="bubble">請檢視月檢內容、檢查人簽名與異常數。</div>
           <div class="bubble me">填寫主管姓名並簽名</div>
-          <div class="bubble">簽核完成，正式 PDF 已產生並歸檔。</div>
+          <div class="bubble">簽核完成，正式 PDF 已產生，簽核狀態已完成。</div>
           <div class="bubble me">狀態</div>
           <div class="bubble">本月月檢：龍井教室已填，待簽核 0 筆。</div>
         </div>
@@ -521,7 +521,7 @@
           <tr><td>適用表單</td><td>固定式起重機月檢、堆高機月檢、三間教室置備月檢。</td></tr>
           <tr><td>通知來源</td><td>月檢表送出後，系統依主管清單推播 LINE。</td></tr>
           <tr><td>審核方式</td><td>主管開啟簽核頁，檢視內容後手寫簽名。</td></tr>
-          <tr><td>產出</td><td>簽核完成後重產正式 PDF 並歸檔。</td></tr>
+          <tr><td>產出</td><td>簽核完成後產生正式 PDF，供後續查閱。</td></tr>
         </table>
         <div class="note">日檢與一般檢查不走主管簽核；只有指定月檢類型會送主管。</div>
       </div>
@@ -531,11 +531,11 @@
   <section class="page">
     <h2>檢查類型與輸出時序</h2>
     <table>
-      <tr><th>類型</th><th>檢查人操作</th><th>LINE 通知</th><th>主管是否簽核</th><th>PDF 時機</th></tr>
-      <tr><td>每日作業前檢點</td><td>填表、異常說明、照片、檢查人簽名</td><td>有異常時推播設備異常圖卡</td><td>否</td><td>送出後正式歸檔</td></tr>
-      <tr><td>固定式起重機月檢</td><td>填月檢內容、檢查人簽名</td><td>未填提醒、異常圖卡、主管簽核通知</td><td>是</td><td>先草稿，主管簽核後正式歸檔</td></tr>
-      <tr><td>堆高機月檢</td><td>填月檢內容、檢查人簽名</td><td>未填提醒、異常圖卡、主管簽核通知</td><td>是</td><td>先草稿，主管簽核後正式歸檔</td></tr>
-      <tr><td>三間教室置備月檢</td><td>龍井、復興、忠明各自填月檢；SCBA 併入下方區塊</td><td>未填提醒、異常圖卡、主管簽核通知</td><td>是</td><td>先草稿，主管簽核後正式歸檔</td></tr>
+      <tr><th>類型</th><th>檢查人操作</th><th>LINE 通知</th><th>主管是否簽核</th><th>PDF 狀態</th></tr>
+      <tr><td>每日作業前檢點</td><td>填表、異常說明、照片、檢查人簽名</td><td>有異常時推播設備異常圖卡</td><td>否</td><td>送出後產生正式 PDF</td></tr>
+      <tr><td>固定式起重機月檢</td><td>填月檢內容、檢查人簽名</td><td>未填提醒、異常圖卡、主管簽核通知</td><td>是</td><td>先待簽核，主管簽核後產生正式 PDF</td></tr>
+      <tr><td>堆高機月檢</td><td>填月檢內容、檢查人簽名</td><td>未填提醒、異常圖卡、主管簽核通知</td><td>是</td><td>先待簽核，主管簽核後產生正式 PDF</td></tr>
+      <tr><td>三間教室置備月檢</td><td>龍井、復興、忠明各自填月檢；SCBA 併入下方區塊</td><td>未填提醒、異常圖卡、主管簽核通知</td><td>是</td><td>先待簽核，主管簽核後產生正式 PDF</td></tr>
       <tr><td>設備異常追蹤</td><td>由檢查表異常項自動建立；承辦可標記完成</td><td>異常圖卡、異常清單指令</td><td>否</td><td>沿用對應檢查表 PDF</td></tr>
     </table>
     <div class="three-col" style="margin-top: 18px;">
