@@ -1,0 +1,501 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ISHA 日常異常事件流程圖</title>
+  <style>
+    :root {
+      --blue: #1a73e8;
+      --blue-dark: #174ea6;
+      --green: #06c755;
+      --red: #d93025;
+      --ink: #1f2937;
+      --muted: #667085;
+      --line: #d9e2ec;
+      --paper: #ffffff;
+      --bg: #f4f7fb;
+      --soft: #eef4ff;
+      --warn: #fff4e5;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans TC", "Microsoft JhengHei", Arial, sans-serif;
+      line-height: 1.55;
+    }
+    .page {
+      width: 1120px;
+      margin: 28px auto;
+      padding: 40px;
+      background: var(--paper);
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      box-shadow: 0 12px 34px rgba(15, 23, 42, 0.08);
+      page-break-after: always;
+    }
+    .page:last-child { page-break-after: auto; }
+    h1, h2, h3 { margin: 0; line-height: 1.25; letter-spacing: 0; }
+    h1 { font-size: 34px; }
+    h2 { font-size: 25px; margin-bottom: 18px; }
+    h3 { font-size: 18px; margin-bottom: 8px; }
+    p { margin: 6px 0 12px; color: var(--muted); }
+    .cover {
+      display: grid;
+      grid-template-columns: 1.2fr 0.8fr;
+      gap: 30px;
+      align-items: center;
+      min-height: 540px;
+    }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 12px;
+      border-radius: 999px;
+      background: var(--soft);
+      color: var(--blue-dark);
+      font-weight: 700;
+      font-size: 14px;
+      margin-bottom: 16px;
+    }
+    .summary-grid, .two-col {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 18px;
+    }
+    .three-col {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 14px;
+    }
+    .panel {
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 18px;
+      background: #fff;
+    }
+    .panel.blue { background: #f7fbff; border-color: #cfe0ff; }
+    .panel.warn { background: var(--warn); border-color: #ffd79a; }
+    .flow {
+      display: grid;
+      grid-template-columns: repeat(6, minmax(0, 1fr));
+      gap: 10px;
+      align-items: stretch;
+      margin: 18px 0 24px;
+    }
+    .flow.five { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+    .step {
+      position: relative;
+      min-height: 134px;
+      padding: 14px;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: #fff;
+    }
+    .step:not(:last-child)::after {
+      content: ">";
+      position: absolute;
+      right: -9px;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      display: grid;
+      place-items: center;
+      background: var(--blue);
+      color: #fff;
+      font-weight: 700;
+      font-size: 12px;
+      z-index: 2;
+    }
+    .num {
+      width: 28px;
+      height: 28px;
+      display: grid;
+      place-items: center;
+      border-radius: 50%;
+      background: var(--blue);
+      color: #fff;
+      font-weight: 800;
+      margin-bottom: 8px;
+    }
+    .step h3 { font-size: 16px; }
+    .step p { font-size: 13px; margin: 0; }
+    .decision {
+      border-color: #f5b5af;
+      background: #fff8f7;
+    }
+    .screen {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      overflow: hidden;
+      background: #f8fafc;
+    }
+    .screen img {
+      display: block;
+      width: 100%;
+      height: auto;
+    }
+    .two-col .screen img {
+      height: 470px;
+      object-fit: cover;
+      object-position: top center;
+    }
+    .cover .screen img {
+      height: auto;
+      object-fit: initial;
+    }
+    .caption {
+      padding: 10px 12px;
+      color: var(--muted);
+      font-size: 13px;
+      border-top: 1px solid var(--line);
+      background: #fff;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 10px;
+      font-size: 14px;
+    }
+    th, td {
+      border: 1px solid var(--line);
+      padding: 10px 12px;
+      text-align: left;
+      vertical-align: top;
+    }
+    th { background: #f1f6ff; color: var(--blue-dark); }
+    .phone {
+      width: 390px;
+      margin: 0 auto;
+      border-radius: 34px;
+      border: 10px solid #111827;
+      background: #9dbbe0;
+      overflow: hidden;
+      box-shadow: 0 12px 30px rgba(15, 23, 42, 0.22);
+    }
+    .phone-header {
+      height: 70px;
+      padding: 16px 18px;
+      background: #fff;
+      border-bottom: 1px solid #d4d4d8;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-weight: 800;
+    }
+    .phone-body {
+      min-height: 620px;
+      padding: 16px;
+      background: linear-gradient(#9dbbe0, #8fb2dd);
+    }
+    .time {
+      text-align: center;
+      color: rgba(17, 24, 39, 0.55);
+      font-size: 12px;
+      margin-bottom: 12px;
+    }
+    .bubble {
+      max-width: 82%;
+      margin: 10px 0;
+      padding: 10px 13px;
+      border-radius: 18px;
+      font-size: 15px;
+      background: #fff;
+      box-shadow: 0 1px 1px rgba(0,0,0,.08);
+    }
+    .bubble.me {
+      margin-left: auto;
+      background: #8de969;
+    }
+    .line-card {
+      background: #fff;
+      border-radius: 18px;
+      overflow: hidden;
+      margin: 10px 0 14px;
+      box-shadow: 0 1px 2px rgba(0,0,0,.12);
+    }
+    .card-head {
+      background: var(--red);
+      color: #fff;
+      padding: 14px 18px;
+      font-size: 20px;
+      font-weight: 900;
+    }
+    .card-id {
+      display: block;
+      font-size: 15px;
+      margin-top: 3px;
+      opacity: .95;
+    }
+    .card-body {
+      padding: 16px 18px 18px;
+      font-size: 15px;
+    }
+    .kv {
+      display: grid;
+      grid-template-columns: 76px 1fr;
+      gap: 6px 8px;
+      margin-bottom: 12px;
+    }
+    .kv span:nth-child(odd) { color: #6b7280; font-weight: 700; }
+    .kv span:nth-child(even) { font-weight: 800; }
+    .status-red { color: var(--red); }
+    .line-button {
+      display: block;
+      width: 100%;
+      margin-top: 9px;
+      border-radius: 10px;
+      padding: 12px 10px;
+      text-align: center;
+      font-weight: 900;
+      color: #111827;
+      background: #e5e7eb;
+    }
+    .line-button.primary {
+      color: #fff;
+      background: var(--red);
+    }
+    .phone-footer {
+      height: 56px;
+      background: #fff;
+      display: grid;
+      grid-template-columns: 42px 42px 1fr 42px;
+      gap: 8px;
+      align-items: center;
+      padding: 8px 12px;
+    }
+    .input {
+      height: 36px;
+      border-radius: 18px;
+      background: #f3f4f6;
+      color: #9ca3af;
+      display: flex;
+      align-items: center;
+      padding-left: 12px;
+      font-size: 13px;
+    }
+    .mini {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      display: grid;
+      place-items: center;
+      background: #f3f4f6;
+      font-size: 13px;
+    }
+    .tag {
+      display: inline-block;
+      padding: 3px 8px;
+      border-radius: 999px;
+      background: #eef2ff;
+      color: #3730a3;
+      font-size: 12px;
+      font-weight: 800;
+      margin-right: 4px;
+    }
+    .note {
+      padding: 14px 16px;
+      border-left: 5px solid var(--blue);
+      background: #f7fbff;
+      color: var(--muted);
+      border-radius: 10px;
+      margin: 14px 0;
+    }
+    @media print {
+      body { background: #fff; }
+      .page {
+        width: auto;
+        margin: 0;
+        border: none;
+        border-radius: 0;
+        box-shadow: none;
+      }
+    }
+  </style>
+</head>
+<body>
+  <section class="page cover-page">
+    <div class="cover">
+      <div>
+        <div class="badge">日常異常事件通報模組</div>
+        <h1>ISHA 檢查與通報工作台<br>承辦 / 主管流程圖</h1>
+        <p>本文件用實際網站畫面與 LINE 模擬對話，說明日常異常事件從填報、處理回報、主管審核到結案的完整時序。</p>
+        <div class="summary-grid" style="margin-top: 24px;">
+          <div class="panel blue">
+            <h3>承辦重點</h3>
+            <p>填報事件後立即產生 PDF；狀態可為待處理、處理中、處理完成。處理完成並指定主管後，才送主管審核。</p>
+          </div>
+          <div class="panel blue">
+            <h3>主管重點</h3>
+            <p>主管由 LINE 圖卡進入審核頁，選擇同意結案或退回補正。日常事件審核不需手寫簽名。</p>
+          </div>
+        </div>
+        <div class="note">LINE 模擬畫面為教學用，不是 LINE 官方截圖；網站畫面取自目前公開網站或既有實際操作截圖。</div>
+      </div>
+      <div class="screen">
+        <img src="screenshots/workbench-home-current.png" alt="工作台首頁">
+        <div class="caption">實際畫面：工作台首頁</div>
+      </div>
+    </div>
+  </section>
+
+  <section class="page" id="handler-flow-page">
+    <h2>承辦流程</h2>
+    <p>承辦從公開表單建立事件，後續處理都由 LINE 圖卡或指令進入 token 頁面。</p>
+    <div class="flow">
+      <div class="step"><div class="num">1</div><h3>填寫通報</h3><p>填發生地點、事項、異常事情、承辦人、處理狀況與照片。</p></div>
+      <div class="step"><div class="num">2</div><h3>產生 PDF</h3><p>系統建立事件 ID，產生初版 PDF，照片進 Drive 子資料夾。</p></div>
+      <div class="step"><div class="num">3</div><h3>LINE 圖卡</h3><p>待處理或處理中會推送日常事件圖卡，可查詢或處理回報。</p></div>
+      <div class="step"><div class="num">4</div><h3>處理回報</h3><p>承辦開啟處理頁，更新狀態、說明、完成日與補充照片。</p></div>
+      <div class="step"><div class="num">5</div><h3>陳核主管</h3><p>處理完成且有主管姓名時，送出主管審核通知。</p></div>
+      <div class="step decision"><div class="num">6</div><h3>結案或補正</h3><p>主管同意則結案；退回則承辦收到補正通知再回報。</p></div>
+    </div>
+    <div class="two-col">
+      <div class="screen">
+        <img src="screenshots/daily-incident-form-current.png" alt="日常異常事件通報表">
+        <div class="caption">實際畫面：日常異常事件通報表</div>
+      </div>
+      <div class="screen">
+        <img src="screenshots/05-incident-update-page.png" alt="處理回報頁">
+        <div class="caption">實際畫面：處理回報頁，承辦可更新狀態並送主管審核</div>
+      </div>
+    </div>
+  </section>
+
+  <section class="page" id="handler-line-page">
+    <h2>承辦 LINE 模擬對話</h2>
+    <div class="two-col">
+      <div class="phone line-handler">
+        <div class="phone-header"><span>ISHA 通知小幫手</span><span>選單</span></div>
+        <div class="phone-body">
+          <div class="time">下午 2:10</div>
+          <div class="line-card">
+            <div class="card-head">日常異常事件通報 <span class="card-id">INC-1150608-003</span></div>
+            <div class="card-body">
+              <div class="kv">
+                <span>地點</span><span>龍井高空車實習場地</span>
+                <span>事項</span><span>場地使用</span>
+                <span>填報人</span><span>張家豪</span>
+                <span>承辦人</span><span>張家豪</span>
+                <span>狀態</span><span class="status-red">待處理</span>
+              </div>
+              <p><strong>異常事情</strong><br>場地積水，需排除後再開放使用。</p>
+              <div class="line-button primary">查詢事件</div>
+              <div class="line-button">處理回報</div>
+              <div class="line-button">陳核主管</div>
+            </div>
+          </div>
+          <div class="bubble me">待處理</div>
+          <div class="bubble">日常異常事件待處理 1 筆<br>INC-1150608-003 龍井高空車實習場地</div>
+          <div class="bubble me">更新 INC-1150608-003</div>
+          <div class="bubble">請開啟處理回報連結，更新處理狀況與照片。</div>
+          <div class="bubble me">處理完成並陳核主管</div>
+          <div class="bubble">已送出主管審核通知，等待主管同意結案。</div>
+        </div>
+        <div class="phone-footer"><div class="mini">+</div><div class="mini">圖</div><div class="input">Aa</div><div class="mini">送</div></div>
+      </div>
+      <div class="panel">
+        <h3>承辦按鈕對應</h3>
+        <table>
+          <tr><th>LINE 動作</th><th>系統行為</th></tr>
+          <tr><td>查詢事件</td><td>顯示事件摘要與 PDF 連結。</td></tr>
+          <tr><td>處理回報</td><td>開啟 GAS token 頁，回到該事件處理單。</td></tr>
+          <tr><td>陳核主管</td><td>處理完成後通知事件單上指定主管。</td></tr>
+          <tr><td>待處理</td><td>列出尚未結案的日常異常事件。</td></tr>
+        </table>
+        <div class="note">若在群組使用指令，前面加 `/`，例如 `/待處理`。</div>
+      </div>
+    </div>
+  </section>
+
+  <section class="page" id="supervisor-flow-page">
+    <h2>主管流程</h2>
+    <p>主管只在承辦標示處理完成並陳核後收到通知。主管審核頁會顯示事件摘要、處理紀錄、PDF 與審核操作。</p>
+    <div class="flow five">
+      <div class="step"><div class="num">1</div><h3>收到圖卡</h3><p>指定主管收到待審核 LINE 圖卡。</p></div>
+      <div class="step"><div class="num">2</div><h3>開啟審核頁</h3><p>由 token 連結進入主管審核頁。</p></div>
+      <div class="step"><div class="num">3</div><h3>檢視資料</h3><p>確認事件、處理說明、照片與 PDF 時序。</p></div>
+      <div class="step decision"><div class="num">4</div><h3>審核判斷</h3><p>同意結案或填意見退回補正。</p></div>
+      <div class="step"><div class="num">5</div><h3>系統通知</h3><p>同意後重產正式 PDF；退回則通知承辦補正。</p></div>
+    </div>
+    <div class="two-col">
+      <div class="screen">
+        <img src="screenshots/06-incident-approval-page.png" alt="主管審核頁">
+        <div class="caption">實際畫面：主管審核頁</div>
+      </div>
+      <div class="screen">
+        <img src="screenshots/04-monthly-check-form.png" alt="月檢表畫面">
+        <div class="caption">實際畫面：月檢表。設備月檢仍採主管手寫簽核；日常事件則為按鈕審核。</div>
+      </div>
+    </div>
+  </section>
+
+  <section class="page" id="supervisor-line-page">
+    <h2>主管 LINE 模擬對話</h2>
+    <div class="two-col">
+      <div class="phone line-supervisor">
+        <div class="phone-header"><span>ISHA 通知小幫手</span><span>主管</span></div>
+        <div class="phone-body">
+          <div class="time">下午 3:05</div>
+          <div class="line-card">
+            <div class="card-head">日常異常待審核 <span class="card-id">INC-1150608-003</span></div>
+            <div class="card-body">
+              <div class="kv">
+                <span>地點</span><span>龍井高空車實習場地</span>
+                <span>事項</span><span>場地使用</span>
+                <span>承辦人</span><span>張家豪</span>
+                <span>主管</span><span>王主任</span>
+                <span>狀態</span><span class="status-red">處理完成</span>
+              </div>
+              <p><strong>處理說明</strong><br>已排除積水並補上警示標示，現場照片已更新。</p>
+              <div class="line-button primary">主管審核</div>
+              <div class="line-button">查看 PDF</div>
+            </div>
+          </div>
+          <div class="bubble me">開啟主管審核</div>
+          <div class="bubble">審核頁已載入，請確認處理內容與 PDF。</div>
+          <div class="bubble me">同意結案</div>
+          <div class="bubble">已結案，正式 PDF 已重產並移至已結案資料夾。</div>
+          <div class="bubble me">或退回補正</div>
+          <div class="bubble">已通知承辦補正，事件狀態改為退回補正。</div>
+        </div>
+        <div class="phone-footer"><div class="mini">+</div><div class="mini">圖</div><div class="input">Aa</div><div class="mini">送</div></div>
+      </div>
+      <div class="panel">
+        <h3>主管審核判讀</h3>
+        <table>
+          <tr><th>操作</th><th>結果</th></tr>
+          <tr><td>同意結案</td><td>事件審核狀態改為已結案，系統重產正式 PDF。</td></tr>
+          <tr><td>退回補正</td><td>需填審核意見，系統通知承辦補充資料。</td></tr>
+          <tr><td>查看 PDF</td><td>確認通報、處理、照片與審核時序。</td></tr>
+        </table>
+        <div class="note">日常異常事件主管審核不需手寫簽名；設備月檢主管簽核仍維持手寫簽名。</div>
+      </div>
+    </div>
+  </section>
+
+  <section class="page">
+    <h2>PDF 與 Drive 時序</h2>
+    <p>日常異常事件每個重要階段都會產生或重產 PDF，方便追蹤處理過程。</p>
+    <table>
+      <tr><th>時序</th><th>觸發時機</th><th>PDF / Drive 階段</th><th>LINE 通知</th></tr>
+      <tr><td>1</td><td>承辦送出通報表</td><td>通報紀錄、待處理或處理中</td><td>推播群組圖卡</td></tr>
+      <tr><td>2</td><td>承辦更新處理狀況</td><td>依狀態重產：待處理、處理中、處理完成</td><td>圖卡可查詢最新事件</td></tr>
+      <tr><td>3</td><td>承辦處理完成並陳核</td><td>待主管審核</td><td>推播指定主管</td></tr>
+      <tr><td>4A</td><td>主管同意結案</td><td>已結案正式版</td><td>事件完成</td></tr>
+      <tr><td>4B</td><td>主管退回補正</td><td>退回補正</td><td>通知承辦補正</td></tr>
+    </table>
+    <div class="three-col" style="margin-top: 18px;">
+      <div class="panel"><span class="tag">事件 ID</span><p>`INC-1150608-001`，民國年月日加流水號。</p></div>
+      <div class="panel"><span class="tag">照片</span><p>照片依上傳順序排序，每張下方標示階段與檔名。</p></div>
+      <div class="panel"><span class="tag">結案</span><p>只有主管同意後，日常事件才算結案。</p></div>
+    </div>
+  </section>
+</body>
+</html>
