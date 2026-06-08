@@ -1,0 +1,548 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ISHA 各類檢查流程圖</title>
+  <style>
+    :root {
+      --blue: #1a73e8;
+      --blue-dark: #174ea6;
+      --green: #06c755;
+      --red: #d93025;
+      --ink: #1f2937;
+      --muted: #667085;
+      --line: #d9e2ec;
+      --paper: #fff;
+      --bg: #f4f7fb;
+      --soft: #eef4ff;
+      --warn: #fff4e5;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans TC", "Microsoft JhengHei", Arial, sans-serif;
+      line-height: 1.55;
+    }
+    .page {
+      width: 1120px;
+      margin: 28px auto;
+      padding: 40px;
+      background: var(--paper);
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      box-shadow: 0 12px 34px rgba(15, 23, 42, 0.08);
+      page-break-after: always;
+    }
+    .page:last-child { page-break-after: auto; }
+    h1, h2, h3 { margin: 0; line-height: 1.25; letter-spacing: 0; }
+    h1 { font-size: 34px; }
+    h2 { font-size: 25px; margin-bottom: 18px; }
+    h3 { font-size: 18px; margin-bottom: 8px; }
+    p { margin: 6px 0 12px; color: var(--muted); }
+    .badge {
+      display: inline-flex;
+      padding: 6px 12px;
+      border-radius: 999px;
+      background: var(--soft);
+      color: var(--blue-dark);
+      font-weight: 800;
+      font-size: 14px;
+      margin-bottom: 16px;
+    }
+    .cover {
+      display: grid;
+      grid-template-columns: 1.18fr 0.82fr;
+      gap: 30px;
+      align-items: center;
+      min-height: 520px;
+    }
+    .two-col {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 18px;
+    }
+    .three-col {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 14px;
+    }
+    .panel {
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 18px;
+      background: #fff;
+    }
+    .panel.blue { background: #f7fbff; border-color: #cfe0ff; }
+    .panel.warn { background: var(--warn); border-color: #ffd79a; }
+    .note {
+      padding: 14px 16px;
+      border-left: 5px solid var(--blue);
+      background: #f7fbff;
+      color: var(--muted);
+      border-radius: 10px;
+      margin: 14px 0;
+    }
+    .flow {
+      display: grid;
+      grid-template-columns: repeat(6, minmax(0, 1fr));
+      gap: 10px;
+      margin: 18px 0 24px;
+    }
+    .flow.five { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+    .step {
+      position: relative;
+      min-height: 132px;
+      padding: 14px;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: #fff;
+    }
+    .step:not(:last-child)::after {
+      content: ">";
+      position: absolute;
+      right: -9px;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      display: grid;
+      place-items: center;
+      background: var(--blue);
+      color: #fff;
+      font-weight: 800;
+      font-size: 12px;
+      z-index: 2;
+    }
+    .num {
+      width: 28px;
+      height: 28px;
+      display: grid;
+      place-items: center;
+      border-radius: 50%;
+      background: var(--blue);
+      color: #fff;
+      font-weight: 900;
+      margin-bottom: 8px;
+    }
+    .step h3 { font-size: 16px; }
+    .step p { font-size: 13px; margin: 0; }
+    .decision {
+      border-color: #f5b5af;
+      background: #fff8f7;
+    }
+    .screen {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      overflow: hidden;
+      background: #f8fafc;
+    }
+    .screen img {
+      display: block;
+      width: 100%;
+      height: auto;
+    }
+    .two-col .screen img {
+      height: 470px;
+      object-fit: cover;
+      object-position: top center;
+    }
+    .cover .screen img {
+      height: auto;
+      object-fit: initial;
+    }
+    .caption {
+      padding: 10px 12px;
+      color: var(--muted);
+      font-size: 13px;
+      border-top: 1px solid var(--line);
+      background: #fff;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 10px;
+      font-size: 14px;
+    }
+    th, td {
+      border: 1px solid var(--line);
+      padding: 10px 12px;
+      text-align: left;
+      vertical-align: top;
+    }
+    th { background: #f1f6ff; color: var(--blue-dark); }
+    .phone {
+      width: 390px;
+      margin: 0 auto;
+      border-radius: 34px;
+      border: 10px solid #111827;
+      background: #9dbbe0;
+      overflow: hidden;
+      box-shadow: 0 12px 30px rgba(15, 23, 42, 0.22);
+    }
+    .phone-header {
+      height: 70px;
+      padding: 16px 18px;
+      background: #fff;
+      border-bottom: 1px solid #d4d4d8;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-weight: 900;
+    }
+    .phone-body {
+      min-height: 625px;
+      padding: 16px;
+      background: linear-gradient(#9dbbe0, #8fb2dd);
+    }
+    .time {
+      text-align: center;
+      color: rgba(17, 24, 39, 0.55);
+      font-size: 12px;
+      margin-bottom: 12px;
+    }
+    .bubble {
+      max-width: 82%;
+      margin: 10px 0;
+      padding: 10px 13px;
+      border-radius: 18px;
+      font-size: 15px;
+      background: #fff;
+      box-shadow: 0 1px 1px rgba(0,0,0,.08);
+    }
+    .bubble.me {
+      margin-left: auto;
+      background: #8de969;
+    }
+    .line-card {
+      background: #fff;
+      border-radius: 18px;
+      overflow: hidden;
+      margin: 10px 0 14px;
+      box-shadow: 0 1px 2px rgba(0,0,0,.12);
+    }
+    .card-head {
+      background: var(--red);
+      color: #fff;
+      padding: 14px 18px;
+      font-size: 20px;
+      font-weight: 900;
+    }
+    .card-head.blue { background: var(--blue); }
+    .card-id {
+      display: block;
+      font-size: 15px;
+      margin-top: 3px;
+      opacity: .95;
+    }
+    .card-body {
+      padding: 16px 18px 18px;
+      font-size: 15px;
+    }
+    .kv {
+      display: grid;
+      grid-template-columns: 82px 1fr;
+      gap: 6px 8px;
+      margin-bottom: 12px;
+    }
+    .kv span:nth-child(odd) { color: #6b7280; font-weight: 800; }
+    .kv span:nth-child(even) { font-weight: 900; }
+    .status-red { color: var(--red); }
+    .status-blue { color: var(--blue); }
+    .line-button {
+      display: block;
+      width: 100%;
+      margin-top: 9px;
+      border-radius: 10px;
+      padding: 12px 10px;
+      text-align: center;
+      font-weight: 900;
+      color: #111827;
+      background: #e5e7eb;
+    }
+    .line-button.primary {
+      color: #fff;
+      background: var(--red);
+    }
+    .line-button.blue {
+      color: #fff;
+      background: var(--blue);
+    }
+    .phone-footer {
+      height: 56px;
+      background: #fff;
+      display: grid;
+      grid-template-columns: 42px 42px 1fr 42px;
+      gap: 8px;
+      align-items: center;
+      padding: 8px 12px;
+    }
+    .input {
+      height: 36px;
+      border-radius: 18px;
+      background: #f3f4f6;
+      color: #9ca3af;
+      display: flex;
+      align-items: center;
+      padding-left: 12px;
+      font-size: 13px;
+    }
+    .mini {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      display: grid;
+      place-items: center;
+      background: #f3f4f6;
+      font-size: 13px;
+    }
+    .tag {
+      display: inline-block;
+      padding: 3px 8px;
+      border-radius: 999px;
+      background: #eef2ff;
+      color: #3730a3;
+      font-size: 12px;
+      font-weight: 900;
+      margin-right: 4px;
+    }
+    @media print {
+      body { background: #fff; }
+      .page {
+        width: auto;
+        margin: 0;
+        border: none;
+        border-radius: 0;
+        box-shadow: none;
+      }
+      .phone {
+        width: 285px;
+        border-width: 7px;
+        border-radius: 24px;
+      }
+      .phone-header {
+        height: 46px;
+        padding: 10px 14px;
+        font-size: 13px;
+      }
+      .phone-body {
+        min-height: 0;
+        padding: 10px;
+      }
+      .card-head {
+        padding: 9px 12px;
+        font-size: 14px;
+      }
+      .card-id { font-size: 12px; }
+      .card-body {
+        padding: 10px 12px 12px;
+        font-size: 11px;
+      }
+      .kv {
+        grid-template-columns: 56px 1fr;
+        gap: 4px 6px;
+        margin-bottom: 8px;
+      }
+      .bubble {
+        font-size: 11px;
+        padding: 7px 9px;
+        margin: 6px 0;
+      }
+      .time { font-size: 10px; margin-bottom: 8px; }
+      .line-button {
+        padding: 8px 7px;
+      }
+      .phone-footer {
+        height: 38px;
+        padding: 5px 8px;
+      }
+      .mini { width: 26px; height: 26px; font-size: 10px; }
+      .input { height: 28px; font-size: 11px; }
+    }
+  </style>
+</head>
+<body>
+  <section class="page cover-page">
+    <div class="cover">
+      <div>
+        <div class="badge">各類檢查流程</div>
+        <h1>ISHA 檢查與通報工作台<br>檢查人 / 主管流程圖</h1>
+        <p>本文件整理每日作業前檢點、每月定期檢查、設備異常通報、月檢主管簽核與 LINE 操作流程。</p>
+        <div class="three-col" style="margin-top: 24px;">
+          <div class="panel blue">
+            <h3>每日檢點</h3>
+            <p>日檢由檢查人填寫，簽名後直接產生 PDF；若有異常，系統建立異常事件並推播 LINE。</p>
+          </div>
+          <div class="panel blue">
+            <h3>每月檢查</h3>
+            <p>固定式起重機、堆高機、三間教室置備月檢會進入主管簽核流程。</p>
+          </div>
+          <div class="panel blue">
+            <h3>主管簽核</h3>
+            <p>主管從 LINE 圖卡開啟簽核頁，檢視內容後手寫簽名，系統再產正式 PDF。</p>
+          </div>
+        </div>
+        <div class="note">LINE 模擬畫面為教學用，不是 LINE 官方截圖；網站畫面取自目前公開網站與既有實際操作截圖。</div>
+      </div>
+      <div class="screen">
+        <img src="screenshots/07-line-rich-menu.png" alt="LINE 圖文選單">
+        <div class="caption">實際畫面：LINE 圖文選單入口</div>
+      </div>
+    </div>
+  </section>
+
+  <section class="page" id="inspection-inspector-flow-page">
+    <h2>檢查人 / 承辦流程</h2>
+    <p>檢查人從工作台、QR 選單或 LINE 圖文選單進入表單，送出後依日檢/月檢規則產生 PDF、異常事件與主管簽核通知。</p>
+    <div class="flow">
+      <div class="step"><div class="num">1</div><h3>選擇入口</h3><p>從檢查填報、QR 選單或設備 QR Code 開啟日檢/月檢。</p></div>
+      <div class="step"><div class="num">2</div><h3>填檢查表</h3><p>依設備類型填檢查日期、檢查人、項目結果與異常說明。</p></div>
+      <div class="step"><div class="num">3</div><h3>上傳照片</h3><p>異常項目需填說明；必要時附照片作佐證。</p></div>
+      <div class="step"><div class="num">4</div><h3>檢查人簽名</h3><p>日檢與一般檢查由檢查人簽名後送出。</p></div>
+      <div class="step decision"><div class="num">5</div><h3>判斷異常</h3><p>有異常則建立設備異常事件，LINE 推播異常圖卡。</p></div>
+      <div class="step"><div class="num">6</div><h3>PDF 歸檔</h3><p>日檢直接正式歸檔；需主管簽核的月檢先產待簽核草稿。</p></div>
+    </div>
+    <div class="two-col">
+      <div class="screen">
+        <img src="screenshots/03-daily-check-form.png" alt="每日檢點表">
+        <div class="caption">實際畫面：每日作業前檢點表</div>
+      </div>
+      <div class="screen">
+        <img src="screenshots/04-monthly-check-form.png" alt="每月檢查表">
+        <div class="caption">實際畫面：每月定期檢查紀錄</div>
+      </div>
+    </div>
+  </section>
+
+  <section class="page" id="inspection-inspector-line-page">
+    <h2>檢查人 LINE 模擬對話</h2>
+    <div class="two-col">
+      <div class="phone inspection-inspector-line">
+        <div class="phone-header"><span>ISHA 通知小幫手</span><span>檢查人</span></div>
+        <div class="phone-body">
+          <div class="time">上午 8:20</div>
+          <div class="bubble me">QR選單</div>
+          <div class="bubble">請選擇要產生 QR 的項目：堆高機、固定式起重機、教室月檢。</div>
+          <div class="bubble me">狀態</div>
+          <div class="bubble">今日填表狀態<br>堆高機 2/3 完成<br>固定式起重機 1/1 完成<br>本月月檢：龍井教室尚未完成</div>
+          <div class="line-card">
+            <div class="card-head">異常事件通報 <span class="card-id">EQ-1150608-004</span></div>
+            <div class="card-body">
+              <div class="kv">
+                <span>設備</span><span>堆高機 A-F 號</span>
+                <span>表單</span><span>每日作業前檢點</span>
+                <span>項目</span><span>煞車功能</span>
+                <span>結果</span><span class="status-red">異常</span>
+              </div>
+              <p><strong>異常說明</strong><br>煞車反應偏慢，已暫停使用並通知維修。</p>
+              <div class="line-button primary">查看 PDF</div>
+              <div class="line-button">異常事件表</div>
+            </div>
+          </div>
+          <div class="bubble me">異常</div>
+          <div class="bubble">待處理異常 1 筆<br>EQ-1150608-004 堆高機 A-F 號<br>狀態：待處理</div>
+        </div>
+        <div class="phone-footer"><div class="mini">+</div><div class="mini">圖</div><div class="input">Aa</div><div class="mini">送</div></div>
+      </div>
+      <div class="panel">
+        <h3>檢查人常用 LINE 動作</h3>
+        <table>
+          <tr><th>動作</th><th>用途</th></tr>
+          <tr><td>檢查填報</td><td>開啟工作台首頁，選擇日檢或月檢。</td></tr>
+          <tr><td>QR選單</td><td>產生設備或教室月檢 QR Code。</td></tr>
+          <tr><td>狀態</td><td>查今日填表進度與月檢提醒。</td></tr>
+          <tr><td>異常</td><td>查設備檢查產生的待處理異常事件。</td></tr>
+          <tr><td>完成 事件ID</td><td>將設備異常標記為已完成；已完成後對應鎖定項才可解除。</td></tr>
+        </table>
+        <div class="note">群組內輸入指令時，前面加 `/`，例如 `/狀態`、`/異常`。</div>
+      </div>
+    </div>
+  </section>
+
+  <section class="page" id="inspection-supervisor-flow-page">
+    <h2>主管流程</h2>
+    <p>主管主要負責月檢簽核。固定式起重機、堆高機、龍井/復興/忠明教室置備月檢送出後，會建立待主管簽核紀錄並推播 LINE。</p>
+    <div class="flow five">
+      <div class="step"><div class="num">1</div><h3>收到通知</h3><p>主管收到待簽核 LINE 圖卡，內含設備、日期、檢查人與異常數。</p></div>
+      <div class="step"><div class="num">2</div><h3>開啟簽核頁</h3><p>由 token 連結進入 GAS 主管簽核頁。</p></div>
+      <div class="step"><div class="num">3</div><h3>檢視內容</h3><p>確認檢查表內容、異常項目與照片。</p></div>
+      <div class="step decision"><div class="num">4</div><h3>手寫簽名</h3><p>主管填姓名並在簽名區簽名。</p></div>
+      <div class="step"><div class="num">5</div><h3>正式歸檔</h3><p>系統匯出正式 PDF，簽核狀態改為已簽核歸檔。</p></div>
+    </div>
+    <div class="two-col">
+      <div class="screen">
+        <img src="screenshots/04-monthly-check-form.png" alt="每月檢查表">
+        <div class="caption">實際畫面：每月定期檢查紀錄，送出後進主管簽核</div>
+      </div>
+      <div class="screen">
+        <img src="screenshots/04-monthly-check-form.png" alt="月檢內容">
+        <div class="caption">實際畫面：月檢內容，主管簽核頁會顯示檢查摘要與內容</div>
+      </div>
+    </div>
+  </section>
+
+  <section class="page" id="inspection-supervisor-line-page">
+    <h2>主管 LINE 模擬對話</h2>
+    <div class="two-col">
+      <div class="phone inspection-supervisor-line">
+        <div class="phone-header"><span>ISHA 通知小幫手</span><span>主管</span></div>
+        <div class="phone-body">
+          <div class="time">上午 9:15</div>
+          <div class="line-card">
+            <div class="card-head blue">待主管簽核 <span class="card-id">CHK-1150608-002</span></div>
+            <div class="card-body">
+              <div class="kv">
+                <span>設備</span><span>龍井教室量測設備及個人防護具月檢</span>
+                <span>表單</span><span>每月</span>
+                <span>檢查日</span><span>2026-06-08</span>
+                <span>檢查人</span><span>卓小媛</span>
+                <span>異常</span><span class="status-blue">0</span>
+              </div>
+              <div class="line-button blue">主管簽核</div>
+            </div>
+          </div>
+          <div class="bubble me">開啟主管簽核</div>
+          <div class="bubble">請檢視月檢內容、檢查人簽名與異常數。</div>
+          <div class="bubble me">填寫主管姓名並簽名</div>
+          <div class="bubble">簽核完成，正式 PDF 已產生並歸檔。</div>
+          <div class="bubble me">狀態</div>
+          <div class="bubble">本月月檢：龍井教室已填，待簽核 0 筆。</div>
+        </div>
+        <div class="phone-footer"><div class="mini">+</div><div class="mini">圖</div><div class="input">Aa</div><div class="mini">送</div></div>
+      </div>
+      <div class="panel">
+        <h3>主管簽核重點</h3>
+        <table>
+          <tr><th>項目</th><th>說明</th></tr>
+          <tr><td>適用表單</td><td>固定式起重機月檢、堆高機月檢、三間教室置備月檢。</td></tr>
+          <tr><td>通知來源</td><td>月檢表送出後，系統依主管清單推播 LINE。</td></tr>
+          <tr><td>審核方式</td><td>主管開啟簽核頁，檢視內容後手寫簽名。</td></tr>
+          <tr><td>產出</td><td>簽核完成後重產正式 PDF 並歸檔。</td></tr>
+        </table>
+        <div class="note">日檢與一般檢查不走主管簽核；只有指定月檢類型會送主管。</div>
+      </div>
+    </div>
+  </section>
+
+  <section class="page">
+    <h2>檢查類型與輸出時序</h2>
+    <table>
+      <tr><th>類型</th><th>檢查人操作</th><th>LINE 通知</th><th>主管是否簽核</th><th>PDF 時機</th></tr>
+      <tr><td>每日作業前檢點</td><td>填表、異常說明、照片、檢查人簽名</td><td>有異常時推播設備異常圖卡</td><td>否</td><td>送出後正式歸檔</td></tr>
+      <tr><td>固定式起重機月檢</td><td>填月檢內容、檢查人簽名</td><td>未填提醒、異常圖卡、主管簽核通知</td><td>是</td><td>先草稿，主管簽核後正式歸檔</td></tr>
+      <tr><td>堆高機月檢</td><td>填月檢內容、檢查人簽名</td><td>未填提醒、異常圖卡、主管簽核通知</td><td>是</td><td>先草稿，主管簽核後正式歸檔</td></tr>
+      <tr><td>三間教室置備月檢</td><td>龍井、復興、忠明各自填月檢；SCBA 併入下方區塊</td><td>未填提醒、異常圖卡、主管簽核通知</td><td>是</td><td>先草稿，主管簽核後正式歸檔</td></tr>
+      <tr><td>設備異常追蹤</td><td>由檢查表異常項自動建立；承辦可標記完成</td><td>異常圖卡、異常清單指令</td><td>否</td><td>沿用對應檢查表 PDF</td></tr>
+    </table>
+    <div class="three-col" style="margin-top: 18px;">
+      <div class="panel"><span class="tag">提醒期</span><p>月檢未填提醒依系統設定，預設月底前提醒；月初應檢期會出現在狀態查詢。</p></div>
+      <div class="panel"><span class="tag">鎖定項</span><p>未完成異常項目下次仍需標異常，完成後才可解除鎖定。</p></div>
+      <div class="panel"><span class="tag">主管清單</span><p>主管通知由 DB「主管清單」控制，需有啟用且可推播的 LINE_USER_ID。</p></div>
+    </div>
+  </section>
+</body>
+</html>
