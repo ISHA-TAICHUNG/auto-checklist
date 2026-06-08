@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+  <meta name="theme-color" content="#1a73e8">
+  <title>ISHA 日常異常事件通報</title>
+  <link rel="stylesheet" href="css/style.css">
+  <script src="js/config.js"></script>
+  <script src="js/api.js"></script>
+  <script src="js/photos.js"></script>
+</head>
+<body>
+  <header class="header">
+    <a class="back" href="index.html">回工作台</a>
+    <h1>日常異常事件通報</h1>
+    <div class="sub" data-org-name></div>
+    <nav class="site-tabs" aria-label="主要分頁">
+      <a href="index.html">檢查填報</a>
+      <a class="active" href="incident.html">日常通報</a>
+      <a href="index.html#tracking">處理追蹤</a>
+    </nav>
+  </header>
+
+  <main class="container">
+    <div id="content"></div>
+  </main>
+
+  <script>
+    window.addEventListener('error', (e) => {
+      alert('JS 錯誤：' + (e.message || e) + '\n' + (e.filename || '') + ':' + (e.lineno || ''));
+    });
+    window.addEventListener('unhandledrejection', (e) => {
+      alert('Promise 錯誤：' + (e.reason && e.reason.message ? e.reason.message : e.reason));
+    });
+
+    const subjects = ['環境設施', '場地使用', '安全衛生', '人員反映', '其他'];
+    const statuses = ['待處理', '處理中', '處理完成'];
+    let photoMgr = null;
+
+    renderForm();
+
+    function renderForm() {
+      const root = document.getElementById('content');
+      root.textContent = '';
+
+      const info = document.createElement('div');
+      info.className = 'alert alert-info';
+      info.textContent = '待處理或處理中會通知 LINE 群組；若已處理完成並填寫陳核主管，系統會直接送主管審核。';
+      root.appendChild(info);
+
+      const card = makeCard('事件內容');
+      card.body.appendChild(makeField('填報日期', 'date', todayIso(), 'reportDate').field);
+      card.body.appendChild(makeField('發生地點', 'text', '', 'location', '請填寫地點，例如教室、走廊、倉庫').field);
+      card.body.appendChild(makeField('填報人', 'text', '', 'reporter', '請填寫姓名').field);
+      card.body.appendChild(makeField('承辦人', 'text', '', 'owner', '未填時可與填報人相同').field);
+      card.body.appendChild(makeSelect('填報事項', 'subject', subjects, ''));
+      card.body.appendChild(makeTextarea('異常事情', 'description', '', '請描述發生狀況、影響範圍或需協助事項'));
+      card.body.appendChild(makeSelect('處理狀況', 'processStatus', statuses, '待處理'));
+      card.body.appendChild(makeTextarea('處理說明', 'processNote', '', '可先填目前處理方式；未處理可留空'));
+      card.body.appendChild(makeField('處理完成日期', 'date', '', 'completedDate').field);
+      card.body.appendChild(makeField('陳核主管', 'text', '', 'supervisor', '可先填主管姓名，之後處理完成再陳核').field);
+
+      const photoWrap = document.createElement('div');
+      photoWrap.className = 'field';
+      const photoLabel = document.createElement('label');
+      photoLabel.className = 'field-label';
+      photoLabel.textContent = '照片';
+      const photoBox = document.createElement('div');
+      photoWrap.appendChild(photoLabel);
+      photoWrap.appendChild(photoBox);
+      photoMgr = new PhotoManager(photoBox, { max: 8 });
+      card.body.appendChild(photoWrap);
+
+      root.appendChild(card.card);
+
+      const submit = document.createElement('button');
+      submit.id = 'submitBtn';
+      submit.type = 'button';
+      submit.className = 'btn btn-primary';
+      submit.textContent = '送出日常事件通報';
+      submit.onclick = submitIncident;
+      root.appendChild(submit);
+    }
+
+    async function submitIncident() {
+      const reportDate = valueOf('reportDate');
+      const location = valueOf('location');
+      const reporter = valueOf('reporter');
+      const owner = valueOf('owner') || reporter;
+      const subject = valueOf('subject');
+      const description = valueOf('description');
+      const processStatus = valueOf('processStatus');
+      const processNote = valueOf('processNote');
+      const completedDate = valueOf('completedDate');
+      const supervisor = valueOf('supervisor');
+      if (!reportDate) return alert('請填寫填報日期');
+      if (!location) return alert('請填寫發生地點');
+      if (!reporter) return alert('請填寫填報人');
+      if (!subject) return alert('請選擇填報事項');
+      if (!description) return alert('請填寫異常事情');
+      if (processStatus === '處理完成' && !completedDate) return alert('處理完成時請填寫處理完成日期');
+      if (processStatus === '處理完成' && !supervisor) return alert('處理完成時請填寫陳核主管');
+
+      if (!window._dailyIncidentSubmissionId) window._dailyIncidentSubmissionId = crypto.randomUUID();
+      const payload = {
+        clientSubmissionId: window._dailyIncidentSubmissionId,
+        reportDate,
+        location,
+        reporter,
+        owner,
+        subject,
+        description,
+        processStatus,
+        processNote,
+        completedDate,
+        supervisor,
+        photos: photoMgr ? photoMgr.toDataURLs() : [],
+      };
+
+      const btn = document.getElementById('submitBtn');
+      btn.disabled = true;
+      const span = document.createElement('span');
+      span.className = 'loading';
+      btn.textContent = '';
+      btn.appendChild(span);
+      btn.appendChild(document.createTextNode(' 送出中...'));
+
+      try {
+        const r = await API.submitDailyIncident(payload);
+        if (!r.ok) throw new Error(r.error || '送出失敗');
+        showResult(r);
+      } catch (err) {
+        btn.disabled = false;
+        btn.textContent = '送出日常事件通報';
+        alert('送出失敗：' + err.message);
+      }
+    }
+
+    function showResult(r) {
+      const root = document.getElementById('content');
+      root.textContent = '';
+      const card = document.createElement('div');
+      card.className = 'card';
+
+      const icon = document.createElement('div');
+      icon.className = 'result-icon';
+      icon.textContent = '✓';
+      icon.style.color = '#34a853';
+      card.appendChild(icon);
+
+      const title = document.createElement('div');
+      title.className = 'result-title';
+      title.textContent = r.reviewStatus === '待主管審核' ? '日常事件已送主管審核' : '日常事件已建立';
+      card.appendChild(title);
+
+      const meta = document.createElement('div');
+      meta.className = 'result-meta';
+      meta.textContent = '事件ID：' + r.incidentId;
+      card.appendChild(meta);
+
+      if (r.pdfUrl) {
+        const pdf = document.createElement('a');
+        pdf.href = r.pdfUrl;
+        pdf.target = '_blank';
+        pdf.rel = 'noopener';
+        pdf.className = 'btn btn-secondary';
+        pdf.style.display = 'block';
+        pdf.style.textAlign = 'center';
+        pdf.style.textDecoration = 'none';
+        pdf.textContent = r.reviewStatus === '待主管審核' ? '查看待審 PDF' : '查看目前 PDF';
+        card.appendChild(pdf);
+      }
+
+      if (r.lineNotice && !r.lineNotice.ok) {
+        const warn = document.createElement('div');
+        warn.className = 'alert alert-error';
+        warn.textContent = noticeText(r.lineNotice, r.reviewStatus === '待主管審核');
+        card.appendChild(warn);
+      } else if (r.reviewStatus === '待主管審核' && r.lineNotice && r.lineNotice.ok) {
+        const ok = document.createElement('div');
+        ok.className = 'alert alert-info';
+        ok.textContent = noticeText(r.lineNotice, true);
+        card.appendChild(ok);
+      }
+
+      if (r.photoFolderUrl) {
+        const a = document.createElement('a');
+        a.href = r.photoFolderUrl;
+        a.target = '_blank';
+        a.rel = 'noopener';
+        a.className = 'btn btn-secondary';
+        a.style.display = 'block';
+        a.style.textAlign = 'center';
+        a.style.textDecoration = 'none';
+        a.textContent = '查看照片資料夾';
+        card.appendChild(a);
+      }
+
+      const back = document.createElement('a');
+      back.href = 'index.html';
+      back.className = 'btn btn-primary';
+      back.style.display = 'block';
+      back.style.textAlign = 'center';
+      back.style.textDecoration = 'none';
+      back.style.marginTop = '10px';
+      back.textContent = '回工作台';
+      card.appendChild(back);
+
+      root.appendChild(card);
+    }
+
+    function noticeText(notice, isApproval) {
+      if (!notice) return '';
+      if (notice.skipped) return isApproval ? '主管 LINE 通知設定目前關閉，事件已送審但未推播。' : 'LINE 群組通知設定目前關閉。';
+      if (notice.ok) {
+        if (notice.targetMode === 'named') return '主管 LINE 通知已送出：' + (notice.supervisorName || '指定主管');
+        if (notice.targetMode === 'fallback') return '主管 LINE 通知已送出，但找不到指定主管 LINE ID，已改通知啟用主管 ' + (notice.targetCount || '') + ' 人。';
+        return isApproval ? '主管 LINE 通知已送出。' : 'LINE 通知已送出。';
+      }
+      if (notice.reason === 'supervisor_not_found') return '找不到「' + (notice.supervisorName || '指定主管') + '」的 LINE_USER_ID，且沒有可用的 fallback 主管。請確認「主管清單」。';
+      if (notice.reason === 'no_supervisor') return '沒有啟用的主管 LINE_USER_ID，請確認「主管清單」或 SUPERVISOR_USER_IDS。';
+      if (notice.reason === 'no_token') return 'LINE_CHANNEL_ACCESS_TOKEN 未設定，通知未送出。';
+      return isApproval
+        ? '主管 LINE 通知未送出，事件已寫入資料表，請管理員確認 LINE 設定或手動轉貼審核連結。'
+        : 'LINE 群組通知未送出，事件已寫入資料表，請管理員確認 LINE 設定。';
+    }
+
+    function makeCard(title) {
+      const card = document.createElement('div');
+      card.className = 'card';
+      const h = document.createElement('h2');
+      h.className = 'card-title';
+      h.textContent = title;
+      const body = document.createElement('div');
+      card.appendChild(h);
+      card.appendChild(body);
+      return { card, body };
+    }
+    function makeField(labelText, type, value, id, placeholder) {
+      const field = document.createElement('div');
+      field.className = 'field';
+      const label = document.createElement('label');
+      label.className = 'field-label';
+      label.textContent = labelText;
+      const input = document.createElement('input');
+      input.id = id;
+      input.type = type;
+      input.value = value || '';
+      input.placeholder = placeholder || '';
+      field.appendChild(label);
+      field.appendChild(input);
+      return { field, input };
+    }
+    function makeTextarea(labelText, id, value, placeholder) {
+      const field = document.createElement('div');
+      field.className = 'field';
+      const label = document.createElement('label');
+      label.className = 'field-label';
+      label.textContent = labelText;
+      const ta = document.createElement('textarea');
+      ta.id = id;
+      ta.value = value || '';
+      ta.placeholder = placeholder || '';
+      field.appendChild(label);
+      field.appendChild(ta);
+      return field;
+    }
+    function makeSelect(labelText, id, options, value) {
+      const field = document.createElement('div');
+      field.className = 'field';
+      const label = document.createElement('label');
+      label.className = 'field-label';
+      label.textContent = labelText;
+      const sel = document.createElement('select');
+      sel.id = id;
+      const empty = document.createElement('option');
+      empty.value = '';
+      empty.textContent = '— 請選擇 —';
+      sel.appendChild(empty);
+      options.forEach(opt => {
+        const o = document.createElement('option');
+        o.value = opt;
+        o.textContent = opt;
+        if (opt === value) o.selected = true;
+        sel.appendChild(o);
+      });
+      field.appendChild(label);
+      field.appendChild(sel);
+      return field;
+    }
+    function valueOf(id) { return (document.getElementById(id).value || '').trim(); }
+    function todayIso() {
+      const d = new Date();
+      const pad = n => String(n).padStart(2, '0');
+      return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+    }
+  </script>
+</body>
+</html>

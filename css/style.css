@@ -45,7 +45,90 @@ body {
 }
 .header .back::before { content: '← '; }
 
+.site-tabs {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  flex-wrap: wrap;
+  margin: 16px auto 0;
+  max-width: 720px;
+}
+.site-tabs a {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 9px 14px;
+  border-radius: 999px;
+  border: 1px solid rgba(255,255,255,0.42);
+  color: #fff;
+  text-decoration: none;
+  font-size: 15px;
+  font-weight: 800;
+  background: rgba(255,255,255,0.12);
+}
+.site-tabs a.active {
+  background: #fff;
+  color: #174ea6;
+  border-color: #fff;
+}
+
 .container { width: 100%; max-width: 760px; margin: 0 auto; padding: 18px; }
+
+/* ---- 工作台分頁 ---- */
+.workspace-overview {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 24px;
+}
+.module-card {
+  display: flex;
+  min-height: 136px;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 16px;
+  border-radius: 12px;
+  text-decoration: none;
+  border: 2px solid #dfe5f2;
+  background: #fff;
+  color: #202124;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+}
+.module-card.checks { border-top: 5px solid #1a73e8; }
+.module-card.incident { border-top: 5px solid #d93025; }
+.module-card.tracking { border-top: 5px solid #188038; }
+.module-eyebrow {
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  color: #5f6368;
+}
+.module-title {
+  display: block;
+  margin-top: 8px;
+  font-size: 20px;
+  font-weight: 900;
+  line-height: 1.25;
+}
+.module-meta {
+  display: block;
+  margin-top: 8px;
+  color: #5f6368;
+  font-size: 14px;
+  line-height: 1.45;
+}
+.workspace-section { scroll-margin-top: 18px; margin-bottom: 28px; }
+.section-title {
+  margin: 0 0 14px;
+  color: #202124;
+  font-size: 22px;
+  font-weight: 900;
+  letter-spacing: 0;
+}
+.tracking-card {
+  border-left: 4px solid #188038;
+}
 
 /* ---- 卡片 ---- */
 .card {
@@ -365,6 +448,13 @@ body {
 }
 .btn-primary:hover { background: #1557b0; }
 .btn-primary:disabled { background: #aab4c0; border-color: #aab4c0; cursor: not-allowed; }
+.btn-secondary {
+  background: #eef3fb;
+  color: #174ea6;
+  border-color: #d2e3fc;
+  font-weight: 800;
+}
+.btn-secondary:hover { background: #d2e3fc; }
 
 .submit-area {
   position: sticky;
@@ -430,6 +520,23 @@ body {
 .result-meta { text-align: center; font-size: 15px; color: #5f6368; margin-bottom: 28px; word-break: break-all; }
 
 @media (max-width: 520px) {
+  .header { padding: 20px 14px; }
+  .site-tabs {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 6px;
+  }
+  .site-tabs a {
+    min-height: 42px;
+    padding: 8px 6px;
+    font-size: 14px;
+  }
+  .workspace-overview {
+    grid-template-columns: 1fr;
+  }
+  .module-card {
+    min-height: 108px;
+  }
   .item-method, .radio-group, .abnormal-input, .lock-banner,
   .method-group, .risk-row {
     margin-left: 0;

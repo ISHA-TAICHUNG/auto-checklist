@@ -89,6 +89,7 @@
     getLockedItems: (form, eqp) => apiGet({ api: 'lockedItems', form, eqp }),
     getApproval: (recordId, token) => apiGet({ api: 'approval', recordId, token }),
     submit: (payload) => apiPost(payload),
+    submitDailyIncident: (payload) => apiPost(Object.assign({ action: 'submitDailyIncident' }, payload)),
     approveRecord: (payload) => apiPost(Object.assign({ action: 'approveRecord' }, payload)),
     health: () => apiGet({ api: 'health' }),
     branding: () => apiGet({ api: 'branding' }),

@@ -4,24 +4,62 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
   <meta name="theme-color" content="#1a73e8">
-  <title>自動檢查表系統</title>
+  <title>ISHA 檢查與通報工作台</title>
   <link rel="stylesheet" href="css/style.css">
   <script src="js/config.js"></script>
   <script src="js/api.js"></script>
 </head>
 <body>
   <header class="header">
-    <h1>自動檢查表系統</h1>
+    <h1>ISHA 檢查與通報工作台</h1>
     <div class="sub" data-org-name></div>
+    <nav class="site-tabs" aria-label="主要分頁">
+      <a class="active" href="index.html">檢查填報</a>
+      <a href="incident.html">日常通報</a>
+      <a href="#tracking">處理追蹤</a>
+    </nav>
   </header>
 
   <main class="container">
-    <div id="groupSections"></div>
+    <section class="workspace-overview" aria-label="工作台分頁">
+      <a class="module-card checks" href="#checklist">
+        <span class="module-eyebrow">CHECK</span>
+        <span class="module-title">檢查填報</span>
+        <span class="module-meta">日檢、月檢、教室置備檢核</span>
+      </a>
+      <a class="module-card incident" href="incident.html">
+        <span class="module-eyebrow">REPORT</span>
+        <span class="module-title">日常通報</span>
+        <span class="module-meta">場地、環境、人員反映與安全衛生事件</span>
+      </a>
+      <a class="module-card tracking" href="#tracking">
+        <span class="module-eyebrow">FOLLOW</span>
+        <span class="module-title">處理追蹤</span>
+        <span class="module-meta">從 LINE 圖卡回報處理狀況與送主管審核</span>
+      </a>
+    </section>
 
-    <h2 class="card-title" id="listTitle">請選擇設備</h2>
-    <div id="content">
-      <div class="page-loading"><span class="loading"></span>&nbsp;載入中...</div>
-    </div>
+    <section id="checklist" class="workspace-section">
+      <h2 class="section-title">檢查填報</h2>
+      <div id="groupSections"></div>
+
+      <h2 class="card-title" id="listTitle">請選擇設備</h2>
+      <div id="content">
+        <div class="page-loading"><span class="loading"></span>&nbsp;載入中...</div>
+      </div>
+    </section>
+
+    <section id="tracking" class="workspace-section">
+      <h2 class="section-title">處理追蹤</h2>
+      <div class="equip-card tracking-card">
+        <div class="equip-name">日常異常事件處理回報</div>
+        <div class="equip-meta">已通報事件請從 LINE 圖卡開啟處理表；處理完成後可送主管審核結案。</div>
+        <div class="equip-actions">
+          <a class="btn-daily" href="incident.html">新增通報</a>
+          <a class="btn-monthly" href="index.html#checklist">回檢查填報</a>
+        </div>
+      </div>
+    </section>
 
     <p style="text-align:center; color:#9aa0a6; font-size:11px; margin-top:32px;">
       <span id="versionTag"></span>
