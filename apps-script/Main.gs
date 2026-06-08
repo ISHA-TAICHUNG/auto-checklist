@@ -245,6 +245,14 @@ function doGet(e) {
             };
             break;
           }
+          case 'richMenuHealth': {
+            result = {
+              ok: true,
+              action,
+              ...getLineRichMenuHealth_(),
+            };
+            break;
+          }
           case 'testLineIncident': {
             // 測試異常通報 LINE 是否正常推（內部 try 包，回傳完整錯誤訊息給 admin）
             try {

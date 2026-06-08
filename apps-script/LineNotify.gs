@@ -857,6 +857,42 @@ function getLineRichMenuStatus() {
   };
 }
 
+function getLineRichMenuHealth_() {
+  const props = PropertiesService.getScriptProperties();
+  const configuredId = props.getProperty('LINE_DEFAULT_RICH_MENU_ID') || '';
+  const imageUrl = props.getProperty('LINE_DEFAULT_RICH_MENU_IMAGE_URL') || '';
+  let defaultId = '';
+  let list = [];
+  let defaultError = '';
+  let listError = '';
+  try { defaultId = lineRichMenuGetDefaultId_(); } catch (err) { defaultError = friendlyError_(err); }
+  try { list = lineRichMenuList_(); } catch (err) { listError = friendlyError_(err); }
+  const active = list.filter(m => m.richMenuId === defaultId)[0] || null;
+  return {
+    ok: true,
+    configured: !!configuredId,
+    defaultSet: !!defaultId,
+    defaultMatchesConfigured: !!configuredId && !!defaultId && configuredId === defaultId,
+    configuredId: maskLineRichMenuId_(configuredId),
+    defaultId: maskLineRichMenuId_(defaultId),
+    count: list.length,
+    defaultMenuName: active ? active.name : '',
+    defaultChatBarText: active ? active.chatBarText : '',
+    expectedName: 'ISHA 檢查與通報工作台',
+    expectedChatBarText: 'ISHA 工作台',
+    imageUrl: imageUrl || getSetting_('lineRichMenuImageUrl', '') || LINE_RICH_MENU_IMAGE_DEFAULT_URL,
+    defaultError,
+    listError,
+  };
+}
+
+function maskLineRichMenuId_(id) {
+  const s = String(id || '');
+  if (!s) return '';
+  if (s.length <= 14) return s.substring(0, 4) + '...';
+  return s.substring(0, 8) + '...' + s.substring(s.length - 6);
+}
+
 function deleteInstalledLineRichMenu() {
   const props = PropertiesService.getScriptProperties();
   const richMenuId = props.getProperty('LINE_DEFAULT_RICH_MENU_ID') || '';
