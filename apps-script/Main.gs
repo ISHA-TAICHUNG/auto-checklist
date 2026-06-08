@@ -100,7 +100,8 @@ function doGet(e) {
                                'addMonthlySafetyPpeForms', 'syncSupervisorIds',
                                'supervisorStatus', 'updateMonthlySettingNotes',
                                'applyProjectResourceNames', 'installRichMenu',
-                               'deleteRichMenu', 'richMenuStatus'];
+                               'deleteRichMenu', 'richMenuStatus',
+                               'syncLineWebhookEndpoint'];
         // 破壞性 actions — 需 ADMIN_TOKEN + ALLOW_DESTRUCTIVE_HTTP=YES kill switch
         const DESTRUCTIVE_ACTIONS = ['cleanupAll', 'cleanupDate'];
         if (WRITE_ACTIONS.indexOf(action) >= 0 || DESTRUCTIVE_ACTIONS.indexOf(action) >= 0) {
@@ -250,6 +251,22 @@ function doGet(e) {
               ok: true,
               action,
               ...getLineRichMenuHealth_(),
+            };
+            break;
+          }
+          case 'lineWebhookHealth': {
+            result = {
+              ok: true,
+              action,
+              ...getLineWebhookHealth_(),
+            };
+            break;
+          }
+          case 'syncLineWebhookEndpoint': {
+            result = {
+              ok: true,
+              action,
+              ...setLineWebhookEndpointToCurrent(),
             };
             break;
           }

@@ -886,11 +886,91 @@ function getLineRichMenuHealth_() {
   };
 }
 
+function getLineWebhookHealth_() {
+  const expectedEndpoint = buildExpectedLineWebhookEndpoint_();
+  const queryToken = getLineWebhookQueryToken_();
+  const cfg = getLineConfig_();
+  let lineEndpoint = '';
+  let lineActive = false;
+  let lineError = '';
+
+  if (!cfg.token) {
+    lineError = 'LINE_CHANNEL_ACCESS_TOKEN 未設定';
+  } else {
+    try {
+      const res = lineRichMenuFetch_('/channel/webhook/endpoint', { method: 'get' });
+      const body = JSON.parse(res.getContentText() || '{}') || {};
+      lineEndpoint = String(body.endpoint || '');
+      lineActive = body.active === true;
+    } catch (err) {
+      lineError = friendlyError_(err);
+    }
+  }
+
+  const expectedBase = lineWebhookEndpointBase_(expectedEndpoint);
+  const lineBase = lineWebhookEndpointBase_(lineEndpoint);
+  const lineToken = lineWebhookEndpointToken_(lineEndpoint);
+
+  return {
+    lineTokenConfigured: !!cfg.token,
+    queryTokenConfigured: !!queryToken && queryToken.length >= 32,
+    currentServiceUrl: maskLineWebhookEndpoint_(ScriptApp.getService().getUrl()),
+    expectedEndpoint: maskLineWebhookEndpoint_(expectedEndpoint),
+    lineEndpoint: maskLineWebhookEndpoint_(lineEndpoint),
+    lineEndpointConfigured: !!lineEndpoint,
+    lineEndpointActive: lineActive,
+    endpointMatchesExpected: !!expectedEndpoint && !!lineEndpoint && lineEndpoint === expectedEndpoint,
+    endpointBaseMatchesExpected: !!expectedBase && !!lineBase && expectedBase === lineBase,
+    endpointTokenMatchesExpected: !!queryToken && !!lineToken && lineToken === queryToken,
+    lineError,
+  };
+}
+
+function setLineWebhookEndpointToCurrent() {
+  const endpoint = buildExpectedLineWebhookEndpoint_();
+  if (!endpoint) {
+    throw new Error('無法產生 LINE Webhook URL：請確認 Web App 已部署，且 LINE_WEBHOOK_QUERY_TOKEN 已設定');
+  }
+  lineRichMenuFetch_('/channel/webhook/endpoint', {
+    method: 'put',
+    contentType: 'application/json',
+    payload: JSON.stringify({ endpoint }),
+  });
+  return getLineWebhookHealth_();
+}
+
 function maskLineRichMenuId_(id) {
   const s = String(id || '');
   if (!s) return '';
   if (s.length <= 14) return s.substring(0, 4) + '...';
   return s.substring(0, 8) + '...' + s.substring(s.length - 6);
+}
+
+function buildExpectedLineWebhookEndpoint_() {
+  const queryToken = getLineWebhookQueryToken_();
+  const serviceUrl = String(ScriptApp.getService().getUrl() || '').split('?')[0];
+  if (!serviceUrl || !queryToken || queryToken.length < 32) return '';
+  return serviceUrl + '?lineWebhookToken=' + encodeURIComponent(queryToken);
+}
+
+function maskLineWebhookEndpoint_(url) {
+  const s = String(url || '');
+  if (!s) return '';
+  return s.replace(/([?&]lineWebhookToken=)([^&]+)/, '$1<redacted>');
+}
+
+function lineWebhookEndpointBase_(url) {
+  return String(url || '').split('?')[0].replace(/\/+$/, '');
+}
+
+function lineWebhookEndpointToken_(url) {
+  const m = String(url || '').match(/[?&]lineWebhookToken=([^&]+)/);
+  if (!m) return '';
+  try {
+    return decodeURIComponent(m[1]);
+  } catch (_) {
+    return m[1];
+  }
 }
 
 function deleteInstalledLineRichMenu() {
