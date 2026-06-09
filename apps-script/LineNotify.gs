@@ -445,6 +445,192 @@ function buildIncidentFlex_(incident, pdfUrl, sheetUrl) {
   };
 }
 
+function visibleChecklistStatusResults_(results) {
+  return (results || []).filter(r =>
+    String(r.category || '').trim() !== '防護具檢點' &&
+    String(r.reason || '').trim() !== '防護具類別不發 reminder'
+  );
+}
+
+function checklistStatusCategorySummary_(results) {
+  const byCat = {};
+  visibleChecklistStatusResults_(results).forEach(r => {
+    const cat = r.category || '?';
+    byCat[cat] = byCat[cat] || [];
+    byCat[cat].push(r);
+  });
+  return Object.keys(byCat).map(cat => {
+    const items = byCat[cat];
+    const filled = items.filter(r =>
+      r.reason === '該類別當日已填' || r.reason === '該類別本月已填'
+    ).length;
+    const pending = items.filter(r =>
+      !r.alreadyFilled &&
+      r.reason !== '該類別當日已填' &&
+      r.reason !== '該類別本月已填'
+    );
+    return { category: cat, total: items.length, filled, pending };
+  });
+}
+
+function buildChecklistStatusFlex_(results, opts) {
+  opts = opts || {};
+  const dateLabel = opts.dateLabel || formatROCDate_(new Date());
+  const summaries = checklistStatusCategorySummary_(results);
+  const pendingCount = summaries.reduce((sum, s) => sum + s.pending.length, 0);
+  const allDone = pendingCount === 0;
+  const color = allDone ? '#137333' : '#F29900';
+  const title = allDone ? '✅ 目前填表正常' : `⚠ 尚有 ${pendingCount} 項需確認`;
+  const categoryRows = summaries.length ? summaries.map(s => ({
+    type: 'box',
+    layout: 'baseline',
+    spacing: 'sm',
+    contents: [
+      { type: 'text', text: s.category, flex: 4, size: 'sm', color: '#202124', weight: 'bold', wrap: true },
+      {
+        type: 'text',
+        text: `${s.filled}/${s.total} 完成`,
+        flex: 3,
+        size: 'sm',
+        color: s.pending.length ? '#B06000' : '#137333',
+        weight: 'bold',
+        align: 'end',
+      },
+    ],
+  })) : [{
+    type: 'text',
+    text: '目前沒有需要追蹤的填表項目。',
+    size: 'sm',
+    color: '#5f6368',
+    wrap: true,
+  }];
+  const pendingRows = summaries
+    .flatMap(s => s.pending.map(r => ({
+      category: s.category,
+      label: `${r.equipmentName || r.equipmentId || '未命名設備'} — ${r.reason || '待確認'}`,
+    })))
+    .slice(0, 8)
+    .map(item => ({
+      type: 'text',
+      text: `⚠ ${trimLineText_(item.label, 80)}`,
+      size: 'xs',
+      color: '#B06000',
+      wrap: true,
+    }));
+  const morePending = pendingCount > 8 ? [{
+    type: 'text',
+    text: `... 還有 ${pendingCount - 8} 項`,
+    size: 'xs',
+    color: '#8a4b00',
+    margin: 'sm',
+  }] : [];
+  return {
+    type: 'flex',
+    altText: `📅 ${dateLabel} 填表狀態`,
+    contents: {
+      type: 'bubble',
+      header: {
+        type: 'box',
+        layout: 'vertical',
+        backgroundColor: color,
+        paddingAll: 'md',
+        contents: [
+          { type: 'text', text: '📅 填表狀態', color: '#ffffff', weight: 'bold', size: 'lg' },
+          { type: 'text', text: dateLabel, color: allDone ? '#E6F4EA' : '#FFF3E0', size: 'sm' },
+        ],
+      },
+      body: {
+        type: 'box',
+        layout: 'vertical',
+        spacing: 'sm',
+        contents: [
+          { type: 'text', text: title, size: 'md', color, weight: 'bold', wrap: true },
+          { type: 'separator', margin: 'md' },
+          ...categoryRows,
+          ...(pendingRows.length ? [
+            { type: 'text', text: '待確認項目', size: 'sm', color: '#666666', margin: 'md' },
+            ...pendingRows,
+            ...morePending,
+          ] : []),
+        ],
+      },
+    },
+  };
+}
+
+function buildOpenIncidentBubble_(incident) {
+  const incidentId = String(incident.incidentId || '');
+  const shortId = incidentId ? incidentId.substring(0, 8) : '';
+  const pdfUrl = incident.pdfUrl && /^https?:\/\//.test(incident.pdfUrl) ? incident.pdfUrl : '';
+  const completeAction = shortId
+    ? { type: 'message', label: '標記完成', text: `/完成 ${shortId}` }
+    : { type: 'message', label: '標記完成', text: '完成 ' };
+  return {
+    type: 'bubble',
+    header: {
+      type: 'box',
+      layout: 'vertical',
+      backgroundColor: '#D32F2F',
+      paddingAll: 'md',
+      contents: [
+        { type: 'text', text: '🚨 設備異常', color: '#ffffff', weight: 'bold', size: 'lg' },
+        { type: 'text', text: shortId || '未建立 ID', color: '#FFEBEE', size: 'sm' },
+      ],
+    },
+    body: {
+      type: 'box',
+      layout: 'vertical',
+      spacing: 'sm',
+      contents: [
+        dailyIncidentFlexField_('設備', incident.equipmentName, { weight: 'bold' }),
+        dailyIncidentFlexField_('類別', incident.category || incident.formType),
+        dailyIncidentFlexField_('日期', incident.reportDate),
+        dailyIncidentFlexField_('項次', `第 ${incident.order || '—'} 項`),
+        dailyIncidentFlexField_('狀態', incident.status || '待處理', { color: '#D32F2F', weight: 'bold' }),
+        { type: 'separator', margin: 'md' },
+        { type: 'text', text: '異常項目', size: 'sm', color: '#666666', margin: 'md' },
+        { type: 'text', text: trimLineText_(incident.itemName || '—', 180), size: 'sm', color: '#202124', weight: 'bold', wrap: true },
+        { type: 'text', text: '異常說明', size: 'sm', color: '#666666', margin: 'md' },
+        { type: 'text', text: trimLineText_(incident.description || '—', 260), size: 'md', color: '#D32F2F', weight: 'bold', wrap: true },
+        { type: 'text', text: incident.photoCount > 0 ? `📷 附 ${incident.photoCount} 張照片` : '📷 無照片', size: 'xs', color: '#666666', margin: 'sm' },
+      ],
+    },
+    footer: {
+      type: 'box',
+      layout: 'vertical',
+      spacing: 'sm',
+      contents: [
+        ...(pdfUrl ? [{
+          type: 'button',
+          style: 'secondary',
+          action: { type: 'uri', label: '查看PDF', uri: pdfUrl },
+        }] : []),
+        {
+          type: 'button',
+          style: 'primary',
+          color: '#D32F2F',
+          action: completeAction,
+        },
+      ],
+    },
+  };
+}
+
+function buildOpenIncidentsFlex_(incidents) {
+  const list = (incidents || []).slice(0, 10);
+  if (list.length === 0) {
+    return buildDailyIncidentNoticeFlex_('✅ 目前沒有待處理異常', '設備檢查異常目前沒有待處理、處理中或待重檢案件。', { color: '#137333' });
+  }
+  return {
+    type: 'flex',
+    altText: `🚨 待處理設備異常 ${incidents.length} 筆`,
+    contents: {
+      type: 'carousel',
+      contents: list.map(buildOpenIncidentBubble_),
+    },
+  };
+}
+
 function buildApprovalRequestFlex_(record) {
   const formTypeZh = record.formType === 'daily' ? '每日' : '每月';
   const checkDateLabel = formatROCDate_(record.checkDate);

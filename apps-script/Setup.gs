@@ -797,6 +797,7 @@ function listOpenIncidents_() {
       result: data[i][idx('結果代號')],
       description: data[i][idx('異常說明')],
       photoCount: data[i][idx('照片數')],
+      pdfUrl: data[i][idx('PDF連結')],
       status,
       dueDate: toISO(data[i][idx('預計完成日')]),
       assignee: data[i][idx('負責人')],

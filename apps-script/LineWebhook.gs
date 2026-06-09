@@ -186,50 +186,13 @@ function cmdStatus_(replyToken) {
   // 跑 dryRun 的 dailyReminderJob 拿狀態（含 monthlyReminderJob_ 已過濾的月檢結果）
   // 月檢設備：非應檢期(1-5)且非補填提醒期(25+)時，monthlyReminderJob_ 已完全不 push，狀態不會列
   const results = dailyReminderJob({ dryRun: true });
-  const today = formatROCDate_(new Date());
-  const lines = [`📅 ${today} 填表狀態`, ''];
-  const byCat = {};
-  results.forEach(r => {
-    const cat = r.category || '?';
-    byCat[cat] = byCat[cat] || [];
-    byCat[cat].push(r);
-  });
-  Object.keys(byCat).forEach(cat => {
-    const items = byCat[cat];
-    if (items.length === 0) return;
-    // 「已填」分子：日檢的「該類別當日已填」或月檢的「該類別本月已填」
-    const filled = items.filter(r =>
-      r.reason === '該類別當日已填' || r.reason === '該類別本月已填'
-    ).length;
-    lines.push(`【${cat}】${filled}/${items.length} 完成`);
-    items.filter(r =>
-      !r.alreadyFilled &&
-      r.reason !== '該類別當日已填' &&
-      r.reason !== '該類別本月已填'
-    ).forEach(r => {
-      lines.push(`  ⚠ ${r.equipmentName || r.equipmentId} — ${r.reason || ''}`);
-    });
-  });
-  return lineReply_(replyToken, { type: 'text', text: lines.join('\n') });
+  return lineReply_(replyToken, withQuickReply_(buildChecklistStatusFlex_(results)));
 }
 
 function cmdOpenIncidents_(replyToken) {
   const res = listOpenIncidents_();
   const incidents = res.incidents || [];
-  if (incidents.length === 0) {
-    return lineReply_(replyToken, { type: 'text', text: '✓ 目前沒有待處理異常' });
-  }
-  const lines = [`🚨 待處理異常 ${incidents.length} 筆`, ''];
-  incidents.slice(0, 10).forEach(inc => {
-    lines.push(`• [${inc.reportDate}] ${inc.equipmentName}`);
-    lines.push(`  第${inc.order}項 ${inc.itemName}`);
-    lines.push(`  說明：${inc.description}（${inc.status}）`);
-    lines.push(`  ID: ${inc.incidentId.substring(0, 8)}`);
-    lines.push('');
-  });
-  if (incidents.length > 10) lines.push(`... 還有 ${incidents.length - 10} 筆`);
-  lines.push('回覆「完成 <ID>」標記處理完成');
-  return lineReply_(replyToken, { type: 'text', text: lines.join('\n') });
+  return lineReply_(replyToken, withQuickReply_(buildOpenIncidentsFlex_(incidents)));
 }
 
 function cmdDailyIncidentReport_(replyToken) {
