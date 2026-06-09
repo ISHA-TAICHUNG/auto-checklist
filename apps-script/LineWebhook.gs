@@ -248,7 +248,7 @@ function cmdDailyIncidentDetail_(replyToken, incidentId) {
   try {
     const inc = getDailyIncidentPublicDetail_(incidentId);
     const flex = buildDailyIncidentCreatedFlex_(inc, {
-      title: '📌 日常異常事件圖卡資訊',
+      title: '📌 日常異常事件',
       color: '#1a73e8',
       accentColor: '#174ea6',
     });

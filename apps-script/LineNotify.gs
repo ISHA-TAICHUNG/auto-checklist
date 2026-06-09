@@ -674,7 +674,7 @@ function buildDailyIncidentListFlex_(incidents) {
     contents: {
       type: 'carousel',
       contents: list.map(inc => buildDailyIncidentCreatedFlex_(inc, {
-        title: '📌 日常異常事件圖卡資訊',
+        title: '📌 日常異常事件',
         color: '#D32F2F',
       }).contents),
     },
