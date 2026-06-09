@@ -264,6 +264,24 @@ function doGet(e) {
             };
             break;
           }
+          case 'lineTargetStatus': {
+            const cfg = (typeof getLineConfig_ === 'function') ? getLineConfig_() : null;
+            const targetUserCount = cfg ? Array.from(new Set(cfg.userIds || [])).length : 0;
+            const supervisorIds = (typeof getSupervisorUserIds_ === 'function') ? getSupervisorUserIds_() : (cfg ? (cfg.supervisorIds || []) : []);
+            const supervisorTargetCount = Array.from(new Set(supervisorIds || [])).length;
+            result = {
+              ok: true,
+              action,
+              hasLineConfig: Boolean(cfg),
+              hasGroupTarget: Boolean(cfg && cfg.groupId),
+              targetUserCount,
+              supervisorTargetCount,
+              notifyMode: cfg && cfg.groupId
+                ? 'group'
+                : (targetUserCount > 1 ? 'multicast' : (targetUserCount === 1 ? 'single-user' : 'none')),
+            };
+            break;
+          }
           case 'syncLineWebhookEndpoint': {
             result = {
               ok: true,
