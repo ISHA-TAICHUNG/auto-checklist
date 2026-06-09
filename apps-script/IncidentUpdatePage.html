@@ -172,7 +172,7 @@
           if (!sendApproval) {
             incident = res.incident;
             photos = [];
-            renderResult('處理狀況已更新', incident.pdfUrl);
+            renderResult('處理狀況已更新', incident.pdfUrl, res.supervisorNotice);
             return;
           }
           google.script.run
@@ -390,6 +390,18 @@
     }
     function noticeText(notice) {
       if (!notice) return '';
+      if (notice.noticeType === 'processingSupervisor') {
+        if (notice.skipped) return '主管處理意見通知設定目前關閉，事件已更新但未推播主管。';
+        if (notice.ok) {
+          if (notice.targetMode === 'named') return `已通知主管填寫處理意見：${notice.supervisorName || '指定主管'}`;
+          if (notice.targetMode === 'fallback') return `找不到指定主管 LINE ID，已改通知啟用主管 ${notice.targetCount || ''} 人填寫處理意見。`;
+          return '已通知主管填寫處理意見。';
+        }
+        if (notice.reason === 'supervisor_not_found') return `找不到「${notice.supervisorName || '指定主管'}」的 LINE_USER_ID，且沒有可用的 fallback 主管。請確認「主管清單」。`;
+        if (notice.reason === 'no_supervisor') return '沒有啟用的主管 LINE_USER_ID，請確認「主管清單」或 SUPERVISOR_USER_IDS。';
+        if (notice.reason === 'no_token') return 'LINE_CHANNEL_ACCESS_TOKEN 未設定，主管處理意見通知未送出。';
+        return '主管處理意見通知未送出，請確認 LINE 設定。';
+      }
       if (notice.skipped) return '主管 LINE 通知設定目前關閉，事件已送審但未推播。';
       if (notice.ok) {
         if (notice.targetMode === 'named') return `主管 LINE 通知已送出：${notice.supervisorName || '指定主管'}`;

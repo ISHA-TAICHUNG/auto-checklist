@@ -29,6 +29,8 @@ function doGet(e) {
           return approvalPageResponse_(e);
         case 'incident-update':
           return dailyIncidentUpdatePageResponse_(e);
+        case 'incident-comment':
+          return dailyIncidentCommentPageResponse_(e);
         case 'incident-approve':
           return dailyIncidentApprovalPageResponse_(e);
       }
@@ -457,6 +459,9 @@ function doPost(e) {
       case 'approveDailyIncident':
         result = approveDailyIncident_(payload);
         break;
+      case 'commentDailyIncident':
+        result = submitDailyIncidentSupervisorComment_(payload);
+        break;
       default:
         result = handleSubmission_(payload);
     }
@@ -485,6 +490,7 @@ function friendlyError_(err) {
     '設備已停用', '找不到模板', '檢查表模板缺必要欄位',
     '日期格式', '處理狀況', '日常事件', '更新連結', '審核連結',
     '處理完成後才能陳核', '缺少陳核主管', '請填寫陳核主管', '審核決定不合法',
+    '主管處理意見', '只有處理中事件', '已送主管正式審核',
     'cleanupAll dryRun 需帶', 'cleanupDate dryRun 需帶', 'cleanupDate 實刪需帶',
     // admin 用錯誤訊息
     '該檔案非', '需要 fileId', '未知 admin action', '未知的 api',
@@ -525,6 +531,17 @@ function dailyIncidentApprovalPageResponse_(e) {
   tpl.incidentTokenJson = scriptSafeJson_(params.token);
   return tpl.evaluate()
     .setTitle('日常事件主管審核')
+    .addMetaTag('viewport', 'width=device-width, initial-scale=1, maximum-scale=1')
+    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.DEFAULT);
+}
+
+function dailyIncidentCommentPageResponse_(e) {
+  const params = (e && e.parameter) || {};
+  const tpl = HtmlService.createTemplateFromFile('IncidentCommentPage');
+  tpl.incidentIdJson = scriptSafeJson_(params.incidentId);
+  tpl.incidentTokenJson = scriptSafeJson_(params.token);
+  return tpl.evaluate()
+    .setTitle('日常事件主管處理意見')
     .addMetaTag('viewport', 'width=device-width, initial-scale=1, maximum-scale=1')
     .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.DEFAULT);
 }

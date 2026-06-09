@@ -519,10 +519,14 @@ function dailyIncidentFlexField_(label, value, opts) {
   };
 }
 
-function buildDailyIncidentCreatedFlex_(incident) {
+function buildDailyIncidentCreatedFlex_(incident, opts) {
+  opts = opts || {};
   const incidentId = incident.incidentId || '';
   const updateUrl = incident.updateUrl && /^https?:\/\//.test(incident.updateUrl) ? incident.updateUrl : '';
   const pdfUrl = incident.pdfUrl && /^https?:\/\//.test(incident.pdfUrl) ? incident.pdfUrl : '';
+  const headerTitle = opts.title || '🚨 日常異常事件通報';
+  const headerColor = opts.color || '#D32F2F';
+  const accentColor = opts.accentColor || headerColor;
   const updateAction = updateUrl
     ? { type: 'uri', label: '處理回報', uri: updateUrl }
     : { type: 'message', label: '處理回報', text: `/更新${incidentId}` };
@@ -536,10 +540,10 @@ function buildDailyIncidentCreatedFlex_(incident) {
       type: 'bubble',
       header: {
         type: 'box', layout: 'vertical',
-        backgroundColor: '#D32F2F',
+        backgroundColor: headerColor,
         paddingAll: 'md',
         contents: [
-          { type: 'text', text: '🚨 日常異常事件通報', color: '#ffffff', weight: 'bold', size: 'lg' },
+          { type: 'text', text: headerTitle, color: '#ffffff', weight: 'bold', size: 'lg' },
           { type: 'text', text: incidentId, color: '#FFEBEE', size: 'sm' },
         ],
       },
@@ -550,11 +554,19 @@ function buildDailyIncidentCreatedFlex_(incident) {
           dailyIncidentFlexField_('事項', incident.subject),
           dailyIncidentFlexField_('填報人', incident.reporter),
           dailyIncidentFlexField_('承辦人', incident.owner),
-          dailyIncidentFlexField_('狀態', incident.processStatus || '待處理', { color: '#D32F2F', weight: 'bold' }),
+          dailyIncidentFlexField_('狀態', incident.processStatus || '待處理', { color: accentColor, weight: 'bold' }),
           dailyIncidentFlexField_('審核', incident.reviewStatus || '未送審'),
           { type: 'separator', margin: 'md' },
           { type: 'text', text: '異常事情', size: 'sm', color: '#666666', margin: 'md' },
-          { type: 'text', text: trimLineText_(incident.description || '—', 260), size: 'md', color: '#D32F2F', weight: 'bold', wrap: true },
+          { type: 'text', text: trimLineText_(incident.description || '—', 260), size: 'md', color: accentColor, weight: 'bold', wrap: true },
+          ...(incident.processNote ? [
+            { type: 'text', text: '處理說明', size: 'sm', color: '#666666', margin: 'md' },
+            { type: 'text', text: trimLineText_(incident.processNote, 220), size: 'sm', color: '#202124', wrap: true },
+          ] : []),
+          ...(incident.reviewComment ? [
+            { type: 'text', text: '主管意見', size: 'sm', color: '#666666', margin: 'md' },
+            { type: 'text', text: trimLineText_(incident.reviewComment, 220), size: 'sm', color: '#174ea6', weight: 'bold', wrap: true },
+          ] : []),
           { type: 'text', text: incident.photoCount > 0 ? `📷 附 ${incident.photoCount} 張照片` : '📷 無照片', size: 'xs', color: '#666666', margin: 'sm' },
         ],
       },
@@ -564,7 +576,7 @@ function buildDailyIncidentCreatedFlex_(incident) {
           {
             type: 'button',
             style: 'primary',
-            color: '#D32F2F',
+            color: headerColor,
             action: updateAction,
           },
           ...(pdfUrl ? [{
@@ -579,6 +591,92 @@ function buildDailyIncidentCreatedFlex_(incident) {
           },
         ],
       },
+    },
+  };
+}
+
+function buildDailyIncidentReportEntryFlex_(url) {
+  const validUrl = url && /^https?:\/\//.test(url) ? url : '';
+  return {
+    type: 'flex',
+    altText: '📝 日常異常事件通報表',
+    contents: {
+      type: 'bubble',
+      header: {
+        type: 'box', layout: 'vertical',
+        backgroundColor: '#1a73e8',
+        paddingAll: 'md',
+        contents: [
+          { type: 'text', text: '📝 日常異常事件通報', color: '#ffffff', weight: 'bold', size: 'lg' },
+          { type: 'text', text: '承辦填報入口', color: '#e8f0fe', size: 'sm' },
+        ],
+      },
+      body: {
+        type: 'box', layout: 'vertical', spacing: 'sm',
+        contents: [
+          { type: 'text', text: '用於回報日常場地、環境、安全衛生或人員反映等非設備檢查來源的異常事件。', wrap: true, size: 'sm', color: '#202124' },
+          { type: 'separator', margin: 'md' },
+          { type: 'text', text: '送出後會建立事件 ID、產生 PDF，並依處理狀況推送 LINE 圖卡資訊。', wrap: true, size: 'sm', color: '#5f6368', margin: 'md' },
+        ],
+      },
+      footer: validUrl ? {
+        type: 'box', layout: 'vertical', spacing: 'sm',
+        contents: [{
+          type: 'button',
+          style: 'primary',
+          color: '#1a73e8',
+          action: { type: 'uri', label: '開啟通報表', uri: validUrl },
+        }],
+      } : undefined,
+    },
+  };
+}
+
+function buildDailyIncidentNoticeFlex_(title, body, opts) {
+  opts = opts || {};
+  const color = opts.color || '#1a73e8';
+  const buttons = opts.buttons || [];
+  return {
+    type: 'flex',
+    altText: title,
+    contents: {
+      type: 'bubble',
+      header: {
+        type: 'box', layout: 'vertical',
+        backgroundColor: color,
+        paddingAll: 'md',
+        contents: [
+          { type: 'text', text: title, color: '#ffffff', weight: 'bold', size: 'lg' },
+        ],
+      },
+      body: {
+        type: 'box', layout: 'vertical', spacing: 'sm',
+        contents: [
+          { type: 'text', text: trimLineText_(body || '', 420), wrap: true, size: 'sm', color: '#202124' },
+        ],
+      },
+      footer: buttons.length ? {
+        type: 'box', layout: 'vertical', spacing: 'sm',
+        contents: buttons,
+      } : undefined,
+    },
+  };
+}
+
+function buildDailyIncidentListFlex_(incidents) {
+  const list = (incidents || []).slice(0, 10);
+  if (list.length === 0) {
+    return buildDailyIncidentNoticeFlex_('✅ 目前沒有未結案日常事件', '日常異常事件目前沒有待處理、處理中、待主管審核或退回補正案件。', { color: '#137333' });
+  }
+  return {
+    type: 'flex',
+    altText: `📌 日常異常事件待處理 ${incidents.length} 筆`,
+    contents: {
+      type: 'carousel',
+      contents: list.map(inc => buildDailyIncidentCreatedFlex_(inc, {
+        title: '📌 日常異常事件圖卡資訊',
+        color: '#D32F2F',
+      }).contents),
     },
   };
 }
@@ -688,6 +786,106 @@ function buildDailyIncidentApprovalFlex_(incident) {
   };
 }
 
+function buildDailyIncidentProcessingReviewFlex_(incident) {
+  const commentUrl = incident.commentUrl && /^https?:\/\//.test(incident.commentUrl) ? incident.commentUrl : '';
+  const pdfUrl = incident.pdfUrl && /^https?:\/\//.test(incident.pdfUrl) ? incident.pdfUrl : '';
+  return {
+    type: 'flex',
+    altText: `💬 日常異常事件處理中請主管填寫意見 ${incident.incidentId || ''}`,
+    contents: {
+      type: 'bubble',
+      header: {
+        type: 'box', layout: 'vertical',
+        backgroundColor: '#F29900',
+        paddingAll: 'md',
+        contents: [
+          { type: 'text', text: '💬 日常異常事件處理中', color: '#ffffff', weight: 'bold', size: 'lg' },
+          { type: 'text', text: incident.incidentId || '', color: '#FFF3E0', size: 'sm' },
+        ],
+      },
+      body: {
+        type: 'box', layout: 'vertical', spacing: 'sm',
+        contents: [
+          dailyIncidentFlexField_('地點', incident.location, { weight: 'bold' }),
+          dailyIncidentFlexField_('事項', incident.subject),
+          dailyIncidentFlexField_('承辦人', incident.owner),
+          dailyIncidentFlexField_('主管', incident.supervisor),
+          dailyIncidentFlexField_('狀態', incident.processStatus || '處理中', { color: '#F29900', weight: 'bold' }),
+          { type: 'separator', margin: 'md' },
+          { type: 'text', text: '目前處理說明', size: 'sm', color: '#666666', margin: 'md' },
+          { type: 'text', text: trimLineText_(incident.processNote || '承辦尚未填寫處理說明', 260), size: 'md', color: '#9A6700', weight: 'bold', wrap: true },
+        ],
+      },
+      footer: {
+        type: 'box', layout: 'vertical', spacing: 'sm',
+        contents: [
+          ...(commentUrl ? [{
+            type: 'button',
+            style: 'primary',
+            color: '#F29900',
+            action: { type: 'uri', label: '填寫主管意見', uri: commentUrl },
+          }] : []),
+          ...(pdfUrl ? [{
+            type: 'button',
+            style: 'secondary',
+            action: { type: 'uri', label: '查看目前PDF', uri: pdfUrl },
+          }] : []),
+        ],
+      },
+    },
+  };
+}
+
+function buildDailyIncidentSupervisorCommentFlex_(incident) {
+  const updateUrl = incident.updateUrl && /^https?:\/\//.test(incident.updateUrl) ? incident.updateUrl : '';
+  const pdfUrl = incident.pdfUrl && /^https?:\/\//.test(incident.pdfUrl) ? incident.pdfUrl : '';
+  return {
+    type: 'flex',
+    altText: `💬 主管處理意見 ${incident.incidentId || ''}`,
+    contents: {
+      type: 'bubble',
+      header: {
+        type: 'box', layout: 'vertical',
+        backgroundColor: '#174EA6',
+        paddingAll: 'md',
+        contents: [
+          { type: 'text', text: '💬 主管處理意見', color: '#ffffff', weight: 'bold', size: 'lg' },
+          { type: 'text', text: incident.incidentId || '', color: '#e8f0fe', size: 'sm' },
+        ],
+      },
+      body: {
+        type: 'box', layout: 'vertical', spacing: 'sm',
+        contents: [
+          dailyIncidentFlexField_('地點', incident.location, { weight: 'bold' }),
+          dailyIncidentFlexField_('事項', incident.subject),
+          dailyIncidentFlexField_('承辦人', incident.owner),
+          dailyIncidentFlexField_('主管', incident.supervisor),
+          dailyIncidentFlexField_('狀態', incident.processStatus || '處理中', { color: '#174EA6', weight: 'bold' }),
+          { type: 'separator', margin: 'md' },
+          { type: 'text', text: '主管意見', size: 'sm', color: '#666666', margin: 'md' },
+          { type: 'text', text: trimLineText_(incident.reviewComment || '—', 300), size: 'md', color: '#174EA6', weight: 'bold', wrap: true },
+        ],
+      },
+      footer: {
+        type: 'box', layout: 'vertical', spacing: 'sm',
+        contents: [
+          ...(updateUrl ? [{
+            type: 'button',
+            style: 'primary',
+            color: '#174EA6',
+            action: { type: 'uri', label: '承辦續填處理', uri: updateUrl },
+          }] : []),
+          ...(pdfUrl ? [{
+            type: 'button',
+            style: 'secondary',
+            action: { type: 'uri', label: '查看目前PDF', uri: pdfUrl },
+          }] : []),
+        ],
+      },
+    },
+  };
+}
+
 /**
  * 高層 API：寄未填提醒（給 Reminder.gs 用）
  * 自動加 Quick Reply 按鈕
@@ -764,6 +962,20 @@ function sendDailyIncidentApprovalRequest_(incident) {
   }
   const flex = buildDailyIncidentApprovalFlex_(incident);
   return linePushToSupervisorName_(incident.supervisor, withQuickReply_(flex));
+}
+
+function sendDailyIncidentProcessingReviewRequest_(incident) {
+  const commentUrl = incident.commentUrl || '';
+  if (!commentUrl || !/^https?:\/\//.test(commentUrl)) {
+    return { ok: false, reason: 'invalid_daily_incident_comment_url' };
+  }
+  const flex = buildDailyIncidentProcessingReviewFlex_(incident);
+  return linePushToSupervisorName_(incident.supervisor, withQuickReply_(flex));
+}
+
+function sendDailyIncidentSupervisorComment_(incident) {
+  const flex = buildDailyIncidentSupervisorCommentFlex_(incident);
+  return linePush_(withQuickReply_(flex));
 }
 
 function trimLineText_(text, maxLen) {

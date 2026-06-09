@@ -183,6 +183,7 @@ function handleDailyIncidentSubmission_(payload) {
     SpreadsheetApp.flush();
     let notify = null;
     let approval = null;
+    let supervisorNotice = null;
     if (data.processStatus === '處理完成') {
       approval = submitDailyIncidentForApproval_({
         incidentId,
@@ -192,6 +193,9 @@ function handleDailyIncidentSubmission_(payload) {
       notify = approval.approvalNotice;
     } else {
       notify = maybeNotifyDailyIncidentCreated_(data);
+      if (data.processStatus === '處理中' && data.supervisor) {
+        supervisorNotice = maybeNotifyDailyIncidentProcessingSupervisor_(data);
+      }
     }
 
     return {
@@ -200,6 +204,7 @@ function handleDailyIncidentSubmission_(payload) {
       photoCount: data.photoCount,
       photoFolderUrl: data.photoFolderUrl,
       lineNotice: notify,
+      supervisorNotice,
       approvalNotice: approval ? approval.approvalNotice : null,
       pdfUrl: approval && approval.incident ? approval.incident.pdfUrl : data.pdfUrl,
       reviewStatus: approval && approval.incident ? approval.incident.reviewStatus : data.reviewStatus,
@@ -264,7 +269,11 @@ function updateDailyIncident_(payload) {
   updateDailyIncidentRow_(refreshed, { 'PDF連結': pdf.fileUrl });
   SpreadsheetApp.flush();
   refreshed = getDailyIncidentRecord_(incidentId);
-  return { ok: true, incident: publicDailyIncidentSummary_(refreshed.data) };
+  let supervisorNotice = null;
+  if (refreshed.data.processStatus === '處理中' && refreshed.data.supervisor) {
+    supervisorNotice = maybeNotifyDailyIncidentProcessingSupervisor_(refreshed.data);
+  }
+  return { ok: true, incident: publicDailyIncidentSummary_(refreshed.data), supervisorNotice };
 }
 
 function submitDailyIncidentForApproval_(payload) {
@@ -383,6 +392,50 @@ function approveDailyIncident_(payload) {
   return { ok: true, fileUrl: pdf.fileUrl, incident: publicDailyIncidentSummary_(refreshed.data) };
 }
 
+function submitDailyIncidentSupervisorComment_(payload) {
+  const incidentId = normalizeDailyIncidentId_(payload.incidentId);
+  const token = sanitizeText_(payload.token, 120);
+  const comment = requiredText_(payload.comment || payload.reviewComment, '主管處理意見', 1000);
+  const found = getDailyIncidentRecord_(incidentId);
+  assertDailyIncidentApprovalToken_(found.data, token);
+  if (found.data.reviewStatus === '已結案') throw new Error('此日常事件已結案');
+  if (found.data.reviewStatus === '待主管審核') throw new Error('此事件已送主管正式審核，請改用審核頁同意結案或退回補正');
+  if (found.data.processStatus !== '處理中') throw new Error('只有處理中事件可填寫主管處理意見');
+
+  const supervisor = sanitizeText_(payload.supervisor, 80) || found.data.supervisor || '主管';
+  const reviewTime = Utilities.formatDate(new Date(), tz_(), 'yyyy-MM-dd HH:mm:ss');
+  found.data.supervisor = supervisor;
+  found.data.reviewComment = comment;
+  found.data.reviewTime = reviewTime;
+  found.data.flowLog = appendDailyIncidentFlowLog_(
+    found.data.flowLog,
+    '主管處理意見',
+    supervisor,
+    comment,
+    reviewTime
+  );
+  updateDailyIncidentRow_(found, {
+    '陳核主管': supervisor,
+    '主管審核意見': comment,
+    '主管審核時間': reviewTime,
+    '流程紀錄': found.data.flowLog,
+  });
+  SpreadsheetApp.flush();
+
+  let refreshed = getDailyIncidentRecord_(incidentId);
+  const pdf = createDailyIncidentPdf_(refreshed.data, 'processing');
+  updateDailyIncidentRow_(refreshed, { 'PDF連結': pdf.fileUrl });
+  SpreadsheetApp.flush();
+
+  refreshed = getDailyIncidentRecord_(incidentId);
+  const commentNotice = maybeNotifyDailyIncidentSupervisorComment_(refreshed.data);
+  return {
+    ok: true,
+    incident: publicDailyIncidentSummary_(refreshed.data),
+    commentNotice,
+  };
+}
+
 function getDailyIncidentForUpdatePage(incidentId, token) {
   try {
     const found = getDailyIncidentRecord_(normalizeDailyIncidentId_(incidentId));
@@ -428,6 +481,26 @@ function approveDailyIncidentFromPage(payload) {
     return approveDailyIncident_(payload || {});
   } catch (err) {
     Logger.log('approveDailyIncidentFromPage 失敗：' + err + '\n' + (err.stack || ''));
+    return { ok: false, error: friendlyError_(err) };
+  }
+}
+
+function getDailyIncidentForSupervisorCommentPage(incidentId, token) {
+  try {
+    const found = getDailyIncidentRecord_(normalizeDailyIncidentId_(incidentId));
+    assertDailyIncidentApprovalToken_(found.data, sanitizeText_(token, 120));
+    return { ok: true, incident: publicDailyIncidentSummary_(found.data) };
+  } catch (err) {
+    Logger.log('getDailyIncidentForSupervisorCommentPage 失敗：' + err + '\n' + (err.stack || ''));
+    return { ok: false, error: friendlyError_(err) };
+  }
+}
+
+function submitDailyIncidentSupervisorCommentFromPage(payload) {
+  try {
+    return submitDailyIncidentSupervisorComment_(payload || {});
+  } catch (err) {
+    Logger.log('submitDailyIncidentSupervisorCommentFromPage 失敗：' + err + '\n' + (err.stack || ''));
     return { ok: false, error: friendlyError_(err) };
   }
 }
@@ -591,6 +664,7 @@ function publicDailyIncidentSummary_(data) {
     pdfUrl: data.pdfUrl,
     updateUrl: buildDailyIncidentUpdateUrl_(data),
     approvalUrl: buildDailyIncidentApprovalUrl_(data),
+    commentUrl: buildDailyIncidentSupervisorCommentUrl_(data),
   };
 }
 
@@ -784,8 +858,8 @@ function buildDailyIncidentPdfBlob_(data, stage) {
       ['處理說明', data.processNote || '尚未填寫'],
       ['照片附件', Number(data.photoCount || 0) > 0 ? `${data.photoCount} 張，詳後附照片頁` : '無'],
     ];
-    if (stage === 'closed') {
-      detailRows.push(['主管審核意見', data.reviewComment || '同意結案']);
+    if (data.reviewComment || stage === 'closed') {
+      detailRows.push(['主管審核/處理意見', data.reviewComment || '同意結案']);
     }
     const detailTable = body.appendTable(detailRows);
     styleDailyIncidentDetailTable_(detailTable);
@@ -976,6 +1050,12 @@ function buildDailyIncidentApprovalUrl_(data) {
   return `${base}?page=incident-approve&incidentId=${encodeURIComponent(data.incidentId)}&token=${encodeURIComponent(data.approvalToken || '')}`;
 }
 
+function buildDailyIncidentSupervisorCommentUrl_(data) {
+  const base = getSetting_('webAppUrl', '') || ScriptApp.getService().getUrl();
+  if (!/^https?:\/\//.test(base)) return '';
+  return `${base}?page=incident-comment&incidentId=${encodeURIComponent(data.incidentId)}&token=${encodeURIComponent(data.approvalToken || '')}`;
+}
+
 function maybeNotifyDailyIncidentCreated_(data) {
   if (!isActiveValue_(getSetting_('dailyIncidentGroupNotify', '是'))) return { ok: true, skipped: true };
   if (typeof sendDailyIncidentCreated_ !== 'function') return { ok: false, reason: 'missing_sendDailyIncidentCreated' };
@@ -1003,5 +1083,39 @@ function maybeNotifyDailyIncidentApproval_(data) {
   catch (e) {
     Logger.log('[DailyIncident notify approval] 失敗: ' + e + '\n' + (e.stack || ''));
     return { ok: false, error: String(e.message || e) };
+  }
+}
+
+function maybeNotifyDailyIncidentProcessingSupervisor_(data) {
+  if (!isActiveValue_(getSetting_('dailyIncidentSupervisorNotify', '是'))) {
+    return { ok: true, skipped: true, noticeType: 'processingSupervisor' };
+  }
+  if (typeof sendDailyIncidentProcessingReviewRequest_ !== 'function') {
+    return { ok: false, reason: 'missing_sendDailyIncidentProcessingReviewRequest', noticeType: 'processingSupervisor' };
+  }
+  try {
+    const res = sendDailyIncidentProcessingReviewRequest_(publicDailyIncidentSummary_(data));
+    res.noticeType = 'processingSupervisor';
+    return res;
+  } catch (e) {
+    Logger.log('[DailyIncident notify processing supervisor] 失敗: ' + e + '\n' + (e.stack || ''));
+    return { ok: false, error: String(e.message || e), noticeType: 'processingSupervisor' };
+  }
+}
+
+function maybeNotifyDailyIncidentSupervisorComment_(data) {
+  if (!isActiveValue_(getSetting_('dailyIncidentGroupNotify', '是'))) {
+    return { ok: true, skipped: true, noticeType: 'supervisorComment' };
+  }
+  if (typeof sendDailyIncidentSupervisorComment_ !== 'function') {
+    return { ok: false, reason: 'missing_sendDailyIncidentSupervisorComment', noticeType: 'supervisorComment' };
+  }
+  try {
+    const res = sendDailyIncidentSupervisorComment_(publicDailyIncidentSummary_(data));
+    res.noticeType = 'supervisorComment';
+    return res;
+  } catch (e) {
+    Logger.log('[DailyIncident notify supervisor comment] 失敗: ' + e + '\n' + (e.stack || ''));
+    return { ok: false, error: String(e.message || e), noticeType: 'supervisorComment' };
   }
 }

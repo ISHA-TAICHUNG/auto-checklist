@@ -80,7 +80,11 @@ function dispatchLineEvent_(ev) {
   }
   dailyMatch = matchDailyIncidentLineCommand_(cmd, '結案');
   if (dailyMatch) {
-    return lineReply_(replyToken, { type: 'text', text: '日常事件結案請由主管開啟審核連結後按「同意結案」。' });
+    return lineReply_(replyToken, withQuickReply_(buildDailyIncidentNoticeFlex_(
+      '🖊 日常事件由主管審核結案',
+      '日常異常事件需由主管開啟審核圖卡，按「同意結案」後才算正式結案。承辦請先在處理回報頁將狀態改為「處理完成」並陳核主管。',
+      { color: '#1a73e8' }
+    )));
   }
   if (/^QR\s*(選單|列表|menu|list)$/i.test(cmd)) return cmdQRList_(replyToken);
   if (/^QR\s*(.+)$/i.test(cmd)) {
@@ -231,51 +235,24 @@ function cmdOpenIncidents_(replyToken) {
 function cmdDailyIncidentReport_(replyToken) {
   const url = (typeof buildDailyIncidentPublicUrl_ === 'function') ? buildDailyIncidentPublicUrl_() : '';
   if (!url) return lineReply_(replyToken, { type: 'text', text: '✗ 系統設定 webFrontendUrl 未填，無法建立日常事件通報連結' });
-  return lineReply_(replyToken, { type: 'text', text: '📝 日常異常事件通報表\n' + url });
+  return lineReply_(replyToken, withQuickReply_(buildDailyIncidentReportEntryFlex_(url)));
 }
 
 function cmdDailyIncidentList_(replyToken) {
   const res = listOpenDailyIncidents_();
   const incidents = res.incidents || [];
-  if (incidents.length === 0) {
-    return lineReply_(replyToken, { type: 'text', text: '✓ 目前沒有未結案的日常異常事件' });
-  }
-  const lines = [`🚨 日常異常事件待處理 ${incidents.length} 筆`, ''];
-  incidents.slice(0, 10).forEach(inc => {
-    lines.push(`• [${inc.reportDate}] ${inc.location}｜${inc.subject}`);
-    lines.push(`  狀態：${inc.processStatus} / ${inc.reviewStatus}`);
-    lines.push(`  ID：${inc.incidentId}`);
-    lines.push('');
-  });
-  if (incidents.length > 10) lines.push(`... 還有 ${incidents.length - 10} 筆`);
-  lines.push('查詢請輸入：/事件 <事件ID>');
-  return lineReply_(replyToken, { type: 'text', text: lines.join('\n') });
+  return lineReply_(replyToken, withQuickReply_(buildDailyIncidentListFlex_(incidents)));
 }
 
 function cmdDailyIncidentDetail_(replyToken, incidentId) {
   try {
     const inc = getDailyIncidentPublicDetail_(incidentId);
-    const lines = [
-      `📌 日常異常事件 ${inc.incidentId}`,
-      '',
-      `填報日期：${inc.reportDate}`,
-      `發生地點：${inc.location || '—'}`,
-      `填報事項：${inc.subject || '—'}`,
-      `承辦人：${inc.owner || '—'}`,
-      `處理狀況：${inc.processStatus || '—'}`,
-      `審核狀態：${inc.reviewStatus || '—'}`,
-      '',
-      '異常事情：',
-      trimLineText_(inc.description || '—', 600),
-      '',
-      inc.processNote ? '處理說明：\n' + trimLineText_(inc.processNote, 600) + '\n' : '',
-      inc.pdfUrl ? `PDF：${inc.pdfUrl}` : '',
-      inc.photoFolderUrl ? `照片：${inc.photoFolderUrl}` : '',
-      '',
-      `更新：/更新 ${inc.incidentId}`,
-      `陳核：/陳核 ${inc.incidentId}`,
-    ].filter(Boolean);
-    return lineReply_(replyToken, { type: 'text', text: lines.join('\n') });
+    const flex = buildDailyIncidentCreatedFlex_(inc, {
+      title: '📌 日常異常事件圖卡資訊',
+      color: '#1a73e8',
+      accentColor: '#174ea6',
+    });
+    return lineReply_(replyToken, withQuickReply_(flex));
   } catch (err) {
     return lineReply_(replyToken, { type: 'text', text: '✗ ' + friendlyError_(err) });
   }
@@ -285,7 +262,12 @@ function cmdDailyIncidentUpdate_(replyToken, incidentId) {
   try {
     const inc = getDailyIncidentPublicDetail_(incidentId);
     if (!inc.updateUrl) return lineReply_(replyToken, { type: 'text', text: '✗ 系統設定 webAppUrl 未填，無法建立處理回報連結' });
-    return lineReply_(replyToken, { type: 'text', text: `🛠 日常事件處理回報\n${inc.incidentId}\n${inc.updateUrl}` });
+    const flex = buildDailyIncidentCreatedFlex_(inc, {
+      title: '🛠 日常事件處理回報',
+      color: '#174EA6',
+      accentColor: '#174EA6',
+    });
+    return lineReply_(replyToken, withQuickReply_(flex));
   } catch (err) {
     return lineReply_(replyToken, { type: 'text', text: '✗ ' + friendlyError_(err) });
   }
@@ -296,17 +278,12 @@ function cmdDailyIncidentSubmitApproval_(replyToken, incidentId) {
     const res = submitDailyIncidentForApproval_({ incidentId });
     if (!res.ok) return lineReply_(replyToken, { type: 'text', text: '✗ 陳核失敗' });
     const inc = res.incident;
-    const notice = res.approvalNotice;
-    const suffix = formatDailyIncidentApprovalNoticeForLine_(notice);
-    return lineReply_(replyToken, {
-      type: 'text',
-      text: [
-        `✓ ${inc.incidentId} 已送主管審核`,
-        suffix,
-        inc.pdfUrl ? `待審 PDF：${inc.pdfUrl}` : '',
-        inc.approvalUrl ? `審核連結：${inc.approvalUrl}` : '',
-      ].filter(Boolean).join('\n'),
+    const flex = buildDailyIncidentCreatedFlex_(inc, {
+      title: '🖊 已送主管審核',
+      color: '#1a73e8',
+      accentColor: '#174ea6',
     });
+    return lineReply_(replyToken, withQuickReply_(flex));
   } catch (err) {
     return lineReply_(replyToken, { type: 'text', text: '✗ ' + friendlyError_(err) });
   }
