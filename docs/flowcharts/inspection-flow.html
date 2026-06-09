@@ -428,7 +428,18 @@
           <div class="bubble me">QR選單</div>
           <div class="bubble">請選擇要產生 QR 的項目：堆高機、固定式起重機、教室月檢。</div>
           <div class="bubble me">狀態</div>
-          <div class="bubble">今日填表狀態<br>堆高機 2/3 完成<br>固定式起重機 1/1 完成<br>本月月檢：龍井教室尚未完成</div>
+          <div class="line-card">
+            <div class="card-head blue">填表狀態 <span class="card-id">1150609</span></div>
+            <div class="card-body">
+              <div class="kv">
+                <span>固定式起重機</span><span class="status-blue">1/1 完成</span>
+                <span>堆高機</span><span class="status-blue">6/6 完成</span>
+                <span>月檢提醒</span><span>龍井教室尚未完成</span>
+              </div>
+              <div class="line-button blue">開啟工作台</div>
+              <div class="line-button">QR 選單</div>
+            </div>
+          </div>
           <div class="line-card">
             <div class="card-head">異常事件通報 <span class="card-id">EQ-1150608-004</span></div>
             <div class="card-body">
@@ -444,7 +455,19 @@
             </div>
           </div>
           <div class="bubble me">異常</div>
-          <div class="bubble">待處理異常 1 筆<br>EQ-1150608-004 堆高機 A-F 號<br>狀態：待處理</div>
+          <div class="line-card">
+            <div class="card-head">設備異常事件 <span class="card-id">1 筆待處理</span></div>
+            <div class="card-body">
+              <div class="kv">
+                <span>事件</span><span>EQ-1150608-004</span>
+                <span>設備</span><span>堆高機 A-F 號</span>
+                <span>狀態</span><span class="status-red">待處理</span>
+              </div>
+              <p><strong>異常說明</strong><br>煞車反應偏慢，已暫停使用並通知維修。</p>
+              <div class="line-button primary">查看 PDF</div>
+              <div class="line-button">標記完成</div>
+            </div>
+          </div>
         </div>
         <div class="phone-footer"><div class="mini">+</div><div class="mini">圖</div><div class="input">Aa</div><div class="mini">送</div></div>
       </div>
@@ -454,8 +477,8 @@
           <tr><th>動作</th><th>用途</th></tr>
           <tr><td>檢查填報</td><td>開啟工作台首頁，選擇日檢或月檢。</td></tr>
           <tr><td>QR選單</td><td>產生設備或教室月檢 QR Code。</td></tr>
-          <tr><td>狀態</td><td>查今日填表進度與月檢提醒。</td></tr>
-          <tr><td>異常</td><td>查設備檢查產生的待處理異常事件。</td></tr>
+          <tr><td>狀態</td><td>以圖卡查今日填表進度與月檢提醒；防護具檢點不列入 reminder 顯示。</td></tr>
+          <tr><td>異常</td><td>以圖卡查設備檢查產生的待處理異常事件；目前無異常時顯示綠色完成卡。</td></tr>
           <tr><td>完成 事件ID</td><td>將設備異常標記為已完成；已完成後對應鎖定項才可解除。</td></tr>
         </table>
         <div class="note">群組內輸入指令時，前面加 `/`，例如 `/狀態`、`/異常`。</div>

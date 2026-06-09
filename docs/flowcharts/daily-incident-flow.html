@@ -329,11 +329,11 @@
         <div class="summary-grid" style="margin-top: 24px;">
           <div class="panel blue">
             <h3>承辦重點</h3>
-            <p>填報事件後立即產生 PDF；狀態可為待處理、處理中、處理完成。處理完成並指定主管後，才送主管審核。</p>
+            <p>填報事件後立即產生 PDF；狀態可為待處理、處理中、處理完成。處理中可指定主管填寫處理意見，處理完成後才正式送審。</p>
           </div>
           <div class="panel blue">
             <h3>主管重點</h3>
-            <p>主管由 LINE 圖卡進入審核頁，選擇同意結案或退回補正。日常事件審核不需手寫簽名。</p>
+            <p>主管可先在處理中階段填寫意見供大家查看；正式審核時再選擇同意結案或退回補正。日常事件審核不需手寫簽名。</p>
           </div>
         </div>
         <div class="note">LINE 模擬畫面為教學用，不是 LINE 官方截圖；網站畫面取自目前公開網站或既有實際操作截圖。</div>
@@ -351,9 +351,9 @@
     <div class="flow">
       <div class="step"><div class="num">1</div><h3>填寫通報</h3><p>填發生地點、事項、異常事情、承辦人、處理狀況與照片。</p></div>
       <div class="step"><div class="num">2</div><h3>產生 PDF</h3><p>系統建立事件 ID，產生初版 PDF，照片納入事件紀錄。</p></div>
-      <div class="step"><div class="num">3</div><h3>LINE 圖卡</h3><p>待處理或處理中會推送日常事件圖卡，可查詢或處理回報。</p></div>
-      <div class="step"><div class="num">4</div><h3>處理回報</h3><p>承辦開啟處理頁，更新狀態、說明、完成日與補充照片。</p></div>
-      <div class="step"><div class="num">5</div><h3>陳核主管</h3><p>處理完成且有主管姓名時，送出主管審核通知。</p></div>
+      <div class="step"><div class="num">3</div><h3>LINE 圖卡</h3><p>待處理、處理中、退回補正都以日常異常事件圖卡顯示，可查詢或處理回報。</p></div>
+      <div class="step"><div class="num">4</div><h3>處理回報</h3><p>承辦開啟處理頁，更新狀態、說明、完成日與補充照片；處理中且填主管姓名時，會送主管填寫處理意見。</p></div>
+      <div class="step"><div class="num">5</div><h3>正式陳核</h3><p>處理完成且有主管姓名時，送出主管審核通知。</p></div>
       <div class="step decision"><div class="num">6</div><h3>結案或補正</h3><p>主管同意則結案；退回則承辦收到補正通知再回報。</p></div>
     </div>
     <div class="two-col">
@@ -392,9 +392,22 @@
             </div>
           </div>
           <div class="bubble me">待處理</div>
-          <div class="bubble">日常異常事件待處理 1 筆<br>INC-1150608-003 龍井高空車實習場地</div>
+          <div class="line-card">
+            <div class="card-head">日常異常事件 <span class="card-id">1 筆未結案</span></div>
+            <div class="card-body">
+              <div class="kv">
+                <span>事件</span><span>INC-1150608-003</span>
+                <span>地點</span><span>龍井高空車實習場地</span>
+                <span>狀態</span><span class="status-red">待處理</span>
+              </div>
+              <div class="line-button primary">查詢事件</div>
+              <div class="line-button">處理回報</div>
+            </div>
+          </div>
           <div class="bubble me">更新 INC-1150608-003</div>
           <div class="bubble">請開啟處理回報連結，更新處理狀況與照片。</div>
+          <div class="bubble me">處理中並指定主管</div>
+          <div class="bubble">已通知指定主管填寫處理意見；承辦可依意見繼續更新。</div>
           <div class="bubble me">處理完成並陳核主管</div>
           <div class="bubble">已送出主管審核通知，等待主管同意結案。</div>
         </div>
@@ -416,13 +429,13 @@
 
   <section class="page" id="supervisor-flow-page">
     <h2>主管流程</h2>
-    <p>主管只在承辦標示處理完成並陳核後收到通知。主管審核頁會顯示事件摘要、處理紀錄、PDF 與審核操作。</p>
+    <p>主管在處理中階段可先收到處理意見圖卡；承辦標示處理完成並陳核後，主管再收到正式審核圖卡。主管審核頁會顯示事件摘要、處理紀錄、PDF 與審核操作。</p>
     <div class="flow five">
-      <div class="step"><div class="num">1</div><h3>收到圖卡</h3><p>指定主管收到待審核 LINE 圖卡。</p></div>
-      <div class="step"><div class="num">2</div><h3>開啟審核頁</h3><p>由安全連結進入主管審核頁。</p></div>
+      <div class="step"><div class="num">1</div><h3>處理中意見</h3><p>指定主管可先填寫處理意見，系統以圖卡公開最新意見。</p></div>
+      <div class="step"><div class="num">2</div><h3>收到待審圖卡</h3><p>承辦處理完成後，指定主管收到正式審核 LINE 圖卡。</p></div>
       <div class="step"><div class="num">3</div><h3>檢視資料</h3><p>確認事件、處理說明、照片與 PDF 時序。</p></div>
       <div class="step decision"><div class="num">4</div><h3>審核判斷</h3><p>同意結案或填意見退回補正。</p></div>
-      <div class="step"><div class="num">5</div><h3>系統通知</h3><p>同意後重產正式 PDF；退回則通知承辦補正。</p></div>
+      <div class="step"><div class="num">5</div><h3>系統通知</h3><p>同意後重產正式 PDF；退回則通知訂閱者/群組補正。</p></div>
     </div>
     <div class="two-col">
       <div class="screen">
@@ -430,7 +443,7 @@
         <div class="caption">實際畫面：主管審核頁</div>
       </div>
       <div class="screen">
-        <img src="../screenshots/04-monthly-check-form.png" alt="月檢表畫面">
+        <img src="screenshots/04-monthly-check-form.png" alt="月檢表畫面">
         <div class="caption">實際畫面：月檢表。設備月檢仍採主管手寫簽核；日常事件則為按鈕審核。</div>
       </div>
     </div>
@@ -443,6 +456,20 @@
         <div class="phone-header"><span>ISHA 通知小幫手</span><span>主管</span></div>
         <div class="phone-body">
           <div class="time">下午 3:05</div>
+          <div class="line-card">
+            <div class="card-head">日常異常事件處理中 <span class="card-id">INC-1150608-003</span></div>
+            <div class="card-body">
+              <div class="kv">
+                <span>地點</span><span>龍井高空車實習場地</span>
+                <span>承辦人</span><span>張家豪</span>
+                <span>狀態</span><span class="status-red">處理中</span>
+              </div>
+              <p><strong>處理說明</strong><br>積水已初步排除，待確認排水是否恢復。</p>
+              <div class="line-button primary">填寫主管意見</div>
+            </div>
+          </div>
+          <div class="bubble me">主管意見：請補上現場警示與復查照片</div>
+          <div class="bubble">主管意見已以日常異常事件圖卡推送，承辦可繼續更新處理狀況。</div>
           <div class="line-card">
             <div class="card-head">日常異常待審核 <span class="card-id">INC-1150608-003</span></div>
             <div class="card-body">
@@ -485,11 +512,12 @@
     <p>日常異常事件每個重要階段都會產生或重產 PDF，方便追蹤處理過程。</p>
     <table>
       <tr><th>時序</th><th>觸發時機</th><th>系統紀錄</th><th>LINE 通知</th></tr>
-      <tr><td>1</td><td>承辦送出通報表</td><td>建立初版事件紀錄</td><td>推播群組圖卡</td></tr>
-      <tr><td>2</td><td>承辦更新處理狀況</td><td>更新處理進度與 PDF</td><td>圖卡可查詢最新事件</td></tr>
-      <tr><td>3</td><td>承辦處理完成並陳核</td><td>轉為等待主管審核</td><td>推播指定主管</td></tr>
-      <tr><td>4A</td><td>主管同意結案</td><td>事件狀態改為已結案</td><td>事件完成</td></tr>
-      <tr><td>4B</td><td>主管退回補正</td><td>事件狀態改為退回補正</td><td>通知承辦補正</td></tr>
+      <tr><td>1</td><td>承辦送出通報表</td><td>建立初版事件紀錄</td><td>推播訂閱者/群組圖卡</td></tr>
+      <tr><td>2</td><td>承辦更新處理狀況</td><td>更新處理進度與 PDF</td><td>圖卡可查詢最新事件；處理中且填主管姓名時，推播指定主管填意見</td></tr>
+      <tr><td>3</td><td>主管填寫處理意見</td><td>意見寫入事件紀錄與 PDF 時序</td><td>以圖卡推播給訂閱者/群組，承辦可續填</td></tr>
+      <tr><td>4</td><td>承辦處理完成並陳核</td><td>轉為等待主管審核</td><td>推播指定主管</td></tr>
+      <tr><td>5A</td><td>主管同意結案</td><td>事件狀態改為已結案</td><td>事件完成</td></tr>
+      <tr><td>5B</td><td>主管退回補正</td><td>事件狀態改為退回補正</td><td>通知訂閱者/群組補正</td></tr>
     </table>
     <div class="three-col" style="margin-top: 18px;">
       <div class="panel"><span class="tag">事件 ID</span><p>`INC-1150608-001`，民國年月日加流水號。</p></div>
