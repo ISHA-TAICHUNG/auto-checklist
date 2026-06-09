@@ -365,8 +365,39 @@ function updateMonthlySettingNotes_() {
 }
 
 function setupSupervisorSheet_(ss) {
-  setupSheet_(ss, '主管清單', ['姓名', 'LINE_USER_ID', '是否啟用', '備註'], []);
-  return ss.getSheetByName('主管清單');
+  return setupSubscriberSheet_(ss);
+}
+
+function setupSubscriberSheet_(ss) {
+  let sheet = ss.getSheetByName('訂閱者清單');
+  const legacy = ss.getSheetByName('主管清單');
+  if (!sheet && legacy) {
+    legacy.setName('訂閱者清單');
+    sheet = legacy;
+  }
+  if (!sheet) {
+    setupSheet_(ss, '訂閱者清單', ['姓名', 'LINE_USER_ID', '是否為主管', '備註'], []);
+    sheet = ss.getSheetByName('訂閱者清單');
+  }
+  ensureSubscriberSheetHeaders_(sheet);
+  return sheet;
+}
+
+function ensureSubscriberSheetHeaders_(sheet) {
+  const lastCol = Math.max(sheet.getLastColumn(), 1);
+  const headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0].map(h => String(h || '').trim());
+  const legacyActiveCol = headers.indexOf('是否啟用');
+  const supervisorCol = headers.indexOf('是否為主管');
+  if (supervisorCol < 0 && legacyActiveCol >= 0) {
+    sheet.getRange(1, legacyActiveCol + 1).setValue('是否為主管');
+    headers[legacyActiveCol] = '是否為主管';
+  }
+
+  ['姓名', 'LINE_USER_ID', '是否為主管', '備註'].forEach(name => {
+    if (headers.indexOf(name) >= 0) return;
+    sheet.getRange(1, sheet.getLastColumn() + 1).setValue(name);
+    headers.push(name);
+  });
 }
 
 function syncSupervisorIdsToSheet_() {
@@ -377,7 +408,7 @@ function syncSupervisorIdsToSheet_() {
     .filter(Boolean);
   const unique = Array.from(new Set(ids));
   if (unique.length === 0) {
-    throw new Error('LINE_TARGET_USER_IDS 為空，無法同步 SUPERVISOR_USER_IDS');
+    throw new Error('LINE_TARGET_USER_IDS 為空，無法同步訂閱者清單');
   }
 
   const ss = SpreadsheetApp.openById(CONFIG.DB_SHEET_ID);
@@ -385,9 +416,9 @@ function syncSupervisorIdsToSheet_() {
   const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0].map(h => String(h || '').trim());
   const nameCol = headers.indexOf('姓名');
   const idCol = headers.indexOf('LINE_USER_ID');
-  const activeCol = headers.indexOf('是否啟用');
+  const activeCol = getLineSupervisorFlagColumnIndex_(headers);
   const noteCol = headers.indexOf('備註');
-  if (idCol < 0 || activeCol < 0) throw new Error('主管清單缺必要欄位');
+  if (idCol < 0 || activeCol < 0) throw new Error('訂閱者清單缺必要欄位');
 
   const lastRow = sheet.getLastRow();
   const data = lastRow >= 2 ? sheet.getRange(2, 1, lastRow - 1, headers.length).getValues() : [];
@@ -405,11 +436,11 @@ function syncSupervisorIdsToSheet_() {
       const row = existing.values.slice();
       let dirty = false;
       if (nameCol >= 0 && !String(row[nameCol] || '').trim()) {
-        row[nameCol] = '主管' + (i + 1);
+        row[nameCol] = '訂閱者' + (i + 1);
         dirty = true;
       }
-      if (activeCol >= 0 && !isActiveValue_(row[activeCol])) {
-        row[activeCol] = '是';
+      if (activeCol >= 0 && !String(row[activeCol] || '').trim()) {
+        row[activeCol] = '否';
         dirty = true;
       }
       if (noteCol >= 0 && !String(row[noteCol] || '').trim()) {
@@ -424,9 +455,9 @@ function syncSupervisorIdsToSheet_() {
     }
 
     const row = new Array(headers.length).fill('');
-    if (nameCol >= 0) row[nameCol] = '主管' + (i + 1);
+    if (nameCol >= 0) row[nameCol] = '訂閱者' + (i + 1);
     row[idCol] = id;
-    row[activeCol] = '是';
+    row[activeCol] = '否';
     if (noteCol >= 0) row[noteCol] = '由目前訂閱者同步';
     appendRows.push(row);
   });
@@ -435,17 +466,19 @@ function syncSupervisorIdsToSheet_() {
     sheet.getRange(sheet.getLastRow() + 1, 1, appendRows.length, headers.length).setValues(appendRows);
   }
 
-  props.setProperty('SUPERVISOR_USER_IDS', unique.join(','));
-  try { applyChineseSettingsAndDropdowns(); } catch (e) { Logger.log('主管清單 dropdown 套用失敗：' + e); }
+  const supervisorIds = getSupervisorUserIdsFromSheet_();
+  props.setProperty('SUPERVISOR_USER_IDS', supervisorIds.join(','));
+  try { applyChineseSettingsAndDropdowns(); } catch (e) { Logger.log('訂閱者清單 dropdown 套用失敗：' + e); }
   SpreadsheetApp.flush();
 
   return {
     source: 'LINE_TARGET_USER_IDS',
     sourceCount: ids.length,
-    supervisorCount: unique.length,
+    subscriberCount: unique.length,
+    supervisorCount: supervisorIds.length,
     inserted: appendRows.length,
     updated,
-    sheetName: '主管清單',
+    sheetName: '訂閱者清單',
   };
 }
 
@@ -461,32 +494,36 @@ function getSupervisorStatus_() {
   const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0].map(h => String(h || '').trim());
   const nameCol = headers.indexOf('姓名');
   const idCol = headers.indexOf('LINE_USER_ID');
-  const activeCol = headers.indexOf('是否啟用');
+  const activeCol = getLineSupervisorFlagColumnIndex_(headers);
   const noteCol = headers.indexOf('備註');
-  if (idCol < 0 || activeCol < 0) throw new Error('主管清單缺必要欄位');
+  if (idCol < 0 || activeCol < 0) throw new Error('訂閱者清單缺必要欄位');
 
   const data = sheet.getLastRow() >= 2
     ? sheet.getRange(2, 1, sheet.getLastRow() - 1, headers.length).getValues()
     : [];
-  const supervisors = data.map((row, i) => {
+  const subscribers = data.map((row, i) => {
     const id = String(row[idCol] || '').trim();
-    const active = isActiveValue_(row[activeCol]);
+    const isSupervisor = isActiveValue_(row[activeCol]);
     return {
       rowNo: i + 2,
       name: nameCol >= 0 ? String(row[nameCol] || '').trim() : '',
       userIdMasked: maskLineUserId_(id),
-      active,
+      active: isSupervisor,
+      isSupervisor,
       inGeneralTarget: id ? targetIds.has(id) : false,
       note: noteCol >= 0 ? String(row[noteCol] || '').trim() : '',
     };
   });
+  const supervisors = subscribers.filter(s => s.isSupervisor);
 
   return {
-    sheetName: '主管清單',
+    sheetName: '訂閱者清單',
     targetUserCount: targetIds.size,
+    subscriberCount: subscribers.length,
     supervisorCount: supervisors.length,
-    activeCount: supervisors.filter(s => s.active).length,
-    activeNotInGeneralTargetCount: supervisors.filter(s => s.active && !s.inGeneralTarget).length,
+    activeCount: supervisors.length,
+    activeNotInGeneralTargetCount: supervisors.filter(s => !s.inGeneralTarget).length,
+    subscribers,
     supervisors,
   };
 }
@@ -961,6 +998,12 @@ function applyChineseSettingsAndDropdowns() {
   }
   report.push(`收集到設備類別：${categories.join(', ')}`);
   report.push(`收集到表單ID：${templateIds.join(', ')}`);
+  try {
+    const subscriberSheet = setupSubscriberSheet_(ss);
+    report.push(`✓ LINE 對照表確認為「${subscriberSheet.getName()}」`);
+  } catch (e) {
+    report.push('⚠ LINE 訂閱者清單整理失敗：' + e);
+  }
 
   // ===== 1b. 先把英文 header 改成中文（idempotent）=====
   const HEADER_RENAMES = {
@@ -999,8 +1042,8 @@ function applyChineseSettingsAndDropdowns() {
       { col: '啟用',     options: ['是', '否'],       migrate: { TRUE: '是', FALSE: '否' } },
       { col: '表單ID',   options: templateIds,        strict: false },
     ],
-    '主管清單': [
-      { col: '是否啟用', options: ['是', '否'],       migrate: { TRUE: '是', FALSE: '否' } },
+    '訂閱者清單': [
+      { col: '是否為主管', options: ['是', '否'],       migrate: { TRUE: '是', FALSE: '否' } },
     ],
     '日常異常事件通報': [
       { col: '填報事項', options: DAILY_INCIDENT_SUBJECTS || ['環境設施', '場地使用', '安全衛生', '人員反映', '其他'], strict: false },

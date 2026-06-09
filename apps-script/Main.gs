@@ -100,7 +100,8 @@ function doGet(e) {
                                'setEquipmentField', 'addPpe', 'setLineProps',
                                'testLineIncident', 'markCompleted', 'fetchPdf',
                                'addMonthlySafetyPpeForms', 'syncSupervisorIds',
-                               'supervisorStatus', 'updateMonthlySettingNotes',
+                               'syncSubscribers', 'supervisorStatus', 'subscriberStatus',
+                               'updateMonthlySettingNotes',
                                'applyProjectResourceNames', 'installRichMenu',
                                'deleteRichMenu', 'richMenuStatus',
                                'syncLineWebhookEndpoint'];
@@ -192,7 +193,8 @@ function doGet(e) {
             result = { ok: true, action, set: Object.keys(updates) };
             break;
           }
-          case 'syncSupervisorIds': {
+          case 'syncSupervisorIds':
+          case 'syncSubscribers': {
             result = {
               ok: true,
               action,
@@ -200,7 +202,8 @@ function doGet(e) {
             };
             break;
           }
-          case 'supervisorStatus': {
+          case 'supervisorStatus':
+          case 'subscriberStatus': {
             result = {
               ok: true,
               action,

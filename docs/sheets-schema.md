@@ -17,14 +17,14 @@
 | `dailyIncidentArchiveFolderName` | 日常異常事件通報 | Drive 內新增的日常事件歸檔子資料夾 |
 | `lineRichMenuImageUrl` | `https://isha-taichung.github.io/auto-checklist/assets/line-rich-menu-main.png` | LINE 圖文選單圖片網址 |
 
-## 2. `主管清單`
+## 2. `訂閱者清單`
 
-主管 LINE 通知與簽核通知使用。
+LINE 訂閱者與主管身分對照表。一般通知由 `LINE_TARGET_USER_IDS` 訂閱者清單推播；主管簽核通知則依本表 `是否為主管` 判斷。
 
-| 姓名 | LINE_USER_ID | 是否啟用 | 備註 |
+| 姓名 | LINE_USER_ID | 是否為主管 | 備註 |
 |---|---|---|---|
 
-日常異常事件陳核主管時，系統會優先依「陳核主管」姓名比對此表的 `姓名` 與 `LINE_USER_ID`；若找不到精準對應，則退回通知啟用主管全體。
+日常異常事件陳核主管時，系統會優先依「陳核主管」姓名比對此表的 `姓名` 與 `LINE_USER_ID`；若找不到精準對應，則退回通知所有 `是否為主管` 為「是」的訂閱者。
 
 ## 3. `節假日關鍵字`
 

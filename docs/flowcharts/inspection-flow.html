@@ -542,7 +542,7 @@
         <table>
           <tr><th>項目</th><th>說明</th></tr>
           <tr><td>適用表單</td><td>固定式起重機月檢、堆高機月檢、三間教室置備月檢。</td></tr>
-          <tr><td>通知來源</td><td>月檢表送出後，系統依主管清單推播 LINE。</td></tr>
+          <tr><td>通知來源</td><td>月檢表送出後，系統依訂閱者清單中「是否為主管」推播 LINE。</td></tr>
           <tr><td>審核方式</td><td>主管開啟簽核頁，檢視內容後手寫簽名。</td></tr>
           <tr><td>產出</td><td>簽核完成後產生正式 PDF，供後續查閱。</td></tr>
         </table>
@@ -564,7 +564,7 @@
     <div class="three-col" style="margin-top: 18px;">
       <div class="panel"><span class="tag">提醒期</span><p>月檢未填提醒依系統設定，預設月底前提醒；月初應檢期會出現在狀態查詢。</p></div>
       <div class="panel"><span class="tag">鎖定項</span><p>未完成異常項目下次仍需標異常，完成後才可解除鎖定。</p></div>
-      <div class="panel"><span class="tag">主管清單</span><p>主管通知由 DB「主管清單」控制，需有啟用且可推播的 LINE_USER_ID。</p></div>
+      <div class="panel"><span class="tag">訂閱者清單</span><p>主管通知由 DB「訂閱者清單」控制，需有 LINE_USER_ID 且「是否為主管」為是。</p></div>
     </div>
   </section>
 </body>

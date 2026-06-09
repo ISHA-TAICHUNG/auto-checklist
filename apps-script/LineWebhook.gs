@@ -157,7 +157,7 @@ function cmdHelp_(replyToken) {
       '• 幫助 — 顯示這個清單',
       '',
       '主管簽核通知：',
-      '• 由 DB「主管清單」控制',
+      '• 由 DB「訂閱者清單」的「是否為主管」控制',
       '• 用於三間教室、堆高機、固定式起重機的月檢',
       '',
       '月檢快捷：',
@@ -257,11 +257,11 @@ function formatDailyIncidentApprovalNoticeForLine_(notice) {
   if (notice.skipped) return '但主管 LINE 通知設定目前關閉。';
   if (notice.ok) {
     if (notice.targetMode === 'named') return '已通知指定主管。';
-    if (notice.targetMode === 'fallback') return `找不到指定主管 LINE ID，已改通知啟用主管 ${notice.targetCount || ''} 人。`;
+    if (notice.targetMode === 'fallback') return `找不到指定主管 LINE ID，已改通知已標記為主管的訂閱者 ${notice.targetCount || ''} 人。`;
     return '已通知主管。';
   }
   if (notice.reason === 'supervisor_not_found') return `但找不到「${notice.supervisorName || '指定主管'}」的 LINE_USER_ID，也沒有可用的 fallback 主管。`;
-  if (notice.reason === 'no_supervisor') return '但沒有啟用的主管 LINE_USER_ID。';
+  if (notice.reason === 'no_supervisor') return '但沒有標記為主管的 LINE_USER_ID。';
   if (notice.reason === 'no_token') return '但 LINE_CHANNEL_ACCESS_TOKEN 未設定。';
   return '但主管 LINE 通知未送出，請確認 LINE 設定或手動轉貼審核連結。';
 }

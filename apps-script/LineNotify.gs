@@ -38,6 +38,16 @@ function getLineConfig_() {
   };
 }
 
+function getLineSubscriberSheet_(ss) {
+  return ss.getSheetByName('訂閱者清單') || ss.getSheetByName('主管清單');
+}
+
+function getLineSupervisorFlagColumnIndex_(headers) {
+  const supervisorCol = headers.indexOf('是否為主管');
+  if (supervisorCol >= 0) return supervisorCol;
+  return headers.indexOf('是否啟用');
+}
+
 function getSupervisorUserIds_() {
   const fromSheet = getSupervisorUserIdsFromSheet_();
   if (fromSheet.length > 0) return fromSheet;
@@ -47,12 +57,12 @@ function getSupervisorUserIds_() {
 function getSupervisorUserIdsFromSheet_() {
   try {
     if (!CONFIG.DB_SHEET_ID || CONFIG.DB_SHEET_ID.startsWith('REPLACE_')) return [];
-    const sheet = SpreadsheetApp.openById(CONFIG.DB_SHEET_ID).getSheetByName('主管清單');
+    const sheet = getLineSubscriberSheet_(SpreadsheetApp.openById(CONFIG.DB_SHEET_ID));
     if (!sheet || sheet.getLastRow() < 2) return [];
     const data = sheet.getDataRange().getValues();
     const headers = data[0].map(h => String(h || '').trim());
     const idCol = headers.indexOf('LINE_USER_ID');
-    const activeCol = headers.indexOf('是否啟用');
+    const activeCol = getLineSupervisorFlagColumnIndex_(headers);
     if (idCol < 0) return [];
     const ids = [];
     data.slice(1).forEach(row => {
@@ -62,7 +72,7 @@ function getSupervisorUserIdsFromSheet_() {
     });
     return Array.from(new Set(ids));
   } catch (err) {
-    Logger.log('[LINE] 讀取主管清單失敗，改用 SUPERVISOR_USER_IDS: ' + err);
+    Logger.log('[LINE] 讀取訂閱者清單主管欄位失敗，改用 SUPERVISOR_USER_IDS: ' + err);
     return [];
   }
 }
@@ -72,13 +82,13 @@ function getSupervisorUserIdsByName_(supervisorName) {
   if (!target) return [];
   try {
     if (!CONFIG.DB_SHEET_ID || CONFIG.DB_SHEET_ID.startsWith('REPLACE_')) return [];
-    const sheet = SpreadsheetApp.openById(CONFIG.DB_SHEET_ID).getSheetByName('主管清單');
+    const sheet = getLineSubscriberSheet_(SpreadsheetApp.openById(CONFIG.DB_SHEET_ID));
     if (!sheet || sheet.getLastRow() < 2) return [];
     const data = sheet.getDataRange().getValues();
     const headers = data[0].map(h => String(h || '').trim());
     const nameCol = headers.indexOf('姓名');
     const idCol = headers.indexOf('LINE_USER_ID');
-    const activeCol = headers.indexOf('是否啟用');
+    const activeCol = getLineSupervisorFlagColumnIndex_(headers);
     if (nameCol < 0 || idCol < 0) return [];
     const ids = [];
     data.slice(1).forEach(row => {
@@ -131,7 +141,7 @@ function linePushToSupervisors_(messages) {
   const supervisorIds = getSupervisorUserIds_();
   if (supervisorIds.length > 1) return lineMulticast_(supervisorIds, messages);
   if (supervisorIds.length === 1) return linePushTo_(supervisorIds[0], messages, 'push');
-  Logger.log('[LINE supervisor] 無啟用主管，略過主管通知');
+  Logger.log('[LINE supervisor] 無標記為主管的 LINE_USER_ID，略過主管通知');
   return { ok: false, reason: 'no_supervisor' };
 }
 
