@@ -458,8 +458,35 @@ function buildIncidentFlex_(incident, pdfUrl, sheetUrl) {
 function visibleChecklistStatusResults_(results) {
   return (results || []).filter(r =>
     String(r.category || '').trim() !== '防護具檢點' &&
-    String(r.reason || '').trim() !== '防護具類別不發 reminder'
+    !isNonActionableChecklistStatus_(r)
   );
+}
+
+function isNonActionableChecklistStatus_(result) {
+  const reason = String((result && result.reason) || '').trim();
+  if (reason === '防護具類別不發 reminder') return true;
+  if (reason === '無使用紀錄') return true;
+  if (reason.indexOf('未命中') === 0 && reason.indexOf('使用關鍵字') >= 0) return true;
+  if (reason.indexOf('節假日') === 0) return true;
+  if (reason === '同類別已寄信' || reason === '同類別已寄月檢提醒') return true;
+  return false;
+}
+
+function isFilledChecklistStatus_(result) {
+  const reason = String((result && result.reason) || '').trim();
+  return reason === '該類別當日已填' || reason === '該類別本月已填';
+}
+
+function normalizeChecklistPendingRow_(category, result) {
+  const formType = String((result && result.formType) || '').trim();
+  const reason = String((result && result.reason) || '').trim() ||
+    (formType === '每月' ? '本月尚未填月檢' : '本日尚未填日檢');
+  return {
+    category,
+    equipmentId: category,
+    equipmentName: category,
+    reason,
+  };
 }
 
 function checklistStatusCategorySummary_(results) {
@@ -471,15 +498,9 @@ function checklistStatusCategorySummary_(results) {
   });
   return Object.keys(byCat).map(cat => {
     const items = byCat[cat];
-    const filled = items.filter(r =>
-      r.reason === '該類別當日已填' || r.reason === '該類別本月已填'
-    ).length;
-    const pending = items.filter(r =>
-      !r.alreadyFilled &&
-      r.reason !== '該類別當日已填' &&
-      r.reason !== '該類別本月已填'
-    );
-    return { category: cat, total: items.length, filled, pending };
+    const pendingSource = items.find(r => !r.alreadyFilled && !isFilledChecklistStatus_(r));
+    const pending = pendingSource ? [normalizeChecklistPendingRow_(cat, pendingSource)] : [];
+    return { category: cat, total: 1, filled: pending.length ? 0 : 1, pending };
   });
 }
 
