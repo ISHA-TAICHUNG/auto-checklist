@@ -16,6 +16,7 @@
 | `dailyIncidentSupervisorNotify` | 是 | 日常異常事件陳核時是否推播主管 |
 | `dailyIncidentArchiveFolderName` | 日常異常事件通報 | Drive 內新增的日常事件歸檔子資料夾 |
 | `lineRichMenuImageUrl` | `https://isha-taichung.github.io/auto-checklist/assets/line-rich-menu-main.png` | LINE 圖文選單圖片網址 |
+| `venueUsageRequiredKeywords` | `堆高機=堆` | 共用場地分頁的使用判定必要關鍵字；堆高機與移動式/吊車共用分頁時，內容需含「堆」才算堆高機有使用 |
 
 ## 2. `訂閱者清單`
 

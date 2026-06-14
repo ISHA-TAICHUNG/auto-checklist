@@ -73,6 +73,7 @@ function initializeDatabase() {
     ['monthlyCheckWindowEnd', '5', '月檢應檢期結束日（教室/堆高機/固定式起重機狀態顯示用）'],
     ['monthlyReminderStartDay', '25', '月檢補填提醒起始日（教室/堆高機/固定式起重機）'],
     ['lineRichMenuImageUrl', 'https://isha-taichung.github.io/auto-checklist/assets/line-rich-menu-main.png', 'LINE 圖文選單圖片網址（2500x1686 PNG）'],
+    ['venueUsageRequiredKeywords', '堆高機=堆', '共用場地分頁的使用判定必要關鍵字；格式：設備類別=關鍵字1,關鍵字2；例：堆高機場地與移動式/吊車共用時，內容需含「堆」才算堆高機有使用'],
   ]);
   if (typeof ensureDailyIncidentSettings_ === 'function') {
     ensureDailyIncidentSettings_(ss);

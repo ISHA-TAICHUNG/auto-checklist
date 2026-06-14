@@ -81,8 +81,62 @@ function getVenueUsage_(equipment, date) {
         }
       }
 
+      const requiredKeywords = getVenueUsageRequiredKeywords_(equipment);
+      if (requiredKeywords.length > 0 && !hasAnyKeyword_(content, requiredKeywords)) {
+        return {
+          used: false,
+          content,
+          reason: `未命中${equipment.category}使用關鍵字（${requiredKeywords.join('、')}）`,
+        };
+      }
+
       return { used: true, content, reason: null };
     }
   }
   return { used: false, content: '', reason: '當月找不到該日' };
+}
+
+/**
+ * 部分設備類別共用同一張場地分頁；若只看「內容非空」會把其他課程誤判為使用。
+ * 例如堆高機與移動式/吊車共用分頁時，內容需出現「堆」才視為堆高機有使用。
+ *
+ * 可在 DB「系統設定」加入：
+ *   venueUsageRequiredKeywords = 堆高機=堆
+ * 多類別用分號或換行分隔，例如：
+ *   堆高機=堆;固定式起重機=天車,固定式
+ */
+function getVenueUsageRequiredKeywords_(equipment) {
+  const category = String((equipment && equipment.category) || '').trim();
+  if (!category) return [];
+
+  const configured = parseVenueUsageRequiredKeywords_(getSetting_('venueUsageRequiredKeywords', ''), category);
+  if (configured !== null) return configured;
+
+  const defaults = CONFIG.VENUE_USAGE_REQUIRED_KEYWORDS_DEFAULT || {};
+  return (defaults[category] || []).map(k => String(k || '').trim()).filter(Boolean);
+}
+
+function parseVenueUsageRequiredKeywords_(raw, category) {
+  const text = String(raw || '').trim();
+  if (!text) return null;
+
+  const entries = text.split(/[;\n]/);
+  for (const entry of entries) {
+    const parts = String(entry || '').split(/[=:]/);
+    if (parts.length < 2) continue;
+
+    const key = String(parts[0] || '').trim();
+    if (key !== category) continue;
+
+    return String(parts.slice(1).join('=') || '')
+      .split(/[,\uFF0C、]/)
+      .map(k => String(k || '').trim())
+      .filter(Boolean);
+  }
+  return null;
+}
+
+function hasAnyKeyword_(content, keywords) {
+  const text = String(content || '');
+  return keywords.some(kw => kw && text.indexOf(kw) >= 0);
 }
