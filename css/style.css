@@ -3,6 +3,7 @@
    桌面寬度自動適配（中央 760px 卡片） */
 
 * { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
 html, body { margin: 0; padding: 0; }
 body {
   font-family: 'Noto Sans TC', 'Microsoft JhengHei', -apple-system, BlinkMacSystemFont,
@@ -74,6 +75,95 @@ body {
 }
 
 .container { width: 100%; max-width: 760px; margin: 0 auto; padding: 18px; }
+
+/* ---- 首頁快速填報 ---- */
+.quick-workbench {
+  background: #fff;
+  border: 2px solid #dfe5f2;
+  border-top: 5px solid #1a73e8;
+  border-radius: 12px;
+  padding: 16px;
+  margin-bottom: 22px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+}
+.quick-head h2 {
+  margin: 6px 0 4px;
+  font-size: 22px;
+  line-height: 1.25;
+  font-weight: 900;
+}
+.quick-head p {
+  margin: 0 0 14px;
+  color: #5f6368;
+  font-size: 14px;
+  line-height: 1.5;
+}
+.quick-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+.quick-action {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 74px;
+  padding: 12px;
+  border: 2px solid #dfe5f2;
+  border-radius: 8px;
+  background: #f8fbff;
+  color: #202124;
+  text-decoration: none;
+  transition: background 0.15s, border-color 0.15s, filter 0.15s;
+}
+.quick-action:hover {
+  background: #e8f0fe;
+  border-color: #c2d7fc;
+  filter: brightness(0.98);
+}
+.quick-action-incident {
+  background: #fff7f7;
+  border-color: #f4c7c3;
+}
+.quick-action-incident:hover {
+  background: #fce8e6;
+  border-color: #f5c2bd;
+}
+.quick-icon {
+  flex: 0 0 auto;
+  font-size: 24px;
+  line-height: 1;
+}
+.quick-text {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+}
+.quick-text strong {
+  color: #202124;
+  font-size: 17px;
+  font-weight: 900;
+  line-height: 1.25;
+}
+.quick-text small {
+  color: #5f6368;
+  font-size: 12px;
+  line-height: 1.35;
+}
+.quick-loading {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 74px;
+  color: #5f6368;
+  font-size: 15px;
+}
+.quick-loading .loading {
+  border-color: #1a73e8;
+  border-top-color: transparent;
+}
 
 /* ---- 工作台分頁 ---- */
 .workspace-overview {
@@ -155,6 +245,10 @@ body {
 .equip-actions a {
   flex: 1;
   min-width: 0;
+  min-height: 54px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   text-align: center;
   padding: 16px;               /* 原 11px — 變大方便老人點 */
   border-radius: 8px;
@@ -522,9 +616,26 @@ body {
     gap: 6px;
   }
   .site-tabs a {
-    min-height: 42px;
+    min-height: 44px;
     padding: 8px 6px;
     font-size: 14px;
+  }
+  .quick-workbench {
+    padding: 14px;
+    margin-bottom: 20px;
+  }
+  .quick-actions {
+    gap: 8px;
+  }
+  .quick-action {
+    min-height: 76px;
+    padding: 11px 10px;
+  }
+  .quick-icon {
+    font-size: 22px;
+  }
+  .quick-text strong {
+    font-size: 16px;
   }
   .workspace-overview {
     grid-template-columns: 1fr;

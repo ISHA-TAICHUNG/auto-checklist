@@ -21,17 +21,17 @@
   </header>
 
   <main class="container">
-    <section class="workspace-overview" aria-label="工作台分頁">
-      <a class="module-card checks" href="#checklist">
-        <span class="module-eyebrow">CHECK</span>
-        <span class="module-title">檢查填報</span>
-        <span class="module-meta">日檢、月檢、教室置備檢核</span>
-      </a>
-      <a class="module-card incident" href="incident.html">
-        <span class="module-eyebrow">REPORT</span>
-        <span class="module-title">日常通報</span>
-        <span class="module-meta">場地、環境、人員反映與安全衛生事件</span>
-      </a>
+    <section class="quick-workbench" aria-label="快速填報">
+      <div class="quick-head">
+        <div>
+          <span class="module-eyebrow">TODAY</span>
+          <h2>快速填報</h2>
+          <p>日檢、月檢、通報</p>
+        </div>
+      </div>
+      <div id="quickActions" class="quick-actions">
+        <div class="quick-loading"><span class="loading"></span>&nbsp;載入常用入口...</div>
+      </div>
     </section>
 
     <section id="checklist" class="workspace-section">
@@ -57,6 +57,17 @@
     const urlCat = new URLSearchParams(location.search).get('cat');
     if (urlCat) {
       document.getElementById('listTitle').textContent = '請選擇' + urlCat;
+      document.querySelector('.quick-workbench').style.display = 'none';
+    }
+
+    function renderQuickStatus(msg) {
+      const root = document.getElementById('quickActions');
+      if (!root || urlCat) return;
+      root.textContent = '';
+      const div = document.createElement('div');
+      div.className = 'quick-loading';
+      div.textContent = msg;
+      root.appendChild(div);
     }
 
     function renderError(msg) {
@@ -66,6 +77,7 @@
       div.className = 'alert alert-error';
       div.textContent = msg;
       root.appendChild(div);
+      renderQuickStatus('常用入口載入失敗，請稍後重整。');
     }
 
     function renderEmpty() {
@@ -75,6 +87,7 @@
       div.className = 'alert alert-info';
       div.textContent = '尚未建立任何設備。請先到 Google Sheets「設備清單」工作表新增。';
       root.appendChild(div);
+      renderQuickStatus('尚未建立可用的填報入口。');
     }
 
     const classroomMonthlyIds = new Set([
@@ -87,6 +100,9 @@
       {
         type: 'selector',
         key: 'forklift',
+        quickIcon: '🚜',
+        quickTitle: '堆高機',
+        quickMeta: 'A-F 號今日檢點',
         title: '堆高機',
         name: '🚜 堆高機 A-F 號',
         meta: '每日使用前檢點 / 每月定期檢查',
@@ -109,13 +125,29 @@
       {
         type: 'cards',
         key: 'crane',
+        quickIcon: '🏗️',
+        quickTitle: '起重機',
+        quickMeta: '固定式起重機',
         title: '固定式起重機',
         match: e => e.category === '固定式起重機',
         showForCat: cat => !cat || cat === '固定式起重機',
       },
       {
+        type: 'cards',
+        key: 'awp',
+        quickIcon: '🛻',
+        quickTitle: '高空工作車',
+        quickMeta: '車載式 / 自走式',
+        title: '高空工作車每日檢點',
+        match: e => e.category === '高空工作車' && e.hasDaily !== false,
+        showForCat: cat => !cat || cat === '高空工作車',
+      },
+      {
         type: 'selector',
         key: 'ppe-daily',
+        quickIcon: '🦺',
+        quickTitle: '防護具',
+        quickMeta: '場地防護具檢點',
         title: '防護具每日檢點',
         name: '🦺 安全帽 / 安全背心 等',
         meta: '每堂課實習結束後檢點',
@@ -133,6 +165,9 @@
       {
         type: 'selector',
         key: 'classroom-monthly',
+        quickIcon: '📋',
+        quickTitle: '教室月檢',
+        quickMeta: '量測設備 / 個人防護具',
         title: '教室量測設備及個人防護具月檢',
         name: '📋 龍井 / 復興 / 忠明教室',
         meta: '每月 1-5 日應檢；SCBA 已併入表單下方區塊',
@@ -153,6 +188,7 @@
     function renderGroupedSelector(def, equipments) {
       const section = document.createElement('div');
       section.className = 'selector-section';
+      section.id = 'section-' + def.key;
 
       const title = document.createElement('h2');
       title.className = 'card-title';
@@ -267,6 +303,7 @@
     function renderCardSection(def, equipments) {
       const section = document.createElement('div');
       section.className = 'selector-section';
+      section.id = 'section-' + def.key;
 
       const title = document.createElement('h2');
       title.className = 'card-title';
@@ -293,6 +330,47 @@
       return count;
     }
 
+    function renderQuickActions(equipments) {
+      const root = document.getElementById('quickActions');
+      if (!root || urlCat) return 0;
+      root.textContent = '';
+      let count = 0;
+
+      sectionDefs.forEach(def => {
+        const items = equipments.filter(def.match);
+        if (!items.length) return;
+        const link = document.createElement('a');
+        link.className = 'quick-action';
+        link.href = '#section-' + def.key;
+
+        const icon = document.createElement('span');
+        icon.className = 'quick-icon';
+        icon.textContent = def.quickIcon || '✓';
+
+        const text = document.createElement('span');
+        text.className = 'quick-text';
+        const title = document.createElement('strong');
+        title.textContent = def.quickTitle || def.title;
+        const meta = document.createElement('small');
+        meta.textContent = def.quickMeta || '選擇後填報';
+        text.appendChild(title);
+        text.appendChild(meta);
+
+        link.appendChild(icon);
+        link.appendChild(text);
+        root.appendChild(link);
+        count++;
+      });
+
+      const incidentLink = document.createElement('a');
+      incidentLink.className = 'quick-action quick-action-incident';
+      incidentLink.href = 'incident.html';
+      incidentLink.innerHTML = '<span class="quick-icon">🚨</span><span class="quick-text"><strong>日常通報</strong><small>異常事件 / 處理回報</small></span>';
+      root.appendChild(incidentLink);
+      count++;
+      return count;
+    }
+
     function isPrimarySectionEquipment(e) {
       return sectionDefs.some(def => def.match(e));
     }
@@ -311,6 +389,7 @@
         if (!r.ok) return renderError(r.error || '取得設備清單失敗');
         if (!r.equipments || !r.equipments.length) return renderEmpty();
 
+        renderQuickActions(r.equipments);
         const renderedGroups = renderGroupSections(r.equipments);
 
         // 其他設備列表（支援 URL ?cat=xxx 過濾；已收進下拉選單的設備不重複顯示）
