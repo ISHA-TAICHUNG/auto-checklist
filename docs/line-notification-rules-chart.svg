@@ -1,0 +1,109 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1800" height="1180" viewBox="0 0 1800 1180" role="img" aria-labelledby="title desc">
+  <title id="title">ISHA LINE 通知規則圖表</title>
+  <desc id="desc">整理各種系統情境的 LINE 收件對象、通知內容與是否消耗訊息額度。</desc>
+  <defs>
+    <style>
+      .bg { fill: #f5f7fb; }
+      .title { font: 800 44px "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", sans-serif; fill: #172033; }
+      .subtitle { font: 500 22px "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", sans-serif; fill: #5f6b7a; }
+      .section-title { font: 800 26px "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", sans-serif; fill: #ffffff; }
+      .h { font: 800 22px "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", sans-serif; fill: #253042; }
+      .t { font: 500 21px "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", sans-serif; fill: #253042; }
+      .s { font: 500 18px "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", sans-serif; fill: #526071; }
+      .pill { font: 800 18px "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", sans-serif; }
+      .card { fill: #ffffff; stroke: #d9e0ea; stroke-width: 2; }
+      .line { stroke: #d9e0ea; stroke-width: 2; }
+      .blue { fill: #1a73e8; }
+      .green { fill: #188038; }
+      .red { fill: #d93025; }
+      .amber { fill: #f29900; }
+      .slate { fill: #41516a; }
+      .soft-blue { fill: #e8f0fe; }
+      .soft-green { fill: #e6f4ea; }
+      .soft-red { fill: #fce8e6; }
+      .soft-amber { fill: #fef7e0; }
+      .white { fill: #ffffff; }
+    </style>
+  </defs>
+  <rect class="bg" x="0" y="0" width="1800" height="1180"/>
+
+  <text class="title" x="80" y="82">ISHA LINE 通知規則總覽</text>
+  <text class="subtitle" x="80" y="122">一般公告看「訂閱者清單」；主管提醒看「是否為主管」；使用者主動查詢用 Reply，不消耗 LINE 訊息額度。</text>
+
+  <rect class="card" x="80" y="160" rx="18" ry="18" width="1640" height="134"/>
+  <rect class="blue" x="80" y="160" rx="18" ry="18" width="390" height="134"/>
+  <text class="section-title" x="112" y="215">收件對象來源</text>
+  <text class="section-title" x="112" y="252">單一控管表</text>
+  <text class="t" x="510" y="205">訂閱者清單：有 LINE_USER_ID 且未停用者，收到一般公告。</text>
+  <text class="t" x="510" y="242">是否為主管 = 是：收到主管簽核、月檢、每日作業未填提醒。</text>
+  <text class="t" x="510" y="279">是否為同仁 = 是：納入每日作業完成率與未填名單，不會直接逐一推播。</text>
+
+  <g transform="translate(80 336)">
+    <rect class="blue" x="0" y="0" width="1640" height="62" rx="12"/>
+    <text class="section-title" x="24" y="40">不扣額度：使用者主動操作與系統回覆</text>
+    <rect class="card" x="0" y="78" width="1640" height="204" rx="12"/>
+    <line class="line" x1="410" y1="78" x2="410" y2="282"/>
+    <line class="line" x1="820" y1="78" x2="820" y2="282"/>
+    <line class="line" x1="1230" y1="78" x2="1230" y2="282"/>
+    <text class="h" x="28" y="118">情境</text>
+    <text class="h" x="438" y="118">誰收到</text>
+    <text class="h" x="848" y="118">收到內容</text>
+    <text class="h" x="1258" y="118">額度</text>
+    <line class="line" x1="0" y1="138" x2="1640" y2="138"/>
+    <text class="t" x="28" y="178">Quick reply / 指令</text>
+    <text class="t" x="438" y="178">發訊者本人</text>
+    <text class="t" x="848" y="178">狀態、入口、清單、QR、幫助</text>
+    <rect class="soft-green" x="1258" y="152" width="150" height="40" rx="20"/><text class="pill green" x="1290" y="179">不扣</text>
+    <line class="line" x1="0" y1="204" x2="1640" y2="204"/>
+    <text class="t" x="28" y="244">Rich menu URI / Loading</text>
+    <text class="t" x="438" y="244">開網頁或一對一等待動畫</text>
+    <text class="t" x="848" y="244">不送主動訊息</text>
+    <rect class="soft-green" x="1258" y="218" width="150" height="40" rx="20"/><text class="pill green" x="1290" y="245">不扣</text>
+  </g>
+
+  <g transform="translate(80 660)">
+    <rect class="red" x="0" y="0" width="1640" height="62" rx="12"/>
+    <text class="section-title" x="24" y="40">會扣額度：系統主動推播</text>
+    <rect class="card" x="0" y="78" width="1640" height="366" rx="12"/>
+    <line class="line" x1="410" y1="78" x2="410" y2="444"/>
+    <line class="line" x1="820" y1="78" x2="820" y2="444"/>
+    <line class="line" x1="1230" y1="78" x2="1230" y2="444"/>
+    <text class="h" x="28" y="118">情境</text>
+    <text class="h" x="438" y="118">誰收到</text>
+    <text class="h" x="848" y="118">收到內容</text>
+    <text class="h" x="1258" y="118">額度</text>
+    <line class="line" x1="0" y1="138" x2="1640" y2="138"/>
+
+    <text class="t" x="28" y="174">日檢未填 / 設備異常</text>
+    <text class="t" x="438" y="174">訂閱者清單</text>
+    <text class="t" x="848" y="174">未填提醒或設備異常摘要卡</text>
+    <rect class="soft-red" x="1258" y="148" width="150" height="40" rx="20"/><text class="pill red" x="1290" y="175">會扣</text>
+    <line class="line" x1="0" y1="204" x2="1640" y2="204"/>
+
+    <text class="t" x="28" y="240">月檢補填 / 月檢簽核</text>
+    <text class="t" x="438" y="240">是否為主管 = 是</text>
+    <text class="t" x="848" y="240">月檢提醒、主管簽核圖卡</text>
+    <rect class="soft-red" x="1258" y="214" width="150" height="40" rx="20"/><text class="pill red" x="1290" y="241">會扣</text>
+    <line class="line" x1="0" y1="270" x2="1640" y2="270"/>
+
+    <text class="t" x="28" y="306">每日作業 16:30 / 17:00</text>
+    <text class="t" x="438" y="306">是否為主管 = 是</text>
+    <text class="t" x="848" y="306">尚未填寫同仁名單</text>
+    <rect class="soft-red" x="1258" y="280" width="150" height="40" rx="20"/><text class="pill red" x="1290" y="307">會扣</text>
+    <line class="line" x1="0" y1="336" x2="1640" y2="336"/>
+
+    <text class="t" x="28" y="372">日常事件公告</text>
+    <text class="t" x="438" y="372">訂閱者清單</text>
+    <text class="t" x="848" y="372">新通報、退回補正、主管意見公開</text>
+    <rect class="soft-red" x="1258" y="346" width="150" height="40" rx="20"/><text class="pill red" x="1290" y="373">會扣</text>
+    <line class="line" x1="0" y1="402" x2="1640" y2="402"/>
+
+    <text class="t" x="28" y="438">日常事件主管處理 / 送審</text>
+    <text class="t" x="438" y="438">指定主管；找不到則所有主管</text>
+    <text class="t" x="848" y="438">填寫意見、審核結案圖卡</text>
+    <rect class="soft-red" x="1258" y="412" width="150" height="40" rx="20"/><text class="pill red" x="1290" y="439">會扣</text>
+  </g>
+
+  <rect class="card" x="80" y="1132" width="1640" height="2"/>
+  <text class="s" x="80" y="1158">備註：LINE 主動推播會依收件人數消耗額度；主管同意結案目前不主動推播。圖表更新：2026-06-24。</text>
+</svg>

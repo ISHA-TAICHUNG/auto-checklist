@@ -15,11 +15,16 @@ const DAILY_INCIDENT_MAX_PHOTOS = 8;
 const DAILY_INCIDENT_SUBJECTS = ['環境設施', '場地使用', '安全衛生', '人員反映', '其他'];
 const DAILY_INCIDENT_PROCESS_STATUSES = ['待處理', '處理中', '處理完成'];
 const DAILY_INCIDENT_REVIEW_STATUSES = ['未送審', '待主管審核', '已結案', '退回補正'];
+// 試算表實體欄位先維持舊名，避免影響既有資料/篩選器；對外 UI/PDF/LINE 顯示用「異常事項」。
+const DAILY_INCIDENT_DESCRIPTION_HEADER = '異常事情';
+const DAILY_INCIDENT_DESCRIPTION_DISPLAY_LABEL = '異常事項';
+const DAILY_INCIDENT_DESCRIPTION_ALT_HEADER = '異常事項';
 
-function dailyIncidentHeaders_() {
+function dailyIncidentHeaders_(descriptionHeader) {
+  const descHeader = descriptionHeader || DAILY_INCIDENT_DESCRIPTION_HEADER;
   return [
     '事件ID', '建立時間', '填報日期', '發生地點', '填報人', '承辦人',
-    '填報事項', '異常事情', '處理狀況', '處理說明', '處理完成日期',
+    '填報事項', descHeader, '處理狀況', '處理說明', '處理完成日期',
     '陳核主管', '審核狀態', '主管審核意見', '主管審核時間',
     '照片數', '照片資料夾連結', 'PDF連結', '待審PDF檔案ID',
     '承辦更新Token', '主管審核Token', 'clientSubmissionId', '流程紀錄', '備註',
@@ -28,7 +33,11 @@ function dailyIncidentHeaders_() {
 
 function setupDailyIncidentSheet_(ss) {
   migrateDailyIncidentSheetName_(ss);
-  setupSheet_(ss, DAILY_INCIDENT_SHEET_NAME, dailyIncidentHeaders_(), []);
+  const existing = getDailyIncidentSheet_(ss);
+  const descHeader = existing
+    ? dailyIncidentDescriptionHeaderFor_(existing.getRange(1, 1, 1, Math.max(existing.getLastColumn(), 1)).getValues()[0].map(h => String(h || '').trim()))
+    : DAILY_INCIDENT_DESCRIPTION_HEADER;
+  setupSheet_(ss, DAILY_INCIDENT_SHEET_NAME, dailyIncidentHeaders_(descHeader), []);
   setupDailyIncidentValidations_(ss);
 }
 
@@ -51,6 +60,12 @@ function migrateDailyIncidentSheetName_(ss) {
 
 function getDailyIncidentSheet_(ss) {
   return migrateDailyIncidentSheetName_(ss) || ss.getSheetByName(DAILY_INCIDENT_SHEET_NAME);
+}
+
+function dailyIncidentDescriptionHeaderFor_(headers) {
+  if (headers.indexOf(DAILY_INCIDENT_DESCRIPTION_HEADER) >= 0) return DAILY_INCIDENT_DESCRIPTION_HEADER;
+  if (headers.indexOf(DAILY_INCIDENT_DESCRIPTION_ALT_HEADER) >= 0) return DAILY_INCIDENT_DESCRIPTION_ALT_HEADER;
+  return DAILY_INCIDENT_DESCRIPTION_HEADER;
 }
 
 function setupDailyIncidentValidations_(ss) {
@@ -86,7 +101,7 @@ function setupDailyIncidentValidations_(ss) {
 
 function ensureDailyIncidentSettings_(ss) {
   ensureSystemSettingDefaults_(ss, [
-    ['dailyIncidentGroupNotify', '是', '新日常異常事件是否推播 LINE 群組'],
+    ['dailyIncidentGroupNotify', '是', '新日常異常事件是否推播 LINE 訂閱者'],
     ['dailyIncidentSupervisorNotify', '是', '日常異常事件陳核時是否推播主管'],
     ['dailyIncidentArchiveFolderName', DAILY_INCIDENT_ARCHIVE_DEFAULT, '日常異常事件通報 Drive 子資料夾名稱'],
   ]);
@@ -141,7 +156,7 @@ function handleDailyIncidentSubmission_(payload) {
       reporter: requiredText_(payload.reporter, '填報人', 80),
       owner: requiredText_(payload.owner || payload.reporter, '承辦人', 80),
       subject: requiredText_(payload.subject, '填報事項', 80),
-      description: requiredText_(payload.description, '異常事情', 1000),
+      description: requiredText_(payload.description, DAILY_INCIDENT_DESCRIPTION_DISPLAY_LABEL, 1000),
       processStatus: sanitizeDailyIncidentProcessStatus_(payload.processStatus || '待處理'),
       processNote: sanitizeText_(payload.processNote, 1000),
       completedDate: sanitizeText_(payload.completedDate, 20),
@@ -580,7 +595,7 @@ function appendDailyIncidentRow_(ss, data) {
   set('填報人', data.reporter);
   set('承辦人', data.owner);
   set('填報事項', data.subject);
-  set('異常事情', data.description);
+  set(dailyIncidentDescriptionHeaderFor_(headers), data.description);
   set('處理狀況', data.processStatus);
   set('處理說明', data.processNote);
   set('處理完成日期', data.completedDate);
@@ -622,7 +637,7 @@ function dailyIncidentRowToObject_(headers, row) {
     reporter: String(value('填報人') || ''),
     owner: String(value('承辦人') || ''),
     subject: String(value('填報事項') || ''),
-    description: String(value('異常事情') || ''),
+    description: String(value(DAILY_INCIDENT_DESCRIPTION_HEADER) || value(DAILY_INCIDENT_DESCRIPTION_ALT_HEADER) || ''),
     processStatus: String(value('處理狀況') || ''),
     processNote: String(value('處理說明') || ''),
     completedDate: value('處理完成日期') instanceof Date ? formatISODate_(value('處理完成日期')) : String(value('處理完成日期') || ''),
@@ -853,7 +868,7 @@ function buildDailyIncidentPdfBlob_(data, stage) {
 
     const detailRows = [
       ['欄位', '內容'],
-      ['異常事情', data.description || ''],
+      [DAILY_INCIDENT_DESCRIPTION_DISPLAY_LABEL, data.description || ''],
       ['處理狀況', data.processStatus || '待處理'],
       ['處理說明', data.processNote || '尚未填寫'],
       ['照片附件', Number(data.photoCount || 0) > 0 ? `${data.photoCount} 張，詳後附照片頁` : '無'],

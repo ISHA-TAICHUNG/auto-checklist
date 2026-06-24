@@ -640,22 +640,40 @@ function notifyLineIncidents_(recordId, submittedAt, checkDate, payload, equipme
   const formTypeZh = payload.formType === 'daily' ? '每日' : '每月';
   const checkDateStr = formatISODate_(checkDate);
 
+  const incidents = [];
   payload.items.forEach(it => {
     if (!isBadResult_(payload.formType, it.result, allowedResults)) return;
-    sendIncidentAlert_({
-      equipmentName: equipment.equipmentName,
-      category: equipment.category,
-      formType: formTypeZh,
+    incidents.push({
       order: it.order,
       itemName: itemNameWithSection_(it),
       result: it.result,
       description: abnormalDescriptionWithCheckResults_(it) || '(無說明)',
       photoCount: Array.isArray(it.photos) ? it.photos.length : 0,
       status: '待處理',
-      reportDate: checkDateStr,
-      fileUrl: fileUrl,        // 該次填報 PDF URL，用於 LINE 卡片「📄 查看此次 PDF」按鈕
     });
   });
+  if (!incidents.length) return;
+
+  if (typeof sendIncidentSummaryAlert_ === 'function') {
+    sendIncidentSummaryAlert_({
+      recordId,
+      equipmentName: equipment.equipmentName,
+      category: equipment.category,
+      formType: formTypeZh,
+      reportDate: checkDateStr,
+      fileUrl,
+      incidents,
+    });
+    return;
+  }
+
+  incidents.forEach(it => sendIncidentAlert_(Object.assign({
+    equipmentName: equipment.equipmentName,
+    category: equipment.category,
+    formType: formTypeZh,
+    reportDate: checkDateStr,
+    fileUrl,
+  }, it)));
 }
 
 /**

@@ -555,7 +555,7 @@ function buildIncidentFlex_(incident, pdfUrl, sheetUrl) {
           ...(incident.photoCount > 0 ? [{ type: 'text', text: `📷 附 ${incident.photoCount} 張照片`, size: 'xs', color: '#666666', margin: 'sm' }] : []),
         ],
       },
-      footer: (pdfUrl || sheetUrl) ? {
+      footer: {
         type: 'box', layout: 'vertical', spacing: 'sm',
         contents: [
           ...(pdfUrl ? [{
@@ -569,8 +569,97 @@ function buildIncidentFlex_(incident, pdfUrl, sheetUrl) {
             style: 'secondary',
             action: { type: 'uri', label: '📋 異常事件表', uri: sheetUrl },
           }] : []),
+          {
+            type: 'button',
+            style: (pdfUrl || sheetUrl) ? 'secondary' : 'primary',
+            color: (pdfUrl || sheetUrl) ? undefined : '#D32F2F',
+            action: { type: 'message', label: '🔎 查看設備異常', text: '異常' },
+          },
         ],
-      } : undefined,
+      },
+    },
+  };
+}
+
+function incidentSummaryItemBox_(incident) {
+  const title = `第 ${incident.order || '—'} 項｜${trimLineText_(incident.itemName || '未命名項目', 70)}`;
+  const desc = trimLineText_(incident.description || '(無說明)', 120);
+  return {
+    type: 'box',
+    layout: 'vertical',
+    spacing: 'xs',
+    margin: 'sm',
+    contents: [
+      { type: 'text', text: title, size: 'sm', color: '#202124', weight: 'bold', wrap: true },
+      { type: 'text', text: desc, size: 'xs', color: '#D32F2F', wrap: true },
+    ],
+  };
+}
+
+/**
+ * 同一次設備檢查的多個異常項目彙整成一則 LINE 通知。
+ * 資料表仍維持逐項建立異常事件，避免後續追蹤失去明細。
+ */
+function buildIncidentSummaryFlex_(summary, pdfUrl, sheetUrl) {
+  const incidents = Array.isArray(summary.incidents) ? summary.incidents : [];
+  const count = incidents.length;
+  const shown = incidents.slice(0, 8);
+  const omitted = Math.max(count - shown.length, 0);
+  const photoCount = incidents.reduce((sum, item) => sum + Number(item.photoCount || 0), 0);
+  return {
+    type: 'flex',
+    altText: `🚨 ${summary.equipmentName || '設備'} ${summary.formType || ''}檢查 ${count} 項異常`,
+    contents: {
+      type: 'bubble',
+      header: {
+        type: 'box',
+        layout: 'vertical',
+        backgroundColor: '#D32F2F',
+        paddingAll: 'md',
+        contents: [
+          { type: 'text', text: '🚨 設備異常通報', color: '#ffffff', weight: 'bold', size: 'lg' },
+          { type: 'text', text: `${summary.formType || '檢查'}｜${count} 項異常`, color: '#FFEBEE', size: 'sm' },
+        ],
+      },
+      body: {
+        type: 'box',
+        layout: 'vertical',
+        spacing: 'sm',
+        contents: [
+          dailyIncidentFlexField_('設備', summary.equipmentName || '—', { weight: 'bold' }),
+          dailyIncidentFlexField_('類別', summary.category || '—'),
+          dailyIncidentFlexField_('日期', summary.reportDate || '—'),
+          dailyIncidentFlexField_('異常數', `${count} 項`, { color: '#D32F2F', weight: 'bold' }),
+          ...(photoCount > 0 ? [dailyIncidentFlexField_('照片', `${photoCount} 張`)] : []),
+          { type: 'separator', margin: 'md' },
+          ...shown.map(incidentSummaryItemBox_),
+          ...(omitted > 0 ? [{ type: 'text', text: `另有 ${omitted} 項異常，請開啟 PDF、異常事件表或點擊查看設備異常。`, size: 'xs', color: '#5F6368', wrap: true, margin: 'sm' }] : []),
+        ],
+      },
+      footer: {
+        type: 'box',
+        layout: 'vertical',
+        spacing: 'sm',
+        contents: [
+          ...(pdfUrl ? [{
+            type: 'button',
+            style: 'primary',
+            color: '#D32F2F',
+            action: { type: 'uri', label: '📄 查看此次 PDF', uri: pdfUrl },
+          }] : []),
+          ...(sheetUrl ? [{
+            type: 'button',
+            style: 'secondary',
+            action: { type: 'uri', label: '📋 異常事件表', uri: sheetUrl },
+          }] : []),
+          {
+            type: 'button',
+            style: (pdfUrl || sheetUrl) ? 'secondary' : 'primary',
+            color: (pdfUrl || sheetUrl) ? undefined : '#D32F2F',
+            action: { type: 'message', label: '🔎 查看設備異常', text: '異常' },
+          },
+        ],
+      },
     },
   };
 }
@@ -1127,7 +1216,7 @@ function buildDailyIncidentCreatedFlex_(incident, opts) {
           dailyIncidentFlexField_('狀態', incident.processStatus || '待處理', { color: accentColor, weight: 'bold' }),
           dailyIncidentFlexField_('審核', incident.reviewStatus || '未送審'),
           { type: 'separator', margin: 'md' },
-          { type: 'text', text: '異常事情', size: 'sm', color: '#666666', margin: 'md' },
+          { type: 'text', text: '異常事項', size: 'sm', color: '#666666', margin: 'md' },
           { type: 'text', text: trimLineText_(incident.description || '—', 260), size: 'md', color: accentColor, weight: 'bold', wrap: true },
           ...(incident.processNote ? [
             { type: 'text', text: '處理說明', size: 'sm', color: '#666666', margin: 'md' },
@@ -1503,6 +1592,13 @@ function sendIncidentAlert_(incident) {
   const pdfUrl = incident.fileUrl || incident.pdfUrl || '';
   const sheetUrl = PropertiesService.getScriptProperties().getProperty('INCIDENT_SHEET_URL') || '';
   const flex = buildIncidentFlex_(incident, pdfUrl, sheetUrl);
+  return linePush_(withQuickReply_(flex));
+}
+
+function sendIncidentSummaryAlert_(summary) {
+  const pdfUrl = summary.fileUrl || summary.pdfUrl || '';
+  const sheetUrl = PropertiesService.getScriptProperties().getProperty('INCIDENT_SHEET_URL') || '';
+  const flex = buildIncidentSummaryFlex_(summary, pdfUrl, sheetUrl);
   return linePush_(withQuickReply_(flex));
 }
 

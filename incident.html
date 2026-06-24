@@ -56,7 +56,7 @@
       card.body.appendChild(makeField('填報人', 'text', '', 'reporter', '請填寫姓名').field);
       card.body.appendChild(makeField('承辦人', 'text', '', 'owner', '未填時可與填報人相同').field);
       card.body.appendChild(makeSelect('填報事項', 'subject', subjects, ''));
-      card.body.appendChild(makeTextarea('異常事情', 'description', '', '請描述發生狀況、影響範圍或需協助事項'));
+      card.body.appendChild(makeTextarea('異常事項', 'description', '', '請描述發生狀況、影響範圍或需協助事項'));
       card.body.appendChild(makeSelect('處理狀況', 'processStatus', statuses, '待處理'));
       card.body.appendChild(makeTextarea('處理說明', 'processNote', '', '可先填目前處理方式；未處理可留空'));
       card.body.appendChild(makeField('處理完成日期', 'date', '', 'completedDate').field);
@@ -99,7 +99,7 @@
       if (!location) return alert('請填寫發生地點');
       if (!reporter) return alert('請填寫填報人');
       if (!subject) return alert('請選擇填報事項');
-      if (!description) return alert('請填寫異常事情');
+      if (!description) return alert('請填寫異常事項');
       if (processStatus === '處理完成' && !completedDate) return alert('處理完成時請填寫處理完成日期');
       if (processStatus === '處理完成' && !supervisor) return alert('處理完成時請填寫陳核主管');
 
