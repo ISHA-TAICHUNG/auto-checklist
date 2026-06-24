@@ -1,12 +1,12 @@
 # 安全模型 — 已知 trade-off 與升級條件
 
-## 當前安全模型（v7.x）
+## 當前安全模型
 
 | 層級 | 防護 |
 |---|---|
 | 前端 → 後端 | API_TOKEN 共享 secret（半公開，在 `js/config.js`）|
 | 後端 doPost | size limit 5MB + signature regex + result/risk/methods whitelist + LockService |
-| 後端 admin endpoints | 全部需要 token + 唯讀 / 受限副作用 |
+| 後端 admin endpoints | 先需 `API_TOKEN` 進入 admin 入口；診斷、維護、PDF 讀取與會觸發外部 API 的動作另需 `ADMIN_TOKEN` |
 | `fetchPdf` | 範圍限制：必須在 ARCHIVE_ROOT_FOLDER_ID 下 + mimeType=application/pdf |
 | Drive 歸檔 | 結構化權限：由部署者擁有，僅共用對象可看 |
 | Sheets DB | 部署者擁有，僅共用對象可看 |
@@ -20,14 +20,14 @@
 原因：GitHub Pages 是靜態託管、沒有 server-side template，前端 JS 必須能直接讀到值才能呼叫後端。
 
 實質風險（中等）：
-- 攻擊者拿到 token 後，可呼叫 admin endpoints（看異常清單、下載歸檔 PDF）
-- PDF 含填表人姓名 + 手寫簽名 = 個資外洩
 - 假填檢查表（被 size / regex / whitelist 擋掉明顯偽造，但精心偽造能通過）
+- 攻擊者拿到 API_TOKEN 後，仍可對公開表單 API 做試探或送出偽造資料
 
 實質風險（低）：
 - 不會洩漏機構身分（source code 都 placeholder 化）
 - 不會洩漏個人 email（已移至 DB 系統設定）
 - 不會直接暴露 Drive / Sheets ID（只在 Apps Script 內部，沒 push 到 git）
+- 不會只靠 API_TOKEN 呼叫 admin diagnostics、讀取歸檔 PDF 或觸發 LINE/Drive 維護動作；這些需額外提供 `ADMIN_TOKEN`
 
 ## 升級到「方案 A: Private repo」的時機
 
@@ -42,7 +42,7 @@
 升級步驟：
 1. GitHub repo → Settings → General → 滑到底 → Change visibility → Make private
 2. 確認 Pages 仍可用（個人 Pro 帳號 / Organization）
-3. （可選）regenerate API_TOKEN 同步更新 Config.gs + js/config.js
+3. （可選）regenerate API_TOKEN 同步更新 Config.gs + js/config.js；`ADMIN_TOKEN` 只存在 Script Properties，不放進前端
 
 ## 升級到「方案 B: GitHub Actions 注入」的時機
 

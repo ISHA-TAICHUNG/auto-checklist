@@ -1,4 +1,7 @@
 export async function sendToAppsScript(config, payload) {
+  if (!config.appsScriptReportingEnabled) {
+    return { ok: false, skipped: true, reason: 'APPS_SCRIPT_REPORTING_ENABLED is false' };
+  }
   if (!config.appsScriptUrl) {
     return { ok: false, skipped: true, reason: 'APPS_SCRIPT_URL not configured' };
   }

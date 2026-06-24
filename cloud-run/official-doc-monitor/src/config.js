@@ -37,6 +37,7 @@ export async function loadConfig() {
 
   return {
     targetUrl: String(process.env.TARGET_URL || 'https://od.vitalyun.com/').trim(),
+    waitForPublishUrl: String(process.env.WAIT_FOR_PUBLISH_URL || '').trim(),
     timezone: String(process.env.TIMEZONE || 'Asia/Taipei').trim(),
     date: String(process.env.CHECK_DATE || currentTaipeiDate()).trim(),
     slot: String(process.env.SLOT || currentTaipeiSlot()).trim(),
@@ -47,6 +48,7 @@ export async function loadConfig() {
     mockHtmlPath,
     username,
     password,
+    appsScriptReportingEnabled: envBool('APPS_SCRIPT_REPORTING_ENABLED', false),
     appsScriptUrl: String(process.env.APPS_SCRIPT_URL || '').trim(),
     appsScriptApiToken: await readSecretFromEnv({
       directEnv: 'APPS_SCRIPT_API_TOKEN',
@@ -63,7 +65,16 @@ export function validateConfig(config) {
   if (!config.mockHtmlPath) {
     if (!config.username || !config.password) throw new Error('VITAL_OD credentials are missing');
   }
-  if (config.appsScriptUrl && (!config.appsScriptApiToken || !config.appsScriptAdminToken)) {
+  if (config.appsScriptReportingEnabled && !config.appsScriptUrl) {
+    throw new Error('APPS_SCRIPT_REPORTING_ENABLED is true but APPS_SCRIPT_URL is missing');
+  }
+  if (config.appsScriptReportingEnabled && (!config.appsScriptApiToken || !config.appsScriptAdminToken)) {
     throw new Error('Apps Script URL is set but api/admin tokens are missing');
+  }
+  if (config.appsScriptReportingEnabled && String(config.appsScriptAdminToken || '').trim().length < 48) {
+    throw new Error('APPS_SCRIPT_ADMIN_TOKEN is too short for reporting mode');
+  }
+  if (config.appsScriptReportingEnabled && config.appsScriptAdminToken === config.appsScriptApiToken) {
+    throw new Error('APPS_SCRIPT_ADMIN_TOKEN must be different from APPS_SCRIPT_API_TOKEN');
   }
 }

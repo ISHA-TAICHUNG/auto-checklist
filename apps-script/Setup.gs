@@ -57,6 +57,32 @@ function setupSecurityProperties() {
   return msg;
 }
 
+/**
+ * 由專案擁有者透過 Apps Script Execution API 輪替 ADMIN_TOKEN。
+ *
+ * 此函式不回傳 token 本身，避免密鑰出現在執行紀錄。executionApi 在
+ * appsscript.json 設為 MYSELF，不能由匿名 Web App 訪客呼叫。
+ */
+function rotateOfficialDocumentAdminTokenForCloudRun(candidate, confirmation) {
+  const token = String(candidate || '').trim();
+  if (confirmation !== 'ROTATE_OFFICIAL_DOC_ADMIN_TOKEN') {
+    throw new Error('確認碼錯誤');
+  }
+  if (token.length < 48) {
+    throw new Error('ADMIN_TOKEN 至少需要 48 個字元');
+  }
+  if (token === CONFIG.API_TOKEN) {
+    throw new Error('ADMIN_TOKEN 不可與 API_TOKEN 相同');
+  }
+
+  PropertiesService.getScriptProperties().setProperty('ADMIN_TOKEN', token);
+  return {
+    ok: true,
+    tokenLength: token.length,
+    rotatedAt: new Date().toISOString(),
+  };
+}
+
 function initializeDatabase() {
   if (!CONFIG.DB_SHEET_ID || CONFIG.DB_SHEET_ID.startsWith('REPLACE_')) {
     throw new Error('請先到 Config.gs 設定 DB_SHEET_ID');
