@@ -319,65 +319,18 @@ function markOfficialDocumentQueueRows_(sheet, headers, entries, status, resultT
 
 function buildOfficialDocumentDispatchReminderFlex_(group) {
   const records = Array.isArray(group.records) ? group.records : [];
-  const shown = records.slice(0, 8);
-  const omitted = Math.max(records.length - shown.length, 0);
-  const contents = [
-    { type: 'text', text: '請登入 Vital OD 公文系統完成發文作業。', size: 'sm', color: '#202124', wrap: true },
-    { type: 'separator', margin: 'md' },
-    { type: 'box', layout: 'baseline', spacing: 'sm', contents: [
-      { type: 'text', text: '承辦人', flex: 2, size: 'sm', color: '#666666' },
-      { type: 'text', text: group.handlerName || '', flex: 5, size: 'sm', weight: 'bold', wrap: true },
-    ]},
-    { type: 'box', layout: 'baseline', spacing: 'sm', contents: [
-      { type: 'text', text: '時段', flex: 2, size: 'sm', color: '#666666' },
-      { type: 'text', text: (group.date || '') + ' ' + (group.slot || ''), flex: 5, size: 'sm', wrap: true },
-    ]},
-    { type: 'box', layout: 'baseline', spacing: 'sm', contents: [
-      { type: 'text', text: '待發文', flex: 2, size: 'sm', color: '#666666' },
-      { type: 'text', text: records.length + ' 件', flex: 5, size: 'sm', color: '#D93025', weight: 'bold' },
-    ]},
-    { type: 'separator', margin: 'md' },
-  ];
-
-  shown.forEach(record => {
-    contents.push({
-      type: 'box',
-      layout: 'vertical',
-      spacing: 'xs',
-      margin: 'sm',
-      contents: [
-        { type: 'text', text: trimLineText_(record.documentNo || record.outboundNo || '未命名公文', 60), size: 'sm', weight: 'bold', color: '#202124', wrap: true },
-        { type: 'text', text: '限辦日期 ' + (record.dueDate || '未填'), size: 'xs', color: '#5F6368', wrap: true },
-      ],
-    });
+  return buildOfficialDocumentListFlex_({
+    mode: 'reminder',
+    title: '📨 公文待發文提醒',
+    altPrefix: '📨 公文待發文提醒',
+    color: '#D93025',
+    accentColor: '#FCE8E6',
+    date: group.date || '',
+    slot: group.slot || '',
+    handlerName: group.handlerName || '',
+    records,
+    message: '請登入 Vital OD 公文系統完成發文作業。',
   });
-  if (omitted > 0) {
-    contents.push({ type: 'text', text: '另有 ' + omitted + ' 件未列出，請至公文系統查看。', size: 'xs', color: '#5F6368', margin: 'sm', wrap: true });
-  }
-
-  return {
-    type: 'flex',
-    altText: '📨 公文待發文提醒 ' + records.length + ' 件',
-    contents: {
-      type: 'bubble',
-      header: {
-        type: 'box',
-        layout: 'vertical',
-        backgroundColor: '#D93025',
-        paddingAll: 'md',
-        contents: [
-          { type: 'text', text: '📨 公文待發文提醒', color: '#ffffff', weight: 'bold', size: 'lg', wrap: true },
-          { type: 'text', text: (group.date || '') + ' ' + (group.slot || ''), color: '#FCE8E6', size: 'sm', wrap: true },
-        ],
-      },
-      body: {
-        type: 'box',
-        layout: 'vertical',
-        spacing: 'sm',
-        contents,
-      },
-    },
-  };
 }
 
 function getOfficialDocumentQueueStatusForUser_(userId) {
@@ -443,74 +396,126 @@ function buildOfficialDocumentStatusFlex_(status) {
     : hasPending
       ? '尚有 ' + records.length + ' 件待發文'
       : '目前沒有待發文';
-  const body = [
-    { type: 'text', text: title, size: 'md', color, weight: 'bold', wrap: true },
-    { type: 'separator', margin: 'md' },
-  ];
-  if (status.handlerName) {
-    body.push({
-      type: 'box',
-      layout: 'baseline',
-      spacing: 'sm',
-      margin: 'md',
-      contents: [
-        { type: 'text', text: '承辦人', flex: 3, size: 'sm', color: '#5F6368' },
-        { type: 'text', text: status.handlerName, flex: 5, size: 'sm', weight: 'bold', wrap: true },
-      ],
-    });
+  return buildOfficialDocumentListFlex_({
+    mode: 'status',
+    title: '📨 公文待發文',
+    altPrefix: '📨 公文待發文狀態',
+    color,
+    accentColor: '#ffffff',
+    date: status.date || '',
+    slot: status.slot || '',
+    handlerName: status.handlerName || '',
+    records,
+    message: status.message || title,
+  });
+}
+
+function buildOfficialDocumentListFlex_(opts) {
+  opts = opts || {};
+  const records = Array.isArray(opts.records) ? opts.records : [];
+  const perBubble = 8;
+  const maxBubbles = 12;
+  const chunks = [];
+  for (let i = 0; i < records.length; i += perBubble) {
+    chunks.push(records.slice(i, i + perBubble));
   }
-  if (status.date || status.slot) {
-    body.push({
-      type: 'box',
-      layout: 'baseline',
-      spacing: 'sm',
-      margin: 'sm',
-      contents: [
-        { type: 'text', text: '檢核時段', flex: 3, size: 'sm', color: '#5F6368' },
-        { type: 'text', text: [status.date, status.slot].filter(Boolean).join(' '), flex: 5, size: 'sm', wrap: true },
-      ],
-    });
-  }
-  if (status.message) {
-    body.push({ type: 'text', text: status.message, size: 'sm', color: '#5F6368', margin: 'md', wrap: true });
-  }
-  records.slice(0, 8).forEach(record => {
-    body.push({
-      type: 'box',
-      layout: 'vertical',
-      spacing: 'xs',
-      margin: 'sm',
-      contents: [
-        { type: 'text', text: trimLineText_(record.documentNo || record.outboundNo || '未命名公文', 60), size: 'sm', color: '#202124', weight: 'bold', wrap: true },
-        { type: 'text', text: '限辦日期 ' + (record.dueDate || '未填'), size: 'xs', color: '#5F6368', wrap: true },
-      ],
+  if (chunks.length === 0) chunks.push([]);
+  const totalPages = Math.min(chunks.length, maxBubbles);
+  const truncatedCount = chunks.length > maxBubbles ? records.length - (perBubble * maxBubbles) : 0;
+  const bubbles = chunks.slice(0, maxBubbles).map((chunk, pageIndex) => {
+    const startNo = pageIndex * perBubble + 1;
+    return buildOfficialDocumentListBubble_({
+      title: opts.title || '📨 公文待發文',
+      color: opts.color || '#D93025',
+      accentColor: opts.accentColor || '#ffffff',
+      date: opts.date || '',
+      slot: opts.slot || '',
+      handlerName: opts.handlerName || '',
+      records: chunk,
+      totalCount: records.length,
+      startNo,
+      pageNo: pageIndex + 1,
+      totalPages,
+      message: pageIndex === 0 ? opts.message : '',
+      truncatedCount: pageIndex === maxBubbles - 1 ? truncatedCount : 0,
     });
   });
-  if (records.length > 8) {
-    body.push({ type: 'text', text: '另有 ' + (records.length - 8) + ' 件未列出，請至公文系統查看。', size: 'xs', color: '#5F6368', margin: 'sm', wrap: true });
-  }
   return {
     type: 'flex',
-    altText: '📨 公文待發文狀態 ' + records.length + ' 件',
-    contents: {
-      type: 'bubble',
-      header: {
-        type: 'box',
-        layout: 'vertical',
-        backgroundColor: color,
-        paddingAll: 'md',
-        contents: [
-          { type: 'text', text: '📨 公文待發文', color: '#ffffff', weight: 'bold', size: 'lg', wrap: true },
-          { type: 'text', text: [status.date, status.slot].filter(Boolean).join(' ') || '今日', color: '#ffffff', size: 'sm', wrap: true },
-        ],
-      },
-      body: {
-        type: 'box',
-        layout: 'vertical',
-        spacing: 'sm',
-        contents: body,
-      },
+    altText: (opts.altPrefix || '📨 公文待發文') + ' ' + records.length + ' 件',
+    contents: bubbles.length === 1 ? bubbles[0] : { type: 'carousel', contents: bubbles },
+  };
+}
+
+function buildOfficialDocumentListBubble_(opts) {
+  const records = Array.isArray(opts.records) ? opts.records : [];
+  const subtitleParts = [opts.date, opts.slot].filter(Boolean);
+  const body = [
+    { type: 'box', layout: 'baseline', spacing: 'sm', contents: [
+      { type: 'text', text: '待發文', flex: 2, size: 'sm', color: '#666666' },
+      { type: 'text', text: opts.totalCount + ' 件', flex: 5, size: 'sm', color: opts.color || '#D93025', weight: 'bold' },
+    ]},
+  ];
+  if (opts.handlerName) {
+    body.push({ type: 'box', layout: 'baseline', spacing: 'sm', contents: [
+      { type: 'text', text: '承辦人', flex: 2, size: 'sm', color: '#666666' },
+      { type: 'text', text: opts.handlerName, flex: 5, size: 'sm', weight: 'bold', wrap: true },
+    ]});
+  }
+  if (subtitleParts.length > 0) {
+    body.push({ type: 'box', layout: 'baseline', spacing: 'sm', contents: [
+      { type: 'text', text: '時段', flex: 2, size: 'sm', color: '#666666' },
+      { type: 'text', text: subtitleParts.join(' '), flex: 5, size: 'sm', wrap: true },
+    ]});
+  }
+  if (opts.message) {
+    body.push({ type: 'text', text: opts.message, size: 'sm', color: '#202124', margin: 'sm', wrap: true });
+  }
+  body.push({ type: 'separator', margin: 'md' });
+  records.forEach((record, index) => {
+    body.push(buildOfficialDocumentRecordBox_(record, opts.startNo + index));
+  });
+  if (records.length === 0) {
+    body.push({ type: 'text', text: '目前沒有待發文。', size: 'sm', color: '#5F6368', margin: 'sm', wrap: true });
+  }
+  if (opts.truncatedCount > 0) {
+    body.push({ type: 'text', text: 'LINE 圖卡容量限制，尚有 ' + opts.truncatedCount + ' 件請至公文系統查看。', size: 'xs', color: '#5F6368', margin: 'sm', wrap: true });
+  }
+  return {
+    type: 'bubble',
+    header: {
+      type: 'box',
+      layout: 'vertical',
+      backgroundColor: opts.color || '#D93025',
+      paddingAll: 'md',
+      contents: [
+        { type: 'text', text: opts.title || '📨 公文待發文', color: '#ffffff', weight: 'bold', size: 'lg', wrap: true },
+        { type: 'text', text: (subtitleParts.join(' ') || '今日') + (opts.totalPages > 1 ? '・第 ' + opts.pageNo + '/' + opts.totalPages + ' 頁' : ''), color: opts.accentColor || '#ffffff', size: 'sm', wrap: true },
+      ],
     },
+    body: {
+      type: 'box',
+      layout: 'vertical',
+      spacing: 'sm',
+      contents: body,
+    },
+  };
+}
+
+function buildOfficialDocumentRecordBox_(record, itemNo) {
+  const title = trimLineText_((itemNo ? itemNo + '. ' : '') + (record.documentNo || record.outboundNo || '未命名公文'), 80);
+  const details = [];
+  if (record.outboundNo && record.outboundNo !== record.documentNo) details.push('發文字號 ' + record.outboundNo);
+  details.push('限辦日期 ' + (record.dueDate || '未填'));
+  return {
+    type: 'box',
+    layout: 'vertical',
+    spacing: 'xs',
+    margin: 'sm',
+    contents: [
+      { type: 'text', text: title, size: 'sm', weight: 'bold', color: '#202124', wrap: true },
+      { type: 'text', text: details.join('｜'), size: 'xs', color: '#5F6368', wrap: true },
+    ],
   };
 }
 
