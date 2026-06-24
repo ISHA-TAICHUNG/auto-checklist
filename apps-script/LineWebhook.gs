@@ -60,10 +60,7 @@ function dispatchLineEvent_(ev) {
   const cmd = normalizeLineCommand_(text);
 
   if (requiresLineSubscriberAuth_(cmd) && !isLineSubscriberUser_(userId)) {
-    return lineReply_(replyToken, {
-      type: 'text',
-      text: '此功能限已登錄訂閱者使用。請先輸入「我的ID」，把 LINE_USER_ID 提供給管理員加入「訂閱者清單」。',
-    });
+    return lineReply_(replyToken, buildSubscriberRegistrationFlex_());
   }
 
   // 指令路由

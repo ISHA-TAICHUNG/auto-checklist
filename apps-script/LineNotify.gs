@@ -910,6 +910,44 @@ function buildDailyWorkCheckEntryFlex_(url) {
   };
 }
 
+function buildSubscriberRegistrationFlex_() {
+  return {
+    type: 'flex',
+    altText: '請先完成 LINE_USER_ID 登錄',
+    contents: {
+      type: 'bubble',
+      header: {
+        type: 'box',
+        layout: 'vertical',
+        backgroundColor: '#1F3A5F',
+        paddingAll: 'md',
+        contents: [
+          { type: 'text', text: 'ISHA 通知小幫手', color: '#ffffff', weight: 'bold', size: 'lg' },
+          { type: 'text', text: '請先完成個人登錄', color: '#DDE7F3', size: 'sm' },
+        ],
+      },
+      body: {
+        type: 'box',
+        layout: 'vertical',
+        spacing: 'sm',
+        contents: [
+          { type: 'text', text: '此功能限已登錄的同仁或主管使用。', size: 'sm', color: '#202124', wrap: true },
+          { type: 'text', text: '請按下方按鈕取得你的 LINE_USER_ID，並回報「姓名 + LINE_USER_ID」給管理員加入訂閱者清單。', size: 'sm', color: '#5f6368', wrap: true },
+        ],
+      },
+      footer: {
+        type: 'box',
+        layout: 'vertical',
+        spacing: 'sm',
+        contents: [
+          { type: 'button', style: 'primary', height: 'sm', action: { type: 'message', label: '取得我的ID', text: '我的ID' } },
+          { type: 'button', style: 'secondary', height: 'sm', action: { type: 'message', label: '查看可用指令', text: '幫助' } },
+        ],
+      },
+    },
+  };
+}
+
 function buildOpenIncidentBubble_(incident) {
   const incidentId = String(incident.incidentId || '');
   const shortId = incidentId ? incidentId.substring(0, 8) : '';
