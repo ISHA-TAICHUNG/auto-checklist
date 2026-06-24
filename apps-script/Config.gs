@@ -16,6 +16,11 @@ const CONFIG = {
   // 主要目的是擋掉不知道網址直接打 API 的機器人。要更嚴的話需要登入機制。
   API_TOKEN: 'REPLACE_WITH_RANDOM_TOKEN_AT_LEAST_32_CHARS',
 
+  // ------ Admin token verifier（選填）------
+  // 正式部署可在 ignored 的 Config.js 填入 ADMIN_TOKEN 的 SHA-256 hex。
+  // source 版本保持空值，避免把 production verifier 推上 GitHub。
+  ADMIN_TOKEN_SHA256: '',
+
   // ------ 防 DoS：payload 大小與圖片上限 ------
   MAX_PAYLOAD_BYTES: 5 * 1024 * 1024, // 整個 JSON 上限 5MB（含多張異常照片）
   MAX_SIGNATURE_BYTES: 300 * 1024,    // 簽名 base64 上限 300KB
@@ -139,7 +144,8 @@ function getReminderEmail_() {
  *   - API_TOKEN     寫在 js/config.js → 任何 GitHub Pages 訪客都能拿到，只能用在唯讀類 endpoint
  *   - ADMIN_TOKEN   存在 Apps Script Script Properties → 只有 admin 知道，用於寫入/破壞性 endpoint
  *
- * 若 ADMIN_TOKEN 未設置：寫入/破壞性 endpoint **全部拒絕** HTTP 呼叫（fail-closed）
+ * 若 Script Properties ADMIN_TOKEN 未設置，仍可用 production Config.js 內的
+ * ADMIN_TOKEN_SHA256 verifier 驗證 GCP Secret Manager 內的 admin token。
  *
  * 設置方式：Apps Script 編輯器 → ⚙ 專案設定 → Script Properties → 新增 ADMIN_TOKEN
  */
@@ -151,18 +157,37 @@ function getAdminToken_() {
   }
 }
 
+function sha256Hex_(text) {
+  const bytes = Utilities.computeDigest(
+    Utilities.DigestAlgorithm.SHA_256,
+    String(text || ''),
+    Utilities.Charset.UTF_8
+  );
+  return bytes.map(b => {
+    const value = b < 0 ? b + 256 : b;
+    return ('0' + value.toString(16)).slice(-2);
+  }).join('');
+}
+
 /**
  * 校驗 admin token + 拒絕跟 API_TOKEN 重複（防 admin 誤設成同值）
  *
  * @return true 通過；false 拒絕（呼叫端應 throw '未授權'）
  */
 function checkAdminToken_(provided) {
+  const candidate = String(provided || '');
+  if (!candidate || candidate === CONFIG.API_TOKEN) return false;
+
   const adminToken = getAdminToken_();
-  // ADMIN_TOKEN 未設 → 一律拒絕（fail-closed）
-  if (!adminToken || adminToken.length < 32) return false;
-  // 嚴禁與 API_TOKEN 共用
-  if (adminToken === CONFIG.API_TOKEN) return false;
-  return provided === adminToken;
+  if (adminToken && adminToken.length >= 32 && adminToken !== CONFIG.API_TOKEN) {
+    if (candidate === adminToken) return true;
+  }
+
+  const expectedHash = String(CONFIG.ADMIN_TOKEN_SHA256 || '').trim().toLowerCase();
+  if (expectedHash && /^[0-9a-f]{64}$/.test(expectedHash)) {
+    return sha256Hex_(candidate) === expectedHash;
+  }
+  return false;
 }
 
 /**

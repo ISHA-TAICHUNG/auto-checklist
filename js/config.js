@@ -13,7 +13,7 @@
  */
 window.SYSTEM_CONFIG = {
   // 必填：Apps Script Web App 的 exec URL
-  API_BASE: 'https://script.google.com/macros/s/AKfycbydnAxKVywvhH1P7qQEE2HDWGJn5NJUGTmN_ewEgyCRNyIq4Q4MkebQqTpm1BlvZt-b6w/exec',
+  API_BASE: 'https://script.google.com/macros/s/AKfycbxZAkO_AqU5tzdFRR-rmYATwt7Vl4aM45CZdI1yID4WF7oE2cdT-DuJVInlhR31KineJw/exec',
 
   // 必填：共享 token（與後端 Config.gs 的 API_TOKEN 一致）
   API_TOKEN: '246dc615455a79d4b2437c8d48047d15622d282d175c0494',
