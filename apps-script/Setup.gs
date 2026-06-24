@@ -1855,3 +1855,32 @@ function getSystemStatus_() {
     holidayKeywordsCount: getHolidayKeywords_().length,
   };
 }
+
+function getDatabaseSheetInventory_() {
+  const ss = SpreadsheetApp.openById(CONFIG.DB_SHEET_ID);
+  const sheets = ss.getSheets().map(sheet => {
+    const lastRow = sheet.getLastRow();
+    const lastColumn = sheet.getLastColumn();
+    const headers = (lastRow >= 1 && lastColumn >= 1)
+      ? sheet.getRange(1, 1, 1, lastColumn).getValues()[0].map(v => String(v || '').trim())
+      : [];
+    return {
+      name: sheet.getName(),
+      sheetId: sheet.getSheetId(),
+      index: sheet.getIndex(),
+      hidden: sheet.isSheetHidden(),
+      maxRows: sheet.getMaxRows(),
+      maxColumns: sheet.getMaxColumns(),
+      lastRow,
+      lastColumn,
+      dataRows: Math.max(0, lastRow - 1),
+      headers,
+    };
+  });
+  return {
+    spreadsheetName: ss.getName(),
+    spreadsheetId: CONFIG.DB_SHEET_ID,
+    sheetCount: sheets.length,
+    sheets,
+  };
+}

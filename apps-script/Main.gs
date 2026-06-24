@@ -114,6 +114,7 @@ function doGet(e) {
                                'syncLineWebhookEndpoint',
                                'openIssues', 'reminderStatus',
                                'installDailyWorkCheckTriggers',
+                               'sheetInventory',
                                'setupOfficialDocumentMonitor',
                                'processOfficialDocumentQueue'];
         // 破壞性 actions — 需 ADMIN_TOKEN + ALLOW_DESTRUCTIVE_HTTP=YES kill switch
@@ -405,6 +406,14 @@ function doGet(e) {
           }
           case 'installDailyWorkCheckTriggers': {
             result = installDailyWorkCheckTriggers();
+            break;
+          }
+          case 'sheetInventory': {
+            result = {
+              ok: true,
+              action,
+              ...getDatabaseSheetInventory_(),
+            };
             break;
           }
           case 'setupOfficialDocumentMonitor': {
