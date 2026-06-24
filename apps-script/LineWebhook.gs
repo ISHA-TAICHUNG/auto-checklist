@@ -59,6 +59,10 @@ function dispatchLineEvent_(ev) {
   }
   const cmd = normalizeLineCommand_(text);
 
+  if (source.type === 'user' && typeof startLoadingAnimation_ === 'function') {
+    startLoadingAnimation_(userId, 10);
+  }
+
   if (requiresLineSubscriberAuth_(cmd) && !isLineSubscriberUser_(userId)) {
     return lineReply_(replyToken, buildSubscriberRegistrationFlex_());
   }
@@ -156,9 +160,9 @@ function cmdHelp_(replyToken) {
     text: [
       '📋 可用指令',
       '',
-      '• 狀態 — 今日/月檢填表進度',
+      '• 狀態 — 填表狀態、月檢提醒與每日作業完成率',
       '• 每日作業 — 同仁每日作業檢核表',
-      '• 異常 — 待處理異常清單',
+      '• 異常 — 設備檢查異常清單',
       '• 通報 — 日常異常事件通報表',
       '• 待處理 — 日常異常事件未結案清單',
       '• 事件 <事件ID> — 查詢日常事件',

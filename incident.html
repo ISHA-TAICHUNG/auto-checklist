@@ -229,22 +229,22 @@
           return '主管處理意見通知已送出。';
         }
         if (notice.reason === 'supervisor_not_found') return '找不到「' + (notice.supervisorName || '指定主管') + '」的 LINE_USER_ID，且沒有可用的 fallback 主管。請確認「訂閱者清單」與「是否為主管」。';
-        if (notice.reason === 'no_supervisor') return '沒有標記為主管的 LINE_USER_ID，請確認「訂閱者清單」或 SUPERVISOR_USER_IDS。';
+        if (notice.reason === 'no_supervisor') return '沒有標記為主管的 LINE_USER_ID，請確認「訂閱者清單」的「是否為主管」。';
         if (notice.reason === 'no_token') return 'LINE_CHANNEL_ACCESS_TOKEN 未設定，主管處理意見通知未送出。';
         return '主管處理意見通知未送出，請確認 LINE 設定。';
       }
-      if (notice.skipped) return isApproval ? '主管 LINE 通知設定目前關閉，事件已送審但未推播。' : 'LINE 群組通知設定目前關閉。';
+      if (notice.skipped) return isApproval ? '主管 LINE 通知設定目前關閉，事件已送審但未推播。' : '訂閱者 LINE 通知設定目前關閉。';
       if (notice.ok) {
         if (notice.targetMode === 'named') return '主管 LINE 通知已送出：' + (notice.supervisorName || '指定主管');
         if (notice.targetMode === 'fallback') return '主管 LINE 通知已送出，但找不到指定主管 LINE ID，已改通知已標記為主管的訂閱者 ' + (notice.targetCount || '') + ' 人。';
         return isApproval ? '主管 LINE 通知已送出。' : 'LINE 通知已送出。';
       }
       if (notice.reason === 'supervisor_not_found') return '找不到「' + (notice.supervisorName || '指定主管') + '」的 LINE_USER_ID，且沒有可用的 fallback 主管。請確認「訂閱者清單」與「是否為主管」。';
-      if (notice.reason === 'no_supervisor') return '沒有標記為主管的 LINE_USER_ID，請確認「訂閱者清單」或 SUPERVISOR_USER_IDS。';
+      if (notice.reason === 'no_supervisor') return '沒有標記為主管的 LINE_USER_ID，請確認「訂閱者清單」的「是否為主管」。';
       if (notice.reason === 'no_token') return 'LINE_CHANNEL_ACCESS_TOKEN 未設定，通知未送出。';
       return isApproval
         ? '主管 LINE 通知未送出，事件已寫入資料表，請管理員確認 LINE 設定或手動轉貼審核連結。'
-        : 'LINE 群組通知未送出，事件已寫入資料表，請管理員確認 LINE 設定。';
+        : '訂閱者 LINE 通知未送出，事件已寫入資料表，請管理員確認 LINE 設定。';
     }
 
     function makeCard(title) {

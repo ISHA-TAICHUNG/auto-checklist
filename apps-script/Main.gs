@@ -284,19 +284,19 @@ function doGet(e) {
           }
           case 'lineTargetStatus': {
             const cfg = (typeof getLineConfig_ === 'function') ? getLineConfig_() : null;
-            const targetUserCount = cfg ? Array.from(new Set(cfg.userIds || [])).length : 0;
-            const supervisorIds = (typeof getSupervisorUserIds_ === 'function') ? getSupervisorUserIds_() : (cfg ? (cfg.supervisorIds || []) : []);
+            const subscriberIds = (typeof getLineSubscriberUserIds_ === 'function') ? getLineSubscriberUserIds_() : [];
+            const legacyTargetUserCount = cfg ? Array.from(new Set(cfg.userIds || [])).length : 0;
+            const supervisorIds = (typeof getSupervisorUserIds_ === 'function') ? getSupervisorUserIds_() : [];
             const supervisorTargetCount = Array.from(new Set(supervisorIds || [])).length;
             result = {
               ok: true,
               action,
               hasLineConfig: Boolean(cfg),
-              hasGroupTarget: Boolean(cfg && cfg.groupId),
-              targetUserCount,
+              legacyHasGroupTarget: Boolean(cfg && cfg.groupId),
+              legacyTargetUserCount,
+              subscriberTargetCount: Array.from(new Set(subscriberIds || [])).length,
               supervisorTargetCount,
-              notifyMode: cfg && cfg.groupId
-                ? 'group'
-                : (targetUserCount > 1 ? 'multicast' : (targetUserCount === 1 ? 'single-user' : 'none')),
+              notifyMode: 'subscriber-list',
             };
             break;
           }

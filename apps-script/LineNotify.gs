@@ -6,16 +6,15 @@
  * 配置（在 GAS Script Properties 設定，不寫進 source code）：
  *   - LINE_CHANNEL_ACCESS_TOKEN  (必填) Channel 長期 access token
  *   - LINE_CHANNEL_SECRET        (選填) Webhook 簽章驗證用
- *   - LINE_TARGET_GROUP_ID       (推薦) 通知群組 ID（最高優先）
- *   - LINE_TARGET_USER_IDS       (備用) 逗號分隔 userId list（multicast）
- *   - SUPERVISOR_USER_IDS        (選填) 主管簽核通知專用 userId list
+ *   - 一般公告通知收件者：DB「訂閱者清單」的 LINE_USER_ID
+ *   - 主管通知收件者：DB「訂閱者清單」中「是否為主管」= 是
+ *   - LINE_TARGET_GROUP_ID / LINE_TARGET_USER_IDS 僅保留為舊設定診斷欄位，不主導公告通知
  *   - LINE_ADMIN_USER_IDS        (選填) 管理者 userId（升級通知用）
  *
  * 公開函式：
  *   - sendReminder_(category, equipments, webFrontendUrl)  取代 sendUnfilledReminder_
  *   - sendIncidentAlert_(incident)                          異常即時通報
  *   - sendApprovalRequest_(record)                           主管待簽核通知
- *   - sendCompletionAck_(record)                            填表完成回報
  *   - linePushTo_(target, messages)                         底層 push
  */
 
@@ -58,7 +57,7 @@ function getLineSubscriberActiveColumnIndex_(headers) {
 }
 
 function getLineSubscriberUserIds_() {
-  const cacheKey = 'lineSubscriberUserIds:v1';
+  const cacheKey = 'lineSubscriberSheetUserIds:v2';
   try {
     const cached = CacheService.getScriptCache().get(cacheKey);
     if (cached) {
@@ -88,13 +87,9 @@ function getLineSubscriberUserIds_() {
       }
     }
   } catch (err) {
-    Logger.log('[LINE] 讀取訂閱者清單失敗，改用 Script Properties 名單: ' + err);
+    Logger.log('[LINE] 讀取訂閱者清單失敗: ' + err);
   }
 
-  const cfg = getLineConfig_();
-  (cfg.userIds || []).forEach(id => ids.push(id));
-  (cfg.supervisorIds || []).forEach(id => ids.push(id));
-  (cfg.adminIds || []).forEach(id => ids.push(id));
   const uniqueIds = Array.from(new Set(ids.map(id => String(id || '').trim()).filter(Boolean)));
   try {
     CacheService.getScriptCache().put(cacheKey, JSON.stringify(uniqueIds), 120);
@@ -111,9 +106,7 @@ function isLineSubscriberUser_(userId) {
 }
 
 function getSupervisorUserIds_() {
-  const fromSheet = getSupervisorUserIdsFromSheet_();
-  if (fromSheet.length > 0) return fromSheet;
-  return getLineConfig_().supervisorIds;
+  return getSupervisorUserIdsFromSheet_();
 }
 
 function getSupervisorUserIdsFromSheet_() {
@@ -134,7 +127,7 @@ function getSupervisorUserIdsFromSheet_() {
     });
     return Array.from(new Set(ids));
   } catch (err) {
-    Logger.log('[LINE] 讀取訂閱者清單主管欄位失敗，改用 SUPERVISOR_USER_IDS: ' + err);
+    Logger.log('[LINE] 讀取訂閱者清單主管欄位失敗: ' + err);
     return [];
   }
 }
@@ -208,8 +201,10 @@ function linePushToSupervisors_(messages) {
 }
 
 /**
- * 底層 push：依設定優先級選 target
- *   群組 > multicast(多 userId) > 單 userId
+ * 一般公告型 push：由 DB「訂閱者清單」控管
+ *   - 有「是否訂閱」/「是否啟用」/「啟用」欄時，需為啟用值
+ *   - 沒有啟用欄時，有 LINE_USER_ID 的列都視為訂閱者
+ *   - 不再使用 LINE_TARGET_GROUP_ID / LINE_TARGET_USER_IDS 決定公告收件者
  */
 function linePush_(messages) {
   const cfg = getLineConfig_();
@@ -219,20 +214,17 @@ function linePush_(messages) {
   }
   if (!Array.isArray(messages)) messages = [messages];
 
-  // 優先群組
-  if (cfg.groupId) {
-    return linePushTo_(cfg.groupId, messages, 'push');
+  const subscriberIds = getLineSubscriberUserIds_();
+  if (subscriberIds.length > 1) {
+    const res = lineMulticast_(subscriberIds, messages);
+    return Object.assign({ targetMode: 'subscriber-list', targetCount: subscriberIds.length }, res);
   }
-  // 多 userId → multicast
-  if (cfg.userIds.length > 1) {
-    return lineMulticast_(cfg.userIds, messages);
+  if (subscriberIds.length === 1) {
+    const res = linePushTo_(subscriberIds[0], messages, 'push');
+    return Object.assign({ targetMode: 'subscriber-list', targetCount: 1 }, res);
   }
-  // 單一 userId
-  if (cfg.userIds.length === 1) {
-    return linePushTo_(cfg.userIds[0], messages, 'push');
-  }
-  Logger.log('[LINE] 未設定任何 target (group / user)，略過 push');
-  return { ok: false, reason: 'no_target' };
+  Logger.log('[LINE] 訂閱者清單沒有可推播的 LINE_USER_ID，略過公告通知');
+  return { ok: false, reason: 'no_subscribers', targetMode: 'subscriber-list', targetCount: 0 };
 }
 
 /**
@@ -261,6 +253,7 @@ function linePushTo_(to, messages, _action) {
 /**
  * 觸發「正在輸入...」loading 動畫
  * 僅支援 1:1 私訊（group / room 不支援）
+ * 不計入 LINE Messaging API 訊息額度；LINE API 支援 5-60 秒，本系統 UX 上限固定 20 秒。
  * https://developers.line.biz/en/reference/messaging-api/#display-a-loading-indicator
  */
 function startLoadingAnimation_(chatId, seconds) {
@@ -269,11 +262,12 @@ function startLoadingAnimation_(chatId, seconds) {
   // group/room ID 開頭非 U，不支援 loading
   if (!chatId.startsWith('U')) return;
   try {
+    const loadingSeconds = Math.min(20, Math.max(5, seconds || 10));
     UrlFetchApp.fetch(`${LINE_API}/chat/loading/start`, {
       method: 'post',
       contentType: 'application/json',
       headers: { 'Authorization': 'Bearer ' + cfg.token },
-      payload: JSON.stringify({ chatId, loadingSeconds: Math.min(60, Math.max(5, seconds || 10)) }),
+      payload: JSON.stringify({ chatId, loadingSeconds }),
       muteHttpExceptions: true,
     });
   } catch (e) {
@@ -287,13 +281,13 @@ function startLoadingAnimation_(chatId, seconds) {
 function defaultQuickReply_() {
   return {
     items: [
-      { type: 'action', action: { type: 'message', label: '📊 狀態',    text: '狀態' } },
-      { type: 'action', action: { type: 'message', label: '🗓 每日作業', text: '每日作業' } },
-      { type: 'action', action: { type: 'message', label: '🚨 異常',    text: '異常' } },
-      { type: 'action', action: { type: 'message', label: '📝 通報',    text: '通報' } },
-      { type: 'action', action: { type: 'message', label: '📌 待處理',  text: '待處理' } },
-      { type: 'action', action: { type: 'message', label: '📷 QR 選單', text: 'QR選單' } },
-      { type: 'action', action: { type: 'message', label: '❓ 幫助',    text: '幫助' } },
+      { type: 'action', action: { type: 'message', label: '📊 填表狀態',   text: '狀態' } },
+      { type: 'action', action: { type: 'message', label: '🗓 每日作業',   text: '每日作業' } },
+      { type: 'action', action: { type: 'message', label: '🚨 設備異常',   text: '異常' } },
+      { type: 'action', action: { type: 'message', label: '📝 日常通報',   text: '通報' } },
+      { type: 'action', action: { type: 'message', label: '📌 日常待處理', text: '待處理' } },
+      { type: 'action', action: { type: 'message', label: '📷 QR選單',     text: 'QR選單' } },
+      { type: 'action', action: { type: 'message', label: '❓ 幫助',       text: '幫助' } },
     ],
   };
 }
@@ -428,7 +422,7 @@ function lineMulticast_(userIds, messages) {
  */
 function lineReply_(replyToken, messages) {
   const cfg = getLineConfig_();
-  if (!Array.isArray(messages)) messages = [messages];
+  messages = withQuickReply_(messages);
   const url = `${LINE_API}/message/reply`;
   const payload = { replyToken, messages };
   const res = UrlFetchApp.fetch(url, {
