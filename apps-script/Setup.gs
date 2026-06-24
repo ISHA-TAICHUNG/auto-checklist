@@ -1137,6 +1137,7 @@ function applyChineseSettingsAndDropdowns() {
     '訂閱者清單': [
       { col: '是否為主管', options: ['是', '否'],       migrate: { TRUE: '是', FALSE: '否' } },
       { col: '是否為同仁', options: ['是', '否'],       migrate: { TRUE: '是', FALSE: '否' } },
+      { col: '公文登記桌', options: ['是', '否'],       migrate: { TRUE: '是', FALSE: '否' } },
     ],
     '每日作業檢核': [
       { col: '15天後課程是否報備', options: DAILY_WORK_CHECK_OPTIONS || ['是', '否', '不適用'], strict: true },

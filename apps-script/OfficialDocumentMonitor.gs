@@ -267,6 +267,8 @@ function processOfficialDocumentQueue_(payload) {
     // 公文登記桌:除通知各承辦人外,另把「全部待發文彙總」推給被指定為登記桌的同仁(oversight)
     // 安全:整個函式由 Cloud Run 於 16:30/17:00 觸發;目前 NOTIFY/DRY_RUN/Scheduler 仍 gated,不會對外發
     let deskNotified = 0;
+    let deskFailed = 0;
+    const deskFailedPeople = [];
     if (pendingCount > 0) {
       const allRecords = [];
       Object.keys(groups).forEach(gname => {
@@ -285,13 +287,21 @@ function processOfficialDocumentQueue_(payload) {
         });
         deskTargets.forEach(t => {
           const r = linePushTo_(t.userId, withQuickReply_(deskFlex));
-          if (r && r.ok) deskNotified++;
+          if (r && r.ok) {
+            deskNotified++;
+          } else {
+            deskFailed++;
+            deskFailedPeople.push({
+              name: t.name || '未命名登記桌',
+              code: r && r.code ? r.code : '',
+            });
+          }
         });
       }
     }
 
     SpreadsheetApp.flush();
-    return { ok: true, date: dateStr, slot, pendingCount, notifiedPeople, noLinePeople, failedPeople, deskNotified };
+    return { ok: true, date: dateStr, slot, pendingCount, notifiedPeople, noLinePeople, failedPeople, deskNotified, deskFailed, deskFailedPeople };
   } finally {
     lock.releaseLock();
   }
