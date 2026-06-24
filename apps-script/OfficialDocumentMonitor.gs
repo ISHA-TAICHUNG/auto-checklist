@@ -264,11 +264,59 @@ function processOfficialDocumentQueue_(payload) {
       }
     });
 
+    // 公文登記桌:除通知各承辦人外,另把「全部待發文彙總」推給被指定為登記桌的同仁(oversight)
+    // 安全:整個函式由 Cloud Run 於 16:30/17:00 觸發;目前 NOTIFY/DRY_RUN/Scheduler 仍 gated,不會對外發
+    let deskNotified = 0;
+    if (pendingCount > 0) {
+      const allRecords = [];
+      Object.keys(groups).forEach(gname => {
+        groups[gname].rows.forEach(item => allRecords.push(rowToOfficialDocumentRecord_(item.row, headers)));
+      });
+      const deskTargets = getOfficialDocumentRegistryDeskTargets_();
+      if (deskTargets.length > 0 && allRecords.length > 0) {
+        const deskFlex = buildOfficialDocumentListFlex_({
+          title: '📨 公文待發文彙總（登記桌）',
+          altPrefix: '📨 公文待發文彙總',
+          color: '#1A73E8',
+          date: dateStr,
+          slot: slot,
+          records: allRecords,
+          message: '本時段共 ' + allRecords.length + ' 件待發文,請協助追蹤。',
+        });
+        deskTargets.forEach(t => {
+          const r = linePushTo_(t.userId, withQuickReply_(deskFlex));
+          if (r && r.ok) deskNotified++;
+        });
+      }
+    }
+
     SpreadsheetApp.flush();
-    return { ok: true, date: dateStr, slot, pendingCount, notifiedPeople, noLinePeople, failedPeople };
+    return { ok: true, date: dateStr, slot, pendingCount, notifiedPeople, noLinePeople, failedPeople, deskNotified };
   } finally {
     lock.releaseLock();
   }
+}
+
+function getOfficialDocumentRegistryDeskTargets_() {
+  const ss = SpreadsheetApp.openById(CONFIG.DB_SHEET_ID);
+  const sheet = (typeof getLineSubscriberSheet_ === 'function') ? getLineSubscriberSheet_(ss) : null;
+  if (!sheet || sheet.getLastRow() < 2) return [];
+  const data = sheet.getDataRange().getValues();
+  const headers = data[0].map(h => String(h || '').trim());
+  const nameCol = headers.indexOf('姓名');
+  const idCol = headers.indexOf('LINE_USER_ID');
+  const deskCol = headers.indexOf('公文登記桌');
+  if (idCol < 0 || deskCol < 0) return [];  // 欄位不存在 → 視為無登記桌(安全,不推播)
+  const seen = {};
+  const targets = [];
+  data.slice(1).forEach(row => {
+    const userId = String(row[idCol] || '').trim();
+    if (!userId || !isActiveValue_(row[deskCol])) return;
+    if (seen[userId]) return;
+    seen[userId] = true;
+    targets.push({ name: nameCol >= 0 ? String(row[nameCol] || '').trim() : '', userId: userId });
+  });
+  return targets;
 }
 
 function findOfficialDocumentStaffLineTarget_(handlerName, unit) {

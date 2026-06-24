@@ -456,7 +456,7 @@ function setupSubscriberSheet_(ss) {
     sheet = legacy;
   }
   if (!sheet) {
-    setupSheet_(ss, '訂閱者清單', ['姓名', 'LINE_USER_ID', '是否為主管', '是否為同仁', '備註'], []);
+    setupSheet_(ss, '訂閱者清單', ['姓名', 'LINE_USER_ID', '是否為主管', '是否為同仁', '公文登記桌', '備註'], []);
     sheet = ss.getSheetByName('訂閱者清單');
   }
   ensureSubscriberSheetHeaders_(sheet);
@@ -473,7 +473,7 @@ function ensureSubscriberSheetHeaders_(sheet) {
     headers[legacyActiveCol] = '是否為主管';
   }
 
-  ['姓名', 'LINE_USER_ID', '是否為主管', '是否為同仁', '備註'].forEach(name => {
+  ['姓名', 'LINE_USER_ID', '是否為主管', '是否為同仁', '公文登記桌', '備註'].forEach(name => {
     if (headers.indexOf(name) >= 0) return;
     sheet.getRange(1, sheet.getLastColumn() + 1).setValue(name);
     headers.push(name);
