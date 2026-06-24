@@ -16,7 +16,7 @@ function getVenueUsage_(equipment, date) {
   const tabName = equipment.venueSheetTab || CONFIG.VENUE_SHEET_DEFAULT_TAB;
 
   const ss = SpreadsheetApp.openById(venueId);
-  const sheet = ss.getSheetByName(tabName);
+  const sheet = getVenueSheetByRef_(ss, tabName);
   if (!sheet) {
     Logger.log(`場地表找不到分頁：${tabName}`);
     return { used: false, content: '', reason: '分頁不存在' };
@@ -94,6 +94,20 @@ function getVenueUsage_(equipment, date) {
     }
   }
   return { used: false, content: '', reason: '當月找不到該日' };
+}
+
+function getVenueSheetByRef_(ss, tabRef) {
+  const ref = String(tabRef || '').trim();
+  if (!ref) return null;
+
+  const byName = ss.getSheetByName(ref);
+  if (byName) return byName;
+
+  const gidMatch = ref.match(/^(?:gid:)?(\d+)$/i);
+  if (!gidMatch) return null;
+
+  const gid = Number(gidMatch[1]);
+  return ss.getSheets().find(sheet => sheet.getSheetId() === gid) || null;
 }
 
 /**

@@ -434,11 +434,21 @@ function hasMonthlyRecordInCategory_(category, date) {
 
   const data = sheet.getDataRange().getValues();
   const headers = data[0];
-  const idx = name => headers.indexOf(name);
+  const dateCol = headers.indexOf('檢查日期');
+  const typeCol = headers.indexOf('表單類型');
+  const categoryCol = headers.indexOf('設備類別');
+  const missing = [];
+  if (dateCol < 0) missing.push('檢查日期');
+  if (typeCol < 0) missing.push('表單類型');
+  if (categoryCol < 0) missing.push('設備類別');
+  if (missing.length) {
+    Logger.log('填報紀錄缺欄位，無法判斷月檢是否已填：' + missing.join(', '));
+    return false;
+  }
   const target = dateParts_(date);
 
   for (let i = 1; i < data.length; i++) {
-    let cellDate = data[i][idx('檢查日期')];
+    let cellDate = data[i][dateCol];
     if (!(cellDate instanceof Date)) {
       const s = String(cellDate || '').trim();
       if (!s) continue;
@@ -448,8 +458,8 @@ function hasMonthlyRecordInCategory_(category, date) {
     if (
       parts.y === target.y &&
       parts.m === target.m &&
-      data[i][idx('表單類型')] === '每月' &&
-      data[i][idx('設備類別')] === category
+      data[i][typeCol] === '每月' &&
+      data[i][categoryCol] === category
     ) {
       return true;
     }

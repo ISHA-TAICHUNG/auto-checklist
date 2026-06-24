@@ -19,6 +19,10 @@ function getEquipmentById_(equipmentId) {
   const data = sheet.getDataRange().getValues();
   const headers = data[0];
   const idx = name => headers.indexOf(name);
+  const opt = name => {
+    const i = headers.indexOf(name);
+    return i >= 0 ? i : -1;
+  };
 
   for (let i = 1; i < data.length; i++) {
     if (data[i][idx('設備代號')] === equipmentId) {
@@ -32,8 +36,61 @@ function getEquipmentById_(equipmentId) {
         category: data[i][idx('設備類別')],
         location: data[i][idx('所在位置')],
         venueSheetTab: data[i][idx('場地表分頁')],
+        dailyTemplateId: opt('日檢表單ID') >= 0 ? data[i][opt('日檢表單ID')] : '',
+        monthlyTemplateId: opt('月檢表單ID') >= 0 ? data[i][opt('月檢表單ID')] : '',
         active: isActive,
       };
+    }
+  }
+  return null;
+}
+
+function getTemplateOverrideIdForEquipment_(equipment, formType) {
+  if (!equipment) return '';
+  const key = formType === 'daily' ? 'dailyTemplateId'
+            : formType === 'monthly' ? 'monthlyTemplateId' : '';
+  return key ? String(equipment[key] || '').trim() : '';
+}
+
+function buildTemplateMetaFromRow_(headers, row) {
+  const idx = n => headers.indexOf(n);
+  const ropIdx = findCol_(headers, '結果選項', 'resultOptions');
+  const ropRaw = ropIdx >= 0 ? String(row[ropIdx] || '') : '';
+  const schIdx = findCol_(headers, '月檢樣式', 'monthlySchema');
+  const schRaw = schIdx >= 0 ? String(row[schIdx] || '') : '';
+  return {
+    templateId: row[idx('表單ID')],
+    templateName: row[idx('表單名稱')],
+    category: row[idx('設備類別')],
+    cycle: row[idx('週期')],
+    legalBasis: row[idx('法規依據')],
+    rule: row[idx('填寫規則')],
+    resultOptions: ropRaw.split(',').map(s => s.trim()).filter(Boolean),
+    monthlySchema: normalizeMonthlySchema_(schRaw),
+  };
+}
+
+function findTemplateMetaForEquipment_(headers, data, category, formType, equipment) {
+  const idx = name => headers.indexOf(name);
+  const cycleMap = { daily: '每日', monthly: '每月' };
+  const targetCycle = cycleMap[formType];
+  const overrideId = getTemplateOverrideIdForEquipment_(equipment, formType);
+
+  ['表單ID', '啟用', '設備類別', '週期'].forEach(col => {
+    if (idx(col) < 0) throw new Error('檢查表模板缺必要欄位：' + col + '（請執行 initializeDatabase 補欄）');
+  });
+
+  for (let i = 1; i < data.length; i++) {
+    if (!isActiveValue_(data[i][idx('啟用')])) continue;
+    if (overrideId) {
+      if (String(data[i][idx('表單ID')] || '').trim() === overrideId &&
+          data[i][idx('週期')] === targetCycle) {
+        return buildTemplateMetaFromRow_(headers, data[i]);
+      }
+      continue;
+    }
+    if (data[i][idx('設備類別')] === category && data[i][idx('週期')] === targetCycle) {
+      return buildTemplateMetaFromRow_(headers, data[i]);
     }
   }
   return null;
@@ -192,50 +249,13 @@ function getFormMeta_(formType, equipmentId) {
 
   const ss = SpreadsheetApp.openById(CONFIG.DB_SHEET_ID);
 
-  // 找對應的模板：同一設備類別 + 同一週期
+  // 找對應的模板：優先依設備指定表單ID；未指定才回到同一設備類別 + 同一週期。
   const tplSheet = ss.getSheetByName('檢查表模板');
   const tplData = tplSheet.getDataRange().getValues();
   const tplHeaders = tplData[0];
-  const tplIdx = name => tplHeaders.indexOf(name);
-
-  const cycleMap = { daily: '每日', monthly: '每月' };
-  const targetCycle = cycleMap[formType];
-
-  // 修 P1.2: 必要欄位缺失時 throw 而非靜默 skip 所有列
-  ['啟用', '設備類別', '週期'].forEach(col => {
-    if (tplIdx(col) < 0) throw new Error('檢查表模板缺必要欄位：' + col + '（請執行 initializeDatabase 補欄）');
-  });
-
-  let template = null;
-  for (let i = 1; i < tplData.length; i++) {
-    if (
-      tplData[i][tplIdx('設備類別')] === equipment.category &&
-      tplData[i][tplIdx('週期')] === targetCycle &&
-      isActiveValue_(tplData[i][tplIdx('啟用')])
-    ) {
-      // 結果選項：comma-separated 結果代號（依各機具表單不同）
-      // 用 findCol_ 支援中文（結果選項）/ 英文（resultOptions）雙向相容
-      const ropIdx = findCol_(tplHeaders, '結果選項', 'resultOptions');
-      const ropRaw = ropIdx >= 0 ? String(tplData[i][ropIdx] || '') : '';
-      const resultOptions = ropRaw.split(',').map(s => s.trim()).filter(Boolean);
-
-      const schIdx = findCol_(tplHeaders, '月檢樣式', 'monthlySchema');
-      const schRaw = schIdx >= 0 ? String(tplData[i][schIdx] || '') : '';
-
-      template = {
-        templateId: tplData[i][tplIdx('表單ID')],
-        templateName: tplData[i][tplIdx('表單名稱')],
-        category: tplData[i][tplIdx('設備類別')],
-        cycle: tplData[i][tplIdx('週期')],
-        legalBasis: tplData[i][tplIdx('法規依據')],
-        rule: tplData[i][tplIdx('填寫規則')],
-        resultOptions,                                                          // []  → fallback by formType
-        monthlySchema: normalizeMonthlySchema_(schRaw),                         // 內部正規化為 'simple' / 'crane_full' / ''
-      };
-      break;
-    }
-  }
-  if (!template) throw new Error(`找不到模板：${equipment.category} - ${targetCycle}`);
+  const template = findTemplateMetaForEquipment_(tplHeaders, tplData, equipment.category, formType, equipment);
+  const cycleLabel = formType === 'daily' ? '每日' : (formType === 'monthly' ? '每月' : formType);
+  if (!template) throw new Error(`找不到模板：${equipment.category} - ${cycleLabel}`);
 
   // 抓檢查項目
   const itemSheet = ss.getSheetByName('檢查項目');

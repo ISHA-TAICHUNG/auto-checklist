@@ -48,6 +48,68 @@ function getLineSupervisorFlagColumnIndex_(headers) {
   return headers.indexOf('是否啟用');
 }
 
+function getLineSubscriberActiveColumnIndex_(headers) {
+  const candidates = ['是否訂閱', '是否啟用', '啟用'];
+  for (const name of candidates) {
+    const i = headers.indexOf(name);
+    if (i >= 0) return i;
+  }
+  return -1;
+}
+
+function getLineSubscriberUserIds_() {
+  const cacheKey = 'lineSubscriberUserIds:v1';
+  try {
+    const cached = CacheService.getScriptCache().get(cacheKey);
+    if (cached) {
+      const parsed = JSON.parse(cached);
+      if (Array.isArray(parsed)) return parsed;
+    }
+  } catch (err) {
+    Logger.log('[LINE] 訂閱者快取讀取失敗，改讀 DB: ' + err);
+  }
+
+  const ids = [];
+  try {
+    if (CONFIG.DB_SHEET_ID && !CONFIG.DB_SHEET_ID.startsWith('REPLACE_')) {
+      const sheet = getLineSubscriberSheet_(SpreadsheetApp.openById(CONFIG.DB_SHEET_ID));
+      if (sheet && sheet.getLastRow() >= 2) {
+        const data = sheet.getDataRange().getValues();
+        const headers = data[0].map(h => String(h || '').trim());
+        const idCol = headers.indexOf('LINE_USER_ID');
+        const activeCol = getLineSubscriberActiveColumnIndex_(headers);
+        if (idCol >= 0) {
+          data.slice(1).forEach(row => {
+            const id = String(row[idCol] || '').trim();
+            const active = activeCol < 0 ? true : isActiveValue_(row[activeCol]);
+            if (id && active) ids.push(id);
+          });
+        }
+      }
+    }
+  } catch (err) {
+    Logger.log('[LINE] 讀取訂閱者清單失敗，改用 Script Properties 名單: ' + err);
+  }
+
+  const cfg = getLineConfig_();
+  (cfg.userIds || []).forEach(id => ids.push(id));
+  (cfg.supervisorIds || []).forEach(id => ids.push(id));
+  (cfg.adminIds || []).forEach(id => ids.push(id));
+  const uniqueIds = Array.from(new Set(ids.map(id => String(id || '').trim()).filter(Boolean)));
+  try {
+    CacheService.getScriptCache().put(cacheKey, JSON.stringify(uniqueIds), 120);
+  } catch (err) {
+    Logger.log('[LINE] 訂閱者快取寫入失敗: ' + err);
+  }
+  return uniqueIds;
+}
+
+function isLineSubscriberUser_(userId) {
+  const id = String(userId || '').trim();
+  if (!id) return false;
+  return getLineSubscriberUserIds_().indexOf(id) >= 0;
+}
+
 function getSupervisorUserIds_() {
   const fromSheet = getSupervisorUserIdsFromSheet_();
   if (fromSheet.length > 0) return fromSheet;
@@ -226,6 +288,7 @@ function defaultQuickReply_() {
   return {
     items: [
       { type: 'action', action: { type: 'message', label: '📊 狀態',    text: '狀態' } },
+      { type: 'action', action: { type: 'message', label: '🗓 每日作業', text: '每日作業' } },
       { type: 'action', action: { type: 'message', label: '🚨 異常',    text: '異常' } },
       { type: 'action', action: { type: 'message', label: '📝 通報',    text: '通報' } },
       { type: 'action', action: { type: 'message', label: '📌 待處理',  text: '待處理' } },
@@ -238,7 +301,7 @@ function defaultQuickReply_() {
 /**
  * 設備 QR 選單按鈕（點「QR 選單」後回的子按鈕）
  *
- * LINE Quick Reply 最多 13 個 items；目前 9 個既有入口 + 3 個月檢入口 + 回主選單剛好滿。
+ * LINE Quick Reply 最多 13 個 items；設備 QR 選單需控制在上限內。
  */
 function equipmentQuickReply_() {
   return {
@@ -255,8 +318,71 @@ function equipmentQuickReply_() {
       { type: 'action', action: { type: 'message', label: '📋 龍井月檢',   text: 'QR CLASSROOM-LJ-MEAS-PPE' } },
       { type: 'action', action: { type: 'message', label: '📋 復興月檢',   text: 'QR CLASSROOM-FX-MEAS-PPE' } },
       { type: 'action', action: { type: 'message', label: '📋 忠明月檢',   text: 'QR CLASSROOM-ZM-MEAS-PPE' } },
-      { type: 'action', action: { type: 'message', label: '↩ 回主選單',    text: '幫助' } },
+      { type: 'action', action: { type: 'message', label: '🛞 高空車',      text: 'QR AWP-LJ-001' } },
     ],
+  };
+}
+
+function qrMenuButton_(label, text) {
+  return {
+    type: 'button',
+    style: 'secondary',
+    height: 'sm',
+    action: { type: 'message', label, text },
+  };
+}
+
+function buildQrMenuBubble_(title, subtitle, color, buttons) {
+  return {
+    type: 'bubble',
+    header: {
+      type: 'box',
+      layout: 'vertical',
+      backgroundColor: color,
+      paddingAll: 'md',
+      contents: [
+        { type: 'text', text: title, color: '#ffffff', weight: 'bold', size: 'lg', wrap: true },
+        { type: 'text', text: subtitle, color: '#E8F0FE', size: 'xs', wrap: true },
+      ],
+    },
+    body: {
+      type: 'box',
+      layout: 'vertical',
+      spacing: 'sm',
+      contents: buttons,
+    },
+  };
+}
+
+function buildQrMenuFlex_() {
+  return {
+    type: 'flex',
+    altText: '📷 QR 選單',
+    contents: {
+      type: 'carousel',
+      contents: [
+        buildQrMenuBubble_('場地/機具日檢', '場地歸場地：作業前檢點表', '#1a73e8', [
+          qrMenuButton_('天車', 'QR CRANE-LJ-001'),
+          qrMenuButton_('堆高機 A', 'QR FORK-LJ-A'),
+          qrMenuButton_('堆高機 B', 'QR FORK-LJ-B'),
+          qrMenuButton_('堆高機 C', 'QR FORK-LJ-C'),
+          qrMenuButton_('堆高機 D', 'QR FORK-LJ-D'),
+          qrMenuButton_('堆高機 E', 'QR FORK-LJ-E'),
+          qrMenuButton_('堆高機 F', 'QR FORK-LJ-F'),
+          qrMenuButton_('車載高空車', 'QR AWP-LJ-001'),
+          qrMenuButton_('自走高空車', 'QR AWP-LJ-SP-001'),
+        ]),
+        buildQrMenuBubble_('場地防護具日檢', '防護具歸防護具：場地用防護具', '#5F6368', [
+          qrMenuButton_('起重機防護具', 'QR VENUE-CRANE'),
+          qrMenuButton_('堆高機防護具', 'QR VENUE-FORK'),
+        ]),
+        buildQrMenuBubble_('教室防護具月檢', '量測設備與個人防護具月檢', '#137333', [
+          qrMenuButton_('龍井教室月檢', 'QR CLASSROOM-LJ-MEAS-PPE'),
+          qrMenuButton_('復興教室月檢', 'QR CLASSROOM-FX-MEAS-PPE'),
+          qrMenuButton_('忠明教室月檢', 'QR CLASSROOM-ZM-MEAS-PPE'),
+        ]),
+      ],
+    },
   };
 }
 
@@ -489,6 +615,14 @@ function normalizeChecklistPendingRow_(category, result) {
   };
 }
 
+function checklistStatusGroupWeight_(category) {
+  const text = String(category || '');
+  if (text.indexOf('防護具') >= 0 || text.indexOf('量測設備') >= 0 || text.indexOf('SCBA') >= 0) {
+    return 20;
+  }
+  return 10;
+}
+
 function checklistStatusCategorySummary_(results) {
   const byCat = {};
   visibleChecklistStatusResults_(results).forEach(r => {
@@ -496,7 +630,11 @@ function checklistStatusCategorySummary_(results) {
     byCat[cat] = byCat[cat] || [];
     byCat[cat].push(r);
   });
-  return Object.keys(byCat).map(cat => {
+  return Object.keys(byCat).sort((a, b) => {
+    const weightDiff = checklistStatusGroupWeight_(a) - checklistStatusGroupWeight_(b);
+    if (weightDiff !== 0) return weightDiff;
+    return String(a).localeCompare(String(b), 'zh-Hant');
+  }).map(cat => {
     const items = byCat[cat];
     const pendingSource = items.find(r => !r.alreadyFilled && !isFilledChecklistStatus_(r));
     const pending = pendingSource ? [normalizeChecklistPendingRow_(cat, pendingSource)] : [];
@@ -583,6 +721,189 @@ function buildChecklistStatusFlex_(results, opts) {
             ...pendingRows,
             ...morePending,
           ] : []),
+        ],
+      },
+    },
+  };
+}
+
+function buildDailyWorkStatusFlex_(status) {
+  status = status || {};
+  const allDone = status.isBusinessDay && status.total > 0 && status.pendingCount === 0;
+  const nonBusinessDay = !status.isBusinessDay;
+  const noStaff = status.isBusinessDay && status.total <= 0;
+  const color = nonBusinessDay ? '#5f6368' : allDone ? '#137333' : '#F29900';
+  const title = nonBusinessDay
+    ? '今日非上班日，免填每日作業檢核'
+    : noStaff
+      ? '尚未設定同仁名單'
+      : allDone
+        ? '✅ 今日同仁皆已完成'
+        : `⚠ 尚有 ${status.pendingCount} 位未完成`;
+  const pendingNames = (status.pendingNames || []).slice(0, 10);
+  const more = (status.pendingNames || []).length > 10 ? [{
+    type: 'text',
+    text: `... 還有 ${(status.pendingNames || []).length - 10} 位`,
+    size: 'xs',
+    color: '#8a4b00',
+    margin: 'sm',
+  }] : [];
+  const body = [
+    { type: 'text', text: title, size: 'md', color, weight: 'bold', wrap: true },
+    { type: 'separator', margin: 'md' },
+    {
+      type: 'box',
+      layout: 'baseline',
+      spacing: 'sm',
+      margin: 'md',
+      contents: [
+        { type: 'text', text: '完成狀態', flex: 4, size: 'sm', color: '#5f6368' },
+        { type: 'text', text: `${status.completedCount || 0}/${status.total || 0} 完成`, flex: 5, size: 'sm', color, weight: 'bold', align: 'end' },
+      ],
+    },
+  ];
+  if (status.currentUserIsStaff) {
+    body.push({
+      type: 'box',
+      layout: 'baseline',
+      spacing: 'sm',
+      margin: 'sm',
+      contents: [
+        { type: 'text', text: '你的狀態', flex: 4, size: 'sm', color: '#5f6368' },
+        { type: 'text', text: status.currentUserCompleted ? '已完成' : '尚未完成', flex: 5, size: 'sm', color: status.currentUserCompleted ? '#137333' : '#B06000', weight: 'bold', align: 'end' },
+      ],
+    });
+  }
+  if (!nonBusinessDay && pendingNames.length) {
+    body.push({ type: 'text', text: '尚未完成', size: 'sm', color: '#666666', margin: 'md' });
+    pendingNames.forEach(name => body.push({
+      type: 'text',
+      text: `⚠ ${trimLineText_(name, 30)}`,
+      size: 'xs',
+      color: '#B06000',
+      wrap: true,
+    }));
+    more.forEach(item => body.push(item));
+  }
+  if (!nonBusinessDay && status.reminders) {
+    const r1630 = status.reminders.reminder1630 ? '16:30 已提醒' : '16:30 尚未提醒';
+    const r1700 = status.reminders.reminder1700 ? '17:00 已提醒' : '17:00 尚未提醒';
+    body.push({ type: 'text', text: `${r1630} / ${r1700}`, size: 'xs', color: '#5f6368', margin: 'md', wrap: true });
+  }
+  const url = (typeof buildDailyWorkCheckPublicUrl_ === 'function') ? buildDailyWorkCheckPublicUrl_() : '';
+  return {
+    type: 'flex',
+    altText: `🗓 ${status.dateLabel || ''} 每日作業填寫 ${status.completedCount || 0}/${status.total || 0}`,
+    contents: {
+      type: 'bubble',
+      header: {
+        type: 'box',
+        layout: 'vertical',
+        backgroundColor: color,
+        paddingAll: 'md',
+        contents: [
+          { type: 'text', text: '🗓 每日作業填寫', color: '#ffffff', weight: 'bold', size: 'lg' },
+          { type: 'text', text: status.dateLabel || formatROCDate_(new Date()), color: '#ffffff', size: 'sm' },
+        ],
+      },
+      body: {
+        type: 'box',
+        layout: 'vertical',
+        spacing: 'sm',
+        contents: body,
+      },
+      footer: url ? {
+        type: 'box',
+        layout: 'vertical',
+        contents: [
+          { type: 'button', style: allDone ? 'secondary' : 'primary', height: 'sm', action: { type: 'uri', label: '填寫每日作業檢核', uri: url } },
+        ],
+      } : undefined,
+    },
+  };
+}
+
+function buildDailyWorkReminderFlex_(status, slot) {
+  const urgent = slot === '17:00';
+  const color = urgent ? '#B3261E' : '#F29900';
+  const title = urgent ? '每日作業檢核逾時未完成' : '每日作業檢核未完成';
+  const pendingNames = (status.pendingNames || []).slice(0, 12);
+  const body = [
+    { type: 'text', text: title, size: 'md', color, weight: 'bold', wrap: true },
+    { type: 'separator', margin: 'md' },
+    {
+      type: 'box',
+      layout: 'baseline',
+      spacing: 'sm',
+      margin: 'md',
+      contents: [
+        { type: 'text', text: '完成狀態', flex: 4, size: 'sm', color: '#5f6368' },
+        { type: 'text', text: `${status.completedCount || 0}/${status.total || 0} 完成`, flex: 5, size: 'sm', color, weight: 'bold', align: 'end' },
+      ],
+    },
+    { type: 'text', text: urgent ? '仍未填寫' : '尚未填寫', size: 'sm', color: '#666666', margin: 'md' },
+  ];
+  pendingNames.forEach(name => body.push({ type: 'text', text: `⚠ ${trimLineText_(name, 30)}`, size: 'sm', color: '#B06000', wrap: true }));
+  if ((status.pendingNames || []).length > 12) {
+    body.push({ type: 'text', text: `... 還有 ${(status.pendingNames || []).length - 12} 位`, size: 'xs', color: '#8a4b00' });
+  }
+  body.push({ type: 'text', text: '請協助確認是否需補填。', size: 'xs', color: '#5f6368', margin: 'md', wrap: true });
+  return {
+    type: 'flex',
+    altText: `${title} ${status.completedCount || 0}/${status.total || 0}`,
+    contents: {
+      type: 'bubble',
+      header: {
+        type: 'box',
+        layout: 'vertical',
+        backgroundColor: color,
+        paddingAll: 'md',
+        contents: [
+          { type: 'text', text: '🗓 每日作業檢核', color: '#ffffff', weight: 'bold', size: 'lg' },
+          { type: 'text', text: `${status.dateLabel || ''} ${slot || ''}`, color: '#ffffff', size: 'sm' },
+        ],
+      },
+      body: { type: 'box', layout: 'vertical', spacing: 'sm', contents: body },
+      footer: {
+        type: 'box',
+        layout: 'vertical',
+        contents: [
+          { type: 'button', style: 'primary', height: 'sm', action: { type: 'message', label: '查看填寫狀態', text: '狀態' } },
+        ],
+      },
+    },
+  };
+}
+
+function buildDailyWorkCheckEntryFlex_(url) {
+  return {
+    type: 'flex',
+    altText: '🗓 每日作業檢核',
+    contents: {
+      type: 'bubble',
+      header: {
+        type: 'box',
+        layout: 'vertical',
+        backgroundColor: '#0F766E',
+        paddingAll: 'md',
+        contents: [
+          { type: 'text', text: '🗓 每日作業檢核', color: '#ffffff', weight: 'bold', size: 'lg' },
+          { type: 'text', text: '請於 16:30 前完成', color: '#DDF7F2', size: 'sm' },
+        ],
+      },
+      body: {
+        type: 'box',
+        layout: 'vertical',
+        spacing: 'sm',
+        contents: [
+          { type: 'text', text: '檢核 15 天後課程報備、1 天後異動，以及公文系統是否已成功發送。', size: 'sm', color: '#202124', wrap: true },
+        ],
+      },
+      footer: {
+        type: 'box',
+        layout: 'vertical',
+        contents: [
+          { type: 'button', style: 'primary', height: 'sm', action: { type: 'uri', label: '開啟檢核表', uri: url } },
         ],
       },
     },
@@ -1218,6 +1539,7 @@ function buildDefaultLineRichMenu_() {
     .replace(/\/$/, '');
   const indexUrl = frontend ? `${frontend}/index.html` : 'https://isha-taichung.github.io/auto-checklist/index.html';
   const incidentUrl = frontend ? `${frontend}/incident.html` : 'https://isha-taichung.github.io/auto-checklist/incident.html';
+  const workCheckUrl = frontend ? `${frontend}/work-check.html` : 'https://isha-taichung.github.io/auto-checklist/work-check.html';
   return {
     size: { width: 2500, height: 1686 },
     selected: true,
@@ -1225,9 +1547,9 @@ function buildDefaultLineRichMenu_() {
     chatBarText: 'ISHA 工作台',
     areas: [
       lineRichMenuArea_(0, 0, 834, 843, { type: 'uri', uri: indexUrl }),
-      lineRichMenuArea_(834, 0, 833, 843, { type: 'uri', uri: incidentUrl }),
+      lineRichMenuArea_(834, 0, 833, 843, { type: 'uri', uri: workCheckUrl }),
       lineRichMenuArea_(1667, 0, 833, 843, { type: 'message', text: '狀態' }),
-      lineRichMenuArea_(0, 843, 834, 843, { type: 'message', text: '異常' }),
+      lineRichMenuArea_(0, 843, 834, 843, { type: 'uri', uri: incidentUrl }),
       lineRichMenuArea_(834, 843, 833, 843, { type: 'message', text: '待處理' }),
       lineRichMenuArea_(1667, 843, 833, 843, { type: 'message', text: 'QR選單' }),
     ],

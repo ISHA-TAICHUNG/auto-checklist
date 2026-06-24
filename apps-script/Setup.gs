@@ -73,20 +73,23 @@ function initializeDatabase() {
     ['monthlyCheckWindowEnd', '5', '月檢應檢期結束日（教室/堆高機/固定式起重機狀態顯示用）'],
     ['monthlyReminderStartDay', '25', '月檢補填提醒起始日（教室/堆高機/固定式起重機）'],
     ['lineRichMenuImageUrl', 'https://isha-taichung.github.io/auto-checklist/assets/line-rich-menu-main.png', 'LINE 圖文選單圖片網址（2500x1686 PNG）'],
-    ['venueUsageRequiredKeywords', '堆高機=堆', '共用場地分頁的使用判定必要關鍵字；格式：設備類別=關鍵字1,關鍵字2；例：堆高機場地與移動式/吊車共用時，內容需含「堆」才算堆高機有使用'],
+    ['venueUsageRequiredKeywords', '堆高機=堆;高空工作車=高', '共用場地分頁的使用判定必要關鍵字；格式：設備類別=關鍵字1,關鍵字2；例：高空工作車內容需含「高」才算高空工作車有使用'],
   ]);
   if (typeof ensureDailyIncidentSettings_ === 'function') {
     ensureDailyIncidentSettings_(ss);
   }
 
   setupSupervisorSheet_(ss);
+  if (typeof setupDailyWorkCheckSheets_ === 'function') {
+    setupDailyWorkCheckSheets_(ss);
+  }
 
   setupSheet_(ss, '節假日關鍵字', ['關鍵字', '備註'],
     CONFIG.HOLIDAY_KEYWORDS_DEFAULT.map(k => [k, '預設'])
   );
 
   setupSheet_(ss, '設備清單',
-    ['設備代號', '設備名稱', '機械編號', '型式規格', '設備類別', '所在位置', '場地表分頁', '啟用'],
+    ['設備代號', '設備名稱', '機械編號', '型式規格', '設備類別', '所在位置', '場地表分頁', '日檢表單ID', '啟用'],
     [[
       CONFIG.DEFAULT_EQUIPMENT.equipmentId,
       CONFIG.DEFAULT_EQUIPMENT.equipmentName,
@@ -95,6 +98,7 @@ function initializeDatabase() {
       CONFIG.DEFAULT_EQUIPMENT.category,
       CONFIG.DEFAULT_EQUIPMENT.location,
       CONFIG.DEFAULT_EQUIPMENT.venueSheetTab,
+      '',
       true,
     ]]
   );
@@ -119,6 +123,12 @@ function initializeDatabase() {
       ['F-FORK-M', '堆高機', '堆高機每月定期檢查表', '每月',
        '起重升降機具安全規則 §128', '正常打「ˇ」/ 異常打「X」',
        'ˇ,X', '簡式月檢', '是'],
+      ['F-AWP-D', '高空工作車', '車載式高空工作車每日作業前檢點表', '每日',
+       '依附件「車載式高空工作車每日作業前檢點表」', '檢查結果正常打「V」，異常打「X」；異常項目需提出改善措施',
+       'V,X', '', '是'],
+      ['F-AWP-SD', '高空工作車', '自走式高空工作車每日作業前檢查表', '每日',
+       '依附件「高空作業車作業前檢查表（自主檢查表）」', '每日檢查合格後打「ˇ」，異常打「X」；異常應停止使用並通知相關人員處理',
+       'ˇ,X', '', '是'],
     ]
   );
 
@@ -165,6 +175,45 @@ function initializeDatabase() {
       ['F-FORK-M', 5, '離合器', '測試', true],
       ['F-FORK-M', 6, '方向盤', '檢點', true],
       ['F-FORK-M', 7, '其他各部份有無損傷', '檢點', true],
+
+      // ----- 高空工作車日檢 16 項（車載式）-----
+      ['F-AWP-D', 1, '昇空臂、昇空桶有無損壞、裂痕、變形，昇空桶有無鑽孔或底部有無破洞', '目視檢查', true],
+      ['F-AWP-D', 2, '鋼構與昇空臂絕緣接合處外觀有無龜裂、變形、接合鬆動，昇空臂搖晃是否過大', '目視檢查', true],
+      ['F-AWP-D', 3, '操作桿之把手及保護裝置有無脫落', '目視檢查', true],
+      ['F-AWP-D', 4, '昇空臂基座介面有無鬆弛龜裂變形、結構配件有無鬆動或遺失、螺栓螺帽有無鬆弛或脫落及是否旋緊密合、各部組件功能是否完妥、是否搖晃過大或鬆動異常聲響', '目視檢查', true],
+      ['F-AWP-D', 5, '各高壓油管及各接頭有否洩漏及定位（含基座、旋轉軸承及齒輪箱、上下臂之油壓缸、昇空桶油管）', '目視檢查', true],
+      ['F-AWP-D', 6, '各組件焊接部位有無變形（含基座、旋轉、撐腳、上臂肘、上臂頂、下臂、昇空桶）', '目視檢查', true],
+      ['F-AWP-D', 7, '電瓶樁頭、電瓶水是否正常；胎壓是否正常', '目視檢查', true],
+      ['F-AWP-D', 8, '車體接地是否符合規定', '目視檢查', true],
+      ['F-AWP-D', 9, '各種儀表功能是否正常', '目視檢查', true],
+      ['F-AWP-D', 10, '上、下控制器切換開關（含緊急停止）功能是否正常', '試車動作測試', true],
+      ['F-AWP-D', 11, '下控制器昇降及旋轉之功能是否正常', '試車動作測試', true],
+      ['F-AWP-D', 12, '上控制器上、下臂昇降及旋轉（操作鬆鎖裝置）功能是否正常', '試車動作測試', true],
+      ['F-AWP-D', 13, '外伸撐座功能是否正常', '試車動作測試', true],
+      ['F-AWP-D', 14, '煞車器、離合器、開關控制器、動力傳動器（PTO）、油壓泵運轉是否正常', '試車動作測試', true],
+      ['F-AWP-D', 15, '油壓煞車是否正確', '試車動作測試', true],
+      ['F-AWP-D', 16, '其他維修保養手冊需要安檢項目', '依保養手冊', true],
+
+      // ----- 高空工作車日檢 19 項（自走式自主檢查表）-----
+      ['F-AWP-SD', 1, '【作業環境】地面是否堅硬平坦無塌陷', '檢視', true],
+      ['F-AWP-SD', 2, '【作業環境】環境及通道是否淨空且無危險物及有害物', '檢視', true],
+      ['F-AWP-SD', 3, '【作業環境】是否鄰近道路作業並做好圍隔離措施', '檢視', true],
+      ['F-AWP-SD', 4, '【人員】作業人數確認並危害告之', '說明', true],
+      ['F-AWP-SD', 5, '【人員】個人防護具是否齊全', '檢視', true],
+      ['F-AWP-SD', 6, '【人員】精神狀況是否良好', '檢視', true],
+      ['F-AWP-SD', 7, '【工作車輛】煞車系統是否正常有效', '測試', true],
+      ['F-AWP-SD', 8, '【工作車輛】蜂鳴器、警示燈是否正常', '測試', true],
+      ['F-AWP-SD', 9, '【工作車輛】各項功能開關是否正常有效', '測試', true],
+      ['F-AWP-SD', 10, '【工作車輛】作業欄是否變形、毀損', '檢視', true],
+      ['F-AWP-SD', 11, '【工作車輛】輪胎、胎壓、軸承、螺絲是否正常', '檢視', true],
+      ['F-AWP-SD', 12, '【工作車輛】指示儀表是否正常有效', '檢視', true],
+      ['F-AWP-SD', 13, '【工作車輛】油管電線是否龜裂破損', '檢視', true],
+      ['F-AWP-SD', 14, '【工作車輛】結構及插銷是否鏽蝕、變形', '檢視', true],
+      ['F-AWP-SD', 15, '【工作車輛】水、機油、柴油、操作油是否正常無洩漏', '檢視', true],
+      ['F-AWP-SD', 16, '【工作車輛】緊急洩壓閥是否正常有效', '測試', true],
+      ['F-AWP-SD', 17, '【工作車輛】前進後退、舉升及制動裝置、傾斜度、水平測試是否正常', '測試', true],
+      ['F-AWP-SD', 18, '【工作車輛】具外撐座者，其外撐座功能是否正常', '測試', true],
+      ['F-AWP-SD', 19, '【工作車輛】引擎、水箱、啟動馬達、發電機裝置是否正常', '測試', true],
     ]
   );
 
@@ -377,7 +426,7 @@ function setupSubscriberSheet_(ss) {
     sheet = legacy;
   }
   if (!sheet) {
-    setupSheet_(ss, '訂閱者清單', ['姓名', 'LINE_USER_ID', '是否為主管', '備註'], []);
+    setupSheet_(ss, '訂閱者清單', ['姓名', 'LINE_USER_ID', '是否為主管', '是否為同仁', '備註'], []);
     sheet = ss.getSheetByName('訂閱者清單');
   }
   ensureSubscriberSheetHeaders_(sheet);
@@ -394,7 +443,7 @@ function ensureSubscriberSheetHeaders_(sheet) {
     headers[legacyActiveCol] = '是否為主管';
   }
 
-  ['姓名', 'LINE_USER_ID', '是否為主管', '備註'].forEach(name => {
+  ['姓名', 'LINE_USER_ID', '是否為主管', '是否為同仁', '備註'].forEach(name => {
     if (headers.indexOf(name) >= 0) return;
     sheet.getRange(1, sheet.getLastColumn() + 1).setValue(name);
     headers.push(name);
@@ -888,7 +937,7 @@ function applyColumnWidthsAndWrap_() {
     },
     '設備清單': {
       '設備代號': 110, '設備名稱': 140, '機械編號': 130, '型式規格': 180,
-      '設備類別': 100, '所在位置': 100, '場地表分頁': 280, '啟用': 60,
+      '設備類別': 100, '所在位置': 100, '場地表分頁': 280, '日檢表單ID': 110, '啟用': 60,
     },
     '系統設定': { '鍵': 140, '值': 320, '備註': 280 },
     '節假日關鍵字': { '關鍵字': 120, '備註': 200 },
@@ -1031,6 +1080,7 @@ function applyChineseSettingsAndDropdowns() {
     '設備清單': [
       { col: '啟用',     options: ['是', '否'],       migrate: { TRUE: '是', FALSE: '否' } },
       { col: '設備類別', options: categories,         strict: false },
+      { col: '日檢表單ID', options: [''].concat(templateIds), strict: false },
     ],
     '檢查表模板': [
       { col: '啟用',     options: ['是', '否'],       migrate: { TRUE: '是', FALSE: '否' } },
@@ -1045,6 +1095,15 @@ function applyChineseSettingsAndDropdowns() {
     ],
     '訂閱者清單': [
       { col: '是否為主管', options: ['是', '否'],       migrate: { TRUE: '是', FALSE: '否' } },
+      { col: '是否為同仁', options: ['是', '否'],       migrate: { TRUE: '是', FALSE: '否' } },
+    ],
+    '每日作業檢核': [
+      { col: '15天後課程是否報備', options: DAILY_WORK_CHECK_OPTIONS || ['是', '否', '不適用'], strict: true },
+      { col: '1天後異動是否完成', options: DAILY_WORK_CHECK_OPTIONS || ['是', '否', '不適用'], strict: true },
+      { col: '公文系統是否成功發送', options: DAILY_WORK_CHECK_OPTIONS || ['是', '否', '不適用'], strict: true },
+    ],
+    '工作日例外': [
+      { col: '是否上班', options: ['是', '否'],       migrate: { TRUE: '是', FALSE: '否' } },
     ],
     '日常異常事件通報': [
       { col: '填報事項', options: DAILY_INCIDENT_SUBJECTS || ['環境設施', '場地使用', '安全衛生', '人員反映', '其他'], strict: false },
@@ -1107,6 +1166,8 @@ function applyChineseSettingsAndDropdowns() {
     'F-CRANE-M': { '結果選項': '',       '月檢樣式': '天車完整版' },  // 結果選項刻意留空
     'F-FORK-D':  { '結果選項': '○,△,X', '月檢樣式': '' },
     'F-FORK-M':  { '結果選項': 'ˇ,X',   '月檢樣式': '簡式月檢' },
+    'F-AWP-D':   { '結果選項': 'V,X',    '月檢樣式': '' },
+    'F-AWP-SD':  { '結果選項': 'ˇ,X',   '月檢樣式': '' },
   };
   // 強制清空的特定錯誤值（舊版 bug 殘留 / 使用者誤填）
   const FORCED_CLEAR = {
@@ -1310,6 +1371,245 @@ function addForkliftEquipments() {
   sheet.getRange(sheet.getLastRow() + 1, 1, newRows.length, headers.length).setValues(newRows);
   Logger.log('新增 ' + newRows.length + ' 台堆高機：' + letters.slice(0, newRows.length).join(', '));
   return { added: newRows.length };
+}
+
+function addAerialWorkPlatformTemplatesAndEquipment() {
+  const ss = SpreadsheetApp.openById(CONFIG.DB_SHEET_ID);
+  const result = {
+    templatesAdded: 0,
+    templatesUpdated: 0,
+    templatesDisabled: 0,
+    itemsAdded: 0,
+    itemsUpdated: 0,
+    itemsDisabled: 0,
+    equipmentsAdded: 0,
+    equipmentsUpdated: 0,
+    settingsUpdated: 0,
+  };
+
+  setupSheet_(ss, '設備清單',
+    ['設備代號', '設備名稱', '機械編號', '型式規格', '設備類別', '所在位置', '場地表分頁', '日檢表單ID', '啟用'],
+    []
+  );
+
+  const templateRows = [
+    ['F-AWP-D', '高空工作車', '車載式高空工作車每日作業前檢點表', '每日',
+     '依附件「車載式高空工作車每日作業前檢點表」', '檢查結果正常打「V」，異常打「X」；異常項目需提出改善措施',
+     'V,X', '', '是'],
+    ['F-AWP-SD', '高空工作車', '自走式高空工作車每日作業前檢查表', '每日',
+     '依附件「高空作業車作業前檢查表（自主檢查表）」', '每日檢查合格後打「ˇ」，異常打「X」；異常應停止使用並通知相關人員處理',
+     'ˇ,X', '', '是'],
+  ];
+  const templateCols = ['表單ID', '設備類別', '表單名稱', '週期', '法規依據', '填寫規則', '結果選項', '月檢樣式', '啟用'];
+  const tplSheet = ss.getSheetByName('檢查表模板');
+  const tplHeaders = tplSheet.getRange(1, 1, 1, tplSheet.getLastColumn()).getValues()[0].map(h => String(h || '').trim());
+  const tplIdCol = tplHeaders.indexOf('表單ID');
+  const existingTplRows = new Map();
+  if (tplIdCol >= 0 && tplSheet.getLastRow() > 1) {
+    tplSheet.getRange(2, 1, tplSheet.getLastRow() - 1, tplHeaders.length).getValues()
+      .forEach((r, i) => existingTplRows.set(String(r[tplIdCol] || '').trim(), i + 2));
+  }
+  const tplAppend = [];
+  templateRows.forEach(src => {
+    const row = new Array(tplHeaders.length).fill('');
+    templateCols.forEach((col, i) => {
+      const ci = tplHeaders.indexOf(col);
+      if (ci >= 0) row[ci] = src[i];
+    });
+    const existingRow = existingTplRows.get(src[0]);
+    if (existingRow) {
+      const range = tplSheet.getRange(existingRow, 1, 1, tplHeaders.length);
+      range.clearDataValidations();
+      range.setValues([row]);
+      result.templatesUpdated += 1;
+      return;
+    }
+    tplAppend.push(row);
+  });
+  const oldMonthlyTplRow = existingTplRows.get('F-AWP-M');
+  if (oldMonthlyTplRow) {
+    const activeCol = tplHeaders.indexOf('啟用');
+    const schemaCol = tplHeaders.indexOf('月檢樣式');
+    if (activeCol >= 0) tplSheet.getRange(oldMonthlyTplRow, activeCol + 1).setValue('否');
+    if (schemaCol >= 0) tplSheet.getRange(oldMonthlyTplRow, schemaCol + 1).setValue('');
+    result.templatesDisabled += 1;
+  }
+  if (tplAppend.length) {
+    const range = tplSheet.getRange(tplSheet.getLastRow() + 1, 1, tplAppend.length, tplHeaders.length);
+    range.clearDataValidations();
+    range.setValues(tplAppend);
+    result.templatesAdded = tplAppend.length;
+  }
+
+  const itemRows = [
+    ['F-AWP-D', 1, '昇空臂、昇空桶有無損壞、裂痕、變形，昇空桶有無鑽孔或底部有無破洞', '目視檢查', true],
+    ['F-AWP-D', 2, '鋼構與昇空臂絕緣接合處外觀有無龜裂、變形、接合鬆動，昇空臂搖晃是否過大', '目視檢查', true],
+    ['F-AWP-D', 3, '操作桿之把手及保護裝置有無脫落', '目視檢查', true],
+    ['F-AWP-D', 4, '昇空臂基座介面有無鬆弛龜裂變形、結構配件有無鬆動或遺失、螺栓螺帽有無鬆弛或脫落及是否旋緊密合、各部組件功能是否完妥、是否搖晃過大或鬆動異常聲響', '目視檢查', true],
+    ['F-AWP-D', 5, '各高壓油管及各接頭有否洩漏及定位（含基座、旋轉軸承及齒輪箱、上下臂之油壓缸、昇空桶油管）', '目視檢查', true],
+    ['F-AWP-D', 6, '各組件焊接部位有無變形（含基座、旋轉、撐腳、上臂肘、上臂頂、下臂、昇空桶）', '目視檢查', true],
+    ['F-AWP-D', 7, '電瓶樁頭、電瓶水是否正常；胎壓是否正常', '目視檢查', true],
+    ['F-AWP-D', 8, '車體接地是否符合規定', '目視檢查', true],
+    ['F-AWP-D', 9, '各種儀表功能是否正常', '目視檢查', true],
+    ['F-AWP-D', 10, '上、下控制器切換開關（含緊急停止）功能是否正常', '試車動作測試', true],
+    ['F-AWP-D', 11, '下控制器昇降及旋轉之功能是否正常', '試車動作測試', true],
+    ['F-AWP-D', 12, '上控制器上、下臂昇降及旋轉（操作鬆鎖裝置）功能是否正常', '試車動作測試', true],
+    ['F-AWP-D', 13, '外伸撐座功能是否正常', '試車動作測試', true],
+    ['F-AWP-D', 14, '煞車器、離合器、開關控制器、動力傳動器（PTO）、油壓泵運轉是否正常', '試車動作測試', true],
+    ['F-AWP-D', 15, '油壓煞車是否正確', '試車動作測試', true],
+    ['F-AWP-D', 16, '其他維修保養手冊需要安檢項目', '依保養手冊', true],
+    ['F-AWP-SD', 1, '【作業環境】地面是否堅硬平坦無塌陷', '檢視', true],
+    ['F-AWP-SD', 2, '【作業環境】環境及通道是否淨空且無危險物及有害物', '檢視', true],
+    ['F-AWP-SD', 3, '【作業環境】是否鄰近道路作業並做好圍隔離措施', '檢視', true],
+    ['F-AWP-SD', 4, '【人員】作業人數確認並危害告之', '說明', true],
+    ['F-AWP-SD', 5, '【人員】個人防護具是否齊全', '檢視', true],
+    ['F-AWP-SD', 6, '【人員】精神狀況是否良好', '檢視', true],
+    ['F-AWP-SD', 7, '【工作車輛】煞車系統是否正常有效', '測試', true],
+    ['F-AWP-SD', 8, '【工作車輛】蜂鳴器、警示燈是否正常', '測試', true],
+    ['F-AWP-SD', 9, '【工作車輛】各項功能開關是否正常有效', '測試', true],
+    ['F-AWP-SD', 10, '【工作車輛】作業欄是否變形、毀損', '檢視', true],
+    ['F-AWP-SD', 11, '【工作車輛】輪胎、胎壓、軸承、螺絲是否正常', '檢視', true],
+    ['F-AWP-SD', 12, '【工作車輛】指示儀表是否正常有效', '檢視', true],
+    ['F-AWP-SD', 13, '【工作車輛】油管電線是否龜裂破損', '檢視', true],
+    ['F-AWP-SD', 14, '【工作車輛】結構及插銷是否鏽蝕、變形', '檢視', true],
+    ['F-AWP-SD', 15, '【工作車輛】水、機油、柴油、操作油是否正常無洩漏', '檢視', true],
+    ['F-AWP-SD', 16, '【工作車輛】緊急洩壓閥是否正常有效', '測試', true],
+    ['F-AWP-SD', 17, '【工作車輛】前進後退、舉升及制動裝置、傾斜度、水平測試是否正常', '測試', true],
+    ['F-AWP-SD', 18, '【工作車輛】具外撐座者，其外撐座功能是否正常', '測試', true],
+    ['F-AWP-SD', 19, '【工作車輛】引擎、水箱、啟動馬達、發電機裝置是否正常', '測試', true],
+  ];
+  const itemCols = ['表單ID', '項目順序', '項目名稱', '檢查方法', '啟用'];
+  const itemSheet = ss.getSheetByName('檢查項目');
+  const itemHeaders = itemSheet.getRange(1, 1, 1, itemSheet.getLastColumn()).getValues()[0].map(h => String(h || '').trim());
+  const formIdCol = itemHeaders.indexOf('表單ID');
+  const orderCol = itemHeaders.indexOf('項目順序');
+  const existingItems = new Map();
+  if (formIdCol >= 0 && orderCol >= 0 && itemSheet.getLastRow() > 1) {
+    itemSheet.getRange(2, 1, itemSheet.getLastRow() - 1, itemHeaders.length).getValues()
+      .forEach((r, i) => existingItems.set(String(r[formIdCol] || '').trim() + '|' + String(r[orderCol] || '').trim(), i + 2));
+  }
+  const itemAppend = [];
+  itemRows.forEach(src => {
+    const key = src[0] + '|' + src[1];
+    const row = new Array(itemHeaders.length).fill('');
+    itemCols.forEach((col, i) => {
+      const ci = itemHeaders.indexOf(col);
+      if (ci >= 0) row[ci] = src[i];
+    });
+    const existingRow = existingItems.get(key);
+    if (existingRow) {
+      const range = itemSheet.getRange(existingRow, 1, 1, itemHeaders.length);
+      range.clearDataValidations();
+      range.setValues([row]);
+      result.itemsUpdated += 1;
+      return;
+    }
+    itemAppend.push(row);
+  });
+  const activeItemCol = itemHeaders.indexOf('啟用');
+  if (formIdCol >= 0 && activeItemCol >= 0 && itemSheet.getLastRow() > 1) {
+    itemSheet.getRange(2, 1, itemSheet.getLastRow() - 1, itemHeaders.length).getValues()
+      .forEach((r, i) => {
+        if (String(r[formIdCol] || '').trim() === 'F-AWP-M' && isActiveValue_(r[activeItemCol])) {
+          itemSheet.getRange(i + 2, activeItemCol + 1).setValue('否');
+          result.itemsDisabled += 1;
+        }
+      });
+  }
+  if (itemAppend.length) {
+    const range = itemSheet.getRange(itemSheet.getLastRow() + 1, 1, itemAppend.length, itemHeaders.length);
+    range.clearDataValidations();
+    range.setValues(itemAppend);
+    result.itemsAdded = itemAppend.length;
+  }
+
+  const eqSheet = ss.getSheetByName('設備清單');
+  const eqHeaders = eqSheet.getRange(1, 1, 1, eqSheet.getLastColumn()).getValues()[0].map(h => String(h || '').trim());
+  const eqIdCol = eqHeaders.indexOf('設備代號');
+  const existingEqRows = new Map();
+  if (eqIdCol >= 0 && eqSheet.getLastRow() > 1) {
+    eqSheet.getRange(2, 1, eqSheet.getLastRow() - 1, eqHeaders.length).getValues()
+      .forEach((r, i) => existingEqRows.set(String(r[eqIdCol] || '').trim(), i + 2));
+  }
+  const equipmentRows = [
+    {
+      id: 'AWP-LJ-001',
+      name: '車載式高空工作車',
+      serial: 'AWP-LJ-001',
+      type: '車載式高空工作車',
+      dailyTemplateId: 'F-AWP-D',
+    },
+    {
+      id: 'AWP-LJ-SP-001',
+      name: '自走式高空工作車',
+      serial: 'AWP-LJ-SP-001',
+      type: '自走式高空工作車',
+      dailyTemplateId: 'F-AWP-SD',
+    },
+  ];
+  equipmentRows.forEach(eqp => {
+    const row = new Array(eqHeaders.length).fill('');
+    const setE = (name, value) => { const i = eqHeaders.indexOf(name); if (i >= 0) row[i] = value; };
+    setE('設備代號', eqp.id);
+    setE('設備名稱', eqp.name);
+    setE('機械編號', eqp.serial);
+    setE('型式規格', eqp.type);
+    setE('設備類別', '高空工作車');
+    setE('所在位置', '龍井高空車實習場地');
+    setE('場地表分頁', 'gid:518002759');
+    setE('日檢表單ID', eqp.dailyTemplateId);
+    setE('啟用', '是');
+    const existingRow = existingEqRows.get(eqp.id);
+    if (existingRow) {
+      const range = eqSheet.getRange(existingRow, 1, 1, eqHeaders.length);
+      range.clearDataValidations();
+      range.setValues([row]);
+      result.equipmentsUpdated += 1;
+      return;
+    }
+    const range = eqSheet.getRange(eqSheet.getLastRow() + 1, 1, 1, eqHeaders.length);
+    range.clearDataValidations();
+    range.setValues([row]);
+    result.equipmentsAdded += 1;
+  });
+
+  result.settingsUpdated = ensureVenueUsageKeywordSetting_(ss, '高空工作車', '高') ? 1 : 0;
+  try { applyChineseSettingsAndDropdowns(); } catch (e) { Logger.log('dropdown 重套失敗：' + e); }
+  try { applyColumnWidthsAndWrap_(); } catch (e) { Logger.log('欄寬重套失敗：' + e); }
+  SpreadsheetApp.flush();
+  Logger.log('addAerialWorkPlatformTemplatesAndEquipment 完成：' + JSON.stringify(result));
+  return result;
+}
+
+function ensureVenueUsageKeywordSetting_(ss, category, keyword) {
+  const sheet = ss.getSheetByName('系統設定');
+  if (!sheet) throw new Error('找不到系統設定工作表');
+  const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0].map(h => String(h || '').trim());
+  const keyCol = headers.indexOf('鍵');
+  const valueCol = headers.indexOf('值');
+  const noteCol = headers.indexOf('備註');
+  if (keyCol < 0 || valueCol < 0) throw new Error('系統設定缺必要欄位');
+
+  const key = 'venueUsageRequiredKeywords';
+  const desired = category + '=' + keyword;
+  const data = sheet.getDataRange().getValues();
+  for (let i = 1; i < data.length; i++) {
+    if (String(data[i][keyCol] || '').trim() !== key) continue;
+    const current = String(data[i][valueCol] || '').trim();
+    const existing = parseVenueUsageRequiredKeywords_(current, category);
+    if (existing !== null) return false;
+    const next = current ? current + ';' + desired : desired;
+    sheet.getRange(i + 1, valueCol + 1).setValue(next);
+    if (noteCol >= 0) sheet.getRange(i + 1, noteCol + 1).setValue('共用場地分頁的使用判定必要關鍵字；例：堆高機需含「堆」、高空工作車需含「高」才算使用');
+    return true;
+  }
+
+  const row = new Array(headers.length).fill('');
+  row[keyCol] = key;
+  row[valueCol] = desired;
+  if (noteCol >= 0) row[noteCol] = '共用場地分頁的使用判定必要關鍵字；例：堆高機需含「堆」、高空工作車需含「高」才算使用';
+  sheet.getRange(sheet.getLastRow() + 1, 1, 1, headers.length).setValues([row]);
+  return true;
 }
 
 /**

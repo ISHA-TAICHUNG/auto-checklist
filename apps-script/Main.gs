@@ -8,6 +8,7 @@
  *   GET  ...exec?api=equipments               — 設備清單
  *   GET  ...exec?api=meta&form=...&eqp=...    — 檢查表模板
  *   GET  ...exec?api=branding                  — 機構名稱（前端啟動載入）
+ *   GET  ...exec?api=dailyWorkMeta             — 每日作業檢核填寫頁設定
  *   GET  ...exec?api=approval&recordId=...&token=... — 主管簽核頁讀取待簽資料
  *   GET  ...exec?api=status                    — 系統狀態（不含 secret）
  *   GET  ...exec?api=admin&action=...&token=...  — 管理用，需 token
@@ -79,6 +80,10 @@ function doGet(e) {
         result = { ok: true, organizationName: getOrgHeader_() };
         break;
 
+      case 'dailyWorkMeta':
+        result = getDailyWorkMeta_();
+        break;
+
       case 'approval': {
         const recordId = e.parameter.recordId;
         const token = e.parameter.token;
@@ -89,8 +94,8 @@ function doGet(e) {
 
       case 'admin': {
         // 維護動作 — 兩層 token：
-        //   - 唯讀類（reminderStatus / openIssues / fetchPdf）→ 用 API_TOKEN（公開前端也能查）
-        //   - 寫入/破壞性類（其餘）→ 用 ADMIN_TOKEN（存 Script Properties，不公開）
+        //   - admin 入口先過 API_TOKEN 外層檢查，再依 action 要求 ADMIN_TOKEN
+        //   - 公開前端 API_TOKEN 不能單獨授權 admin diagnostics
         // 安全分層由 codex review 2026-05-26 觸發加入
         if (e.parameter.token !== CONFIG.API_TOKEN) throw new Error('未授權');
         const action = e.parameter.action;
@@ -99,12 +104,16 @@ function doGet(e) {
         const WRITE_ACTIONS = ['formatSheets', 'runInit', 'applyDropdowns',
                                'setEquipmentField', 'addPpe', 'setLineProps',
                                'testLineIncident', 'markCompleted', 'fetchPdf',
-                               'addMonthlySafetyPpeForms', 'syncSupervisorIds',
+                               'addMonthlySafetyPpeForms', 'addAerialWorkPlatform',
+                               'syncSupervisorIds',
                                'syncSubscribers', 'supervisorStatus', 'subscriberStatus',
                                'updateMonthlySettingNotes',
                                'applyProjectResourceNames', 'installRichMenu',
-                               'deleteRichMenu', 'richMenuStatus',
-                               'syncLineWebhookEndpoint'];
+                               'deleteRichMenu', 'richMenuStatus', 'richMenuHealth',
+                               'lineWebhookHealth', 'lineTargetStatus',
+                               'syncLineWebhookEndpoint',
+                               'openIssues', 'reminderStatus',
+                               'installDailyWorkCheckTriggers'];
         // 破壞性 actions — 需 ADMIN_TOKEN + ALLOW_DESTRUCTIVE_HTTP=YES kill switch
         const DESTRUCTIVE_ACTIONS = ['cleanupAll', 'cleanupDate'];
         if (WRITE_ACTIONS.indexOf(action) >= 0 || DESTRUCTIVE_ACTIONS.indexOf(action) >= 0) {
@@ -171,6 +180,12 @@ function doGet(e) {
           case 'addMonthlySafetyPpeForms': {
             // 加龍井/復興/忠明量測設備及 PPE 月檢；SCBA 併入三張表下方區塊
             const summary = addMonthlySafetyPpeForms();
+            result = { ok: true, action, summary };
+            break;
+          }
+          case 'addAerialWorkPlatform': {
+            // 加/修高空工作車車載式與自走式日檢模板、設備與場地關鍵字
+            const summary = addAerialWorkPlatformTemplatesAndEquipment();
             result = { ok: true, action, summary };
             break;
           }
@@ -386,6 +401,10 @@ function doGet(e) {
             result = { ok: true, dryRun: true, count: results.length, results };
             break;
           }
+          case 'installDailyWorkCheckTriggers': {
+            result = installDailyWorkCheckTriggers();
+            break;
+          }
           case 'fetchPdf': {
             // 唯讀，且只允許讀「archive root 之下 + mimeType=PDF」的檔案
             // 雙重限制（codex P1 + DB Sheet 移入歸檔資料夾後的延伸保護）：
@@ -483,6 +502,9 @@ function doPost(e) {
       case 'commentDailyIncident':
         result = submitDailyIncidentSupervisorComment_(payload);
         break;
+      case 'submitDailyWorkCheck':
+        result = submitDailyWorkCheck_(payload);
+        break;
       default:
         result = handleSubmission_(payload);
     }
@@ -512,6 +534,7 @@ function friendlyError_(err) {
     '日期格式', '處理狀況', '日常事件', '更新連結', '審核連結',
     '處理完成後才能陳核', '缺少陳核主管', '請填寫陳核主管', '審核決定不合法',
     '主管處理意見', '只有處理中事件', '已送主管正式審核',
+    '每日作業檢核', '同仁姓名',
     'cleanupAll dryRun 需帶', 'cleanupDate dryRun 需帶', 'cleanupDate 實刪需帶',
     // admin 用錯誤訊息
     '該檔案非', '需要 fileId', '未知 admin action', '未知的 api',

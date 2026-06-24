@@ -5,6 +5,7 @@
  *
  * 支援指令（傳給 bot 的 text message）：
  *   - 狀態 / status         今日填表進度
+ *   - 每日作業 / work       同仁每日作業檢核表
  *   - 異常 / open           待處理異常事件清單
  *   - 通報 / incident       日常異常事件通報表
  *   - 待處理 / incidents    日常異常事件未結案清單
@@ -58,8 +59,16 @@ function dispatchLineEvent_(ev) {
   }
   const cmd = normalizeLineCommand_(text);
 
+  if (requiresLineSubscriberAuth_(cmd) && !isLineSubscriberUser_(userId)) {
+    return lineReply_(replyToken, {
+      type: 'text',
+      text: '此功能限已登錄訂閱者使用。請先輸入「我的ID」，把 LINE_USER_ID 提供給管理員加入「訂閱者清單」。',
+    });
+  }
+
   // 指令路由
-  if (/^(狀態|status)$/i.test(cmd))    return cmdStatus_(replyToken);
+  if (/^(狀態|status)$/i.test(cmd))    return cmdStatus_(replyToken, userId);
+  if (/^(每日作業|作業|work|dailywork)$/i.test(cmd)) return cmdDailyWorkCheck_(replyToken);
   if (/^(異常|open)$/i.test(cmd))      return cmdOpenIncidents_(replyToken);
   if (/^(通報|incident)$/i.test(cmd))  return cmdDailyIncidentReport_(replyToken);
   if (/^(待處理|incidents)$/i.test(cmd)) return cmdDailyIncidentList_(replyToken);
@@ -109,6 +118,13 @@ function dispatchLineEvent_(ev) {
   }
 }
 
+function requiresLineSubscriberAuth_(cmd) {
+  const text = String(cmd || '').trim();
+  if (!text) return false;
+  if (/^(幫助|help|\?|我的ID|myid|whoami)$/i.test(text)) return false;
+  return true;
+}
+
 function normalizeLineCommand_(text) {
   let s = String(text || '').trim();
   try { s = s.normalize('NFKC'); } catch (_) {}
@@ -144,6 +160,7 @@ function cmdHelp_(replyToken) {
       '📋 可用指令',
       '',
       '• 狀態 — 今日/月檢填表進度',
+      '• 每日作業 — 同仁每日作業檢核表',
       '• 異常 — 待處理異常清單',
       '• 通報 — 日常異常事件通報表',
       '• 待處理 — 日常異常事件未結案清單',
@@ -160,7 +177,11 @@ function cmdHelp_(replyToken) {
       '• 由 DB「訂閱者清單」的「是否為主管」控制',
       '• 用於三間教室、堆高機、固定式起重機的月檢',
       '',
-      '月檢快捷：',
+      '日檢快捷：',
+      '• QR AWP-LJ-001 — 車載式高空工作車',
+      '• QR AWP-LJ-SP-001 — 自走式高空工作車',
+      '',
+      '教室防護具月檢快捷：',
       '• QR CLASSROOM-LJ-MEAS-PPE — 龍井教室月檢',
       '• QR CLASSROOM-FX-MEAS-PPE — 復興教室月檢',
       '• QR CLASSROOM-ZM-MEAS-PPE — 忠明教室月檢',
@@ -175,18 +196,24 @@ function cmdHelp_(replyToken) {
  * QR 選單：列出所有設備/月檢按鈕讓使用者點。
  */
 function cmdQRList_(replyToken) {
-  return lineReply_(replyToken, {
-    type: 'text',
-    text: '📷 請選擇要產生 QR 的項目：',
-    quickReply: equipmentQuickReply_(),
-  });
+  return lineReply_(replyToken, buildQrMenuFlex_());
 }
 
-function cmdStatus_(replyToken) {
+function cmdStatus_(replyToken, userId) {
   // 跑 dryRun 的 dailyReminderJob 拿狀態（含 monthlyReminderJob_ 已過濾的月檢結果）
   // 月檢設備：非應檢期(1-5)且非補填提醒期(25+)時，monthlyReminderJob_ 已完全不 push，狀態不會列
   const results = dailyReminderJob({ dryRun: true });
-  return lineReply_(replyToken, withQuickReply_(buildChecklistStatusFlex_(results)));
+  const messages = [buildChecklistStatusFlex_(results)];
+  if (typeof getDailyWorkCheckStatus_ === 'function' && typeof buildDailyWorkStatusFlex_ === 'function') {
+    messages.push(buildDailyWorkStatusFlex_(getDailyWorkCheckStatus_({ userId })));
+  }
+  return lineReply_(replyToken, withQuickReply_(messages));
+}
+
+function cmdDailyWorkCheck_(replyToken) {
+  const url = (typeof buildDailyWorkCheckPublicUrl_ === 'function') ? buildDailyWorkCheckPublicUrl_() : '';
+  if (!url) return lineReply_(replyToken, { type: 'text', text: '✗ 系統設定 webFrontendUrl 未填，無法建立每日作業檢核連結' });
+  return lineReply_(replyToken, withQuickReply_(buildDailyWorkCheckEntryFlex_(url)));
 }
 
 function cmdOpenIncidents_(replyToken) {

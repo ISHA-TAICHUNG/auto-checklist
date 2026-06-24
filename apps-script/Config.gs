@@ -86,6 +86,7 @@ const CONFIG = {
   // 可用 DB「系統設定」venueUsageRequiredKeywords 覆蓋，格式：堆高機=堆
   VENUE_USAGE_REQUIRED_KEYWORDS_DEFAULT: {
     '堆高機': ['堆'],
+    '高空工作車': ['高'],
   },
 
 };

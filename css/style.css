@@ -23,6 +23,9 @@ body {
   padding: 22px 18px;
   text-align: center;
 }
+.header-work-check {
+  background: linear-gradient(135deg, #0f766e 0%, #115e59 100%);
+}
 .header h1 {
   margin: 0 0 6px;
   font-size: 24px;             /* 原 18px */
@@ -128,6 +131,14 @@ body {
 .quick-action-incident:hover {
   background: #fce8e6;
   border-color: #f5c2bd;
+}
+.quick-action-work {
+  background: #f0fdfa;
+  border-color: #99f6e4;
+}
+.quick-action-work:hover {
+  background: #ccfbf1;
+  border-color: #5eead4;
 }
 .quick-icon {
   flex: 0 0 auto;
@@ -409,6 +420,37 @@ body {
 .radio-group label.checked-good { border-color: #137333; background: #ceead6; color: #0d652d; font-weight: 800; }
 .radio-group label.checked-bad  { border-color: #c5221f; background: #f5c2bd; color: #a50e0e; font-weight: 800; }
 .radio-group label.checked-na   { border-color: #5f6368; background: #e8eaed; color: #3c4043; font-weight: 800; }
+
+.work-check-card {
+  border-top: 5px solid #0f766e;
+}
+.work-check-deadline {
+  margin-top: 0;
+}
+.work-check-section {
+  margin: 18px 0;
+  padding: 16px;
+  border: 2px solid #d9eee9;
+  border-radius: 10px;
+  background: #fbfffe;
+}
+.work-check-section h3 {
+  margin: 0 0 12px;
+  color: #134e4a;
+  font-size: 19px;
+  line-height: 1.35;
+  font-weight: 900;
+}
+.work-radio {
+  margin-left: 0;
+  margin-bottom: 12px;
+}
+.work-office-link {
+  display: flex;
+  justify-content: center;
+  margin: 0 0 12px;
+  text-decoration: none;
+}
 
 .abnormal-input { margin: 12px 0 0 42px; display: none; }
 .abnormal-input.show { display: block; }

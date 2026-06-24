@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+  <meta name="theme-color" content="#0f766e">
+  <title>ISHA 每日作業檢核</title>
+  <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="css/style.css">
+  <script src="js/config.js"></script>
+  <script src="js/api.js"></script>
+</head>
+<body>
+  <header class="header header-work-check">
+    <a class="back" href="index.html">回工作台</a>
+    <h1>每日作業檢核</h1>
+    <div class="sub" data-org-name></div>
+    <nav class="site-tabs" aria-label="主要分頁">
+      <a href="index.html">檢查填報</a>
+      <a class="active" href="work-check.html">每日作業</a>
+      <a href="incident.html">日常通報</a>
+    </nav>
+  </header>
+
+  <main class="container">
+    <div id="content">
+      <div class="page-loading"><span class="loading"></span>&nbsp;載入中...</div>
+    </div>
+  </main>
+
+  <script>
+    window.addEventListener('error', (e) => {
+      alert('JS 錯誤：' + (e.message || e) + '\n' + (e.filename || '') + ':' + (e.lineno || ''));
+    });
+    window.addEventListener('unhandledrejection', (e) => {
+      alert('Promise 錯誤：' + (e.reason && e.reason.message ? e.reason.message : e.reason));
+    });
+
+    let meta = null;
+
+    loadForm();
+
+    function showError(msg) {
+      const root = document.getElementById('content');
+      root.textContent = '';
+      const div = document.createElement('div');
+      div.className = 'alert alert-error';
+      div.textContent = msg;
+      root.appendChild(div);
+    }
+
+    function showInfo(msg) {
+      const root = document.getElementById('content');
+      root.textContent = '';
+      const div = document.createElement('div');
+      div.className = 'alert alert-info';
+      div.textContent = msg;
+      root.appendChild(div);
+    }
+
+    async function loadForm() {
+      try {
+        const res = await API.getDailyWorkMeta();
+        if (!res.ok) return showError(res.error || '取得每日作業檢核設定失敗');
+        meta = res;
+        if (!meta.isBusinessDay) return showInfo((meta.dateLabel || '今日') + ' 非上班日，今日免填每日作業檢核。');
+        if (!meta.staffNames || !meta.staffNames.length) return showError('尚未在「訂閱者清單」設定同仁名單。');
+        renderForm();
+      } catch (err) {
+        showError('連線後端失敗：' + err.message);
+      }
+    }
+
+    function renderForm() {
+      const root = document.getElementById('content');
+      root.textContent = '';
+
+      const card = document.createElement('section');
+      card.className = 'card work-check-card';
+
+      const title = document.createElement('h2');
+      title.className = 'card-title';
+      title.textContent = meta.dateLabel || '每日作業檢核';
+      card.appendChild(title);
+
+      const warn = document.createElement('div');
+      warn.className = 'alert alert-warn work-check-deadline';
+      warn.textContent = '請於 16:30 前完成；未完成會於 16:30 及 17:00 通知主管。';
+      card.appendChild(warn);
+
+      card.appendChild(selectField('同仁姓名', 'staffName', meta.staffNames));
+
+      card.appendChild(checkSection({
+        title: '15 天後課程是否已完成報備',
+        name: 'courseReported',
+        noteName: 'courseNote',
+        placeholder: '例如：已完成 7/9 龍井場課程報備',
+      }));
+      card.appendChild(checkSection({
+        title: '1 天後課程異動是否已完成異動',
+        name: 'changeUpdated',
+        noteName: 'changeNote',
+        placeholder: '例如：無異動 / 已完成調課',
+      }));
+      card.appendChild(checkSection({
+        title: '公文系統是否已成功發送至主管機關',
+        name: 'officeSent',
+        noteName: 'officeNote',
+        placeholder: '例如：已送出 / 系統維護待補送',
+        officeButton: true,
+      }));
+      card.appendChild(textareaField('整體備註', 'overallNote', '其他補充'));
+
+      root.appendChild(card);
+
+      const submitArea = document.createElement('div');
+      submitArea.className = 'submit-area';
+      const submitBtn = document.createElement('button');
+      submitBtn.type = 'button';
+      submitBtn.className = 'btn btn-primary';
+      submitBtn.id = 'submitBtn';
+      submitBtn.textContent = '送出每日作業檢核';
+      submitBtn.onclick = submitForm;
+      submitArea.appendChild(submitBtn);
+      root.appendChild(submitArea);
+    }
+
+    function selectField(label, name, options) {
+      const wrap = document.createElement('div');
+      wrap.className = 'field';
+      const lab = document.createElement('label');
+      lab.className = 'field-label';
+      lab.textContent = label;
+      const select = document.createElement('select');
+      select.id = name;
+      select.name = name;
+      const empty = document.createElement('option');
+      empty.value = '';
+      empty.textContent = '請選擇';
+      select.appendChild(empty);
+      options.forEach(v => {
+        const opt = document.createElement('option');
+        opt.value = v;
+        opt.textContent = v;
+        select.appendChild(opt);
+      });
+      wrap.appendChild(lab);
+      wrap.appendChild(select);
+      return wrap;
+    }
+
+    function checkSection(def) {
+      const section = document.createElement('section');
+      section.className = 'work-check-section';
+      const h = document.createElement('h3');
+      h.textContent = def.title;
+      section.appendChild(h);
+      if (def.officeButton && meta.officeSystemUrl) {
+        const link = document.createElement('a');
+        link.className = 'btn btn-secondary work-office-link';
+        link.href = meta.officeSystemUrl;
+        link.target = '_blank';
+        link.rel = 'noopener';
+        link.textContent = '開啟公文系統';
+        section.appendChild(link);
+      }
+      const group = document.createElement('div');
+      group.className = 'radio-group work-radio';
+      ['是', '否', '不適用'].forEach((value, idx) => {
+        const id = def.name + '-' + idx;
+        const label = document.createElement('label');
+        label.htmlFor = id;
+        label.textContent = value;
+        const input = document.createElement('input');
+        input.type = 'radio';
+        input.name = def.name;
+        input.id = id;
+        input.value = value;
+        input.onchange = () => refreshRadio(def.name);
+        label.prepend(input);
+        group.appendChild(label);
+      });
+      section.appendChild(group);
+      section.appendChild(textareaField('備註', def.noteName, def.placeholder));
+      return section;
+    }
+
+    function textareaField(label, name, placeholder) {
+      const wrap = document.createElement('div');
+      wrap.className = 'field';
+      const lab = document.createElement('label');
+      lab.className = 'field-label';
+      lab.textContent = label;
+      const ta = document.createElement('textarea');
+      ta.id = name;
+      ta.name = name;
+      ta.placeholder = placeholder || '';
+      wrap.appendChild(lab);
+      wrap.appendChild(ta);
+      return wrap;
+    }
+
+    function refreshRadio(name) {
+      document.querySelectorAll(`input[name="${name}"]`).forEach(input => {
+        const label = input.closest('label');
+        label.classList.toggle('checked-good', input.checked && input.value === '是');
+        label.classList.toggle('checked-bad', input.checked && input.value === '否');
+        label.classList.toggle('checked-na', input.checked && input.value === '不適用');
+      });
+    }
+
+    function valueOf(id) {
+      const el = document.getElementById(id);
+      return el ? el.value.trim() : '';
+    }
+
+    function radioValue(name) {
+      const el = document.querySelector(`input[name="${name}"]:checked`);
+      return el ? el.value : '';
+    }
+
+    async function submitForm() {
+      const payload = {
+        staffName: valueOf('staffName'),
+        courseReported: radioValue('courseReported'),
+        courseNote: valueOf('courseNote'),
+        changeUpdated: radioValue('changeUpdated'),
+        changeNote: valueOf('changeNote'),
+        officeSent: radioValue('officeSent'),
+        officeNote: valueOf('officeNote'),
+        overallNote: valueOf('overallNote'),
+      };
+      if (!payload.staffName) return alert('請選擇同仁姓名');
+      if (!payload.courseReported || !payload.changeUpdated || !payload.officeSent) {
+        return alert('三個檢核項目都請選擇「是、否、不適用」');
+      }
+
+      const btn = document.getElementById('submitBtn');
+      btn.disabled = true;
+      btn.textContent = '送出中...';
+      try {
+        const res = await API.submitDailyWorkCheck(payload);
+        if (!res.ok) throw new Error(res.error || '送出失敗');
+        const root = document.getElementById('content');
+        root.textContent = '';
+        const done = document.createElement('div');
+        done.className = 'alert alert-success';
+        done.textContent = (res.updated ? '已更新' : '已完成') + ' ' + (res.dateLabel || '') + ' ' + res.staffName + ' 的每日作業檢核。';
+        root.appendChild(done);
+      } catch (err) {
+        alert(err.message || err);
+        btn.disabled = false;
+        btn.textContent = '送出每日作業檢核';
+      }
+    }
+  </script>
+</body>
+</html>

@@ -32,16 +32,16 @@
     <text class="hint" x="389" y="708">開啟檢查表</text>
   </g>
 
-  <!-- 2. 日常通報 -->
+  <!-- 2. 每日作業 -->
   <g transform="translate(862 28)">
     <rect class="card" width="777" height="787" rx="46" filter="url(#cardShadow)"/>
-    <rect x="0" y="0" width="22" height="787" rx="11" fill="#D93025"/>
+    <rect x="0" y="0" width="22" height="787" rx="11" fill="#0F766E"/>
     <text class="brand" x="72" y="92">ISHA 工作台</text>
-    <circle cx="388.5" cy="252" r="108" fill="#FCE8E6" stroke="#D93025" stroke-width="9"/>
-    <text class="symbol" x="388.5" y="252" fill="#D93025">報</text>
-    <text class="title" x="388.5" y="480" text-anchor="middle">日常通報</text>
-    <text class="subtitle" x="388.5" y="575" text-anchor="middle">場地・環境・安全</text>
-    <text class="hint" x="388.5" y="708">通報異常事件</text>
+    <circle cx="388.5" cy="252" r="108" fill="#CCFBF1" stroke="#0F766E" stroke-width="9"/>
+    <text class="symbol" x="388.5" y="252" fill="#0F766E">作</text>
+    <text class="title" x="388.5" y="480" text-anchor="middle">每日作業</text>
+    <text class="subtitle" x="388.5" y="575" text-anchor="middle">課程・異動・公文</text>
+    <text class="hint" x="388.5" y="708">填寫檢核表</text>
   </g>
 
   <!-- 3. 填表狀態 -->
@@ -56,16 +56,16 @@
     <text class="hint" x="388.5" y="708">查看填寫狀態</text>
   </g>
 
-  <!-- 4. 設備異常 -->
+  <!-- 4. 日常通報 -->
   <g transform="translate(28 871)">
     <rect class="card" width="778" height="787" rx="46" filter="url(#cardShadow)"/>
-    <rect x="0" y="0" width="22" height="787" rx="11" fill="#7C4DFF"/>
+    <rect x="0" y="0" width="22" height="787" rx="11" fill="#D93025"/>
     <text class="brand" x="72" y="92">ISHA 工作台</text>
-    <circle cx="389" cy="252" r="108" fill="#F1E8FF" stroke="#7C4DFF" stroke-width="9"/>
-    <text class="symbol" x="389" y="252" fill="#7C4DFF">異</text>
-    <text class="title" x="389" y="480" text-anchor="middle">設備異常</text>
-    <text class="subtitle" x="389" y="575" text-anchor="middle">檢查異常清單</text>
-    <text class="hint" x="389" y="708">查看未處理項目</text>
+    <circle cx="389" cy="252" r="108" fill="#FCE8E6" stroke="#D93025" stroke-width="9"/>
+    <text class="symbol" x="389" y="252" fill="#D93025">報</text>
+    <text class="title" x="389" y="480" text-anchor="middle">日常通報</text>
+    <text class="subtitle" x="389" y="575" text-anchor="middle">場地・環境・安全</text>
+    <text class="hint" x="389" y="708">通報異常事件</text>
   </g>
 
   <!-- 5. 日常待處理 -->
@@ -76,7 +76,7 @@
     <circle cx="388.5" cy="252" r="108" fill="#E6F4EA" stroke="#188038" stroke-width="9"/>
     <text class="symbol" x="388.5" y="252" fill="#188038">待</text>
     <text class="title" x="388.5" y="480" text-anchor="middle">日常待處理</text>
-    <text class="subtitle" x="388.5" y="575" text-anchor="middle">未結案事件</text>
+    <text class="subtitle" x="388.5" y="575" text-anchor="middle">未結案日常事件</text>
     <text class="hint" x="388.5" y="708">追蹤處理進度</text>
   </g>
 

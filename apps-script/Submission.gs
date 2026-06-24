@@ -52,7 +52,10 @@ function handleSubmission_(payload) {
     const equipmentForTpl = getEquipmentById_(payload.equipmentId);
     let tplForValidation = null;
     if (equipmentForTpl) {
-      tplForValidation = getTemplateForCategoryCycle_(equipmentForTpl.category, payload.formType);
+      tplForValidation = getTemplateForCategoryCycle_(equipmentForTpl.category, payload.formType, equipmentForTpl);
+      if (!tplForValidation) {
+        throw new Error('找不到模板：' + equipmentForTpl.category + ' - ' + payload.formType);
+      }
     }
     // 順序按「第一個=良好、中間=N/A、最後=不良」的前端慣例
     // （前端 daily.html / monthly.html 用 resultOptions[length-1] 判斷 bad）
@@ -162,7 +165,8 @@ function handleSubmission_(payload) {
       const checkDate = parseISODate_(payload.checkDate);
 
       // 取對應檢查表模板（codex P2: PDF 動態抓 templateName / legalBasis / rule）
-      const tplMeta = getTemplateForCategoryCycle_(equipment.category, payload.formType);
+      const tplMeta = getTemplateForCategoryCycle_(equipment.category, payload.formType, equipment);
+      if (!tplMeta) throw new Error('找不到模板：' + equipment.category + ' - ' + payload.formType);
 
       const needsApproval = requiresSupervisorApproval_(payload.formType, equipment);
       let approvalToken = '';
@@ -741,7 +745,7 @@ function findRecordByClientId_(clientId) {
 /**
  * 取得指定機具類別 + 週期的檢查表模板（給 PDF 動態載入 templateName 等）
  */
-function getTemplateForCategoryCycle_(category, formType) {
+function getTemplateForCategoryCycle_(category, formType, equipment) {
   const cycleMap = { daily: '每日', monthly: '每月' };
   const targetCycle = cycleMap[formType];
 
@@ -752,13 +756,22 @@ function getTemplateForCategoryCycle_(category, formType) {
   const idx = n => headers.indexOf(n);
 
   // 修 P1.2: 必要欄位缺失時 throw 而非靜默 return null（避免 schema 漂移時所有列被當停用 → fallback 白名單 → 堆高機/PPE 全送不出）
-  ['啟用', '設備類別', '週期'].forEach(col => {
+  ['表單ID', '啟用', '設備類別', '週期'].forEach(col => {
     if (idx(col) < 0) throw new Error('檢查表模板缺必要欄位：' + col + '（請執行 initializeDatabase 補欄）');
   });
 
+  const overrideId = getTemplateOverrideIdForEquipment_(equipment, formType);
   for (let i = 1; i < data.length; i++) {
     if (!isActiveValue_(data[i][idx('啟用')])) continue;
-    if (data[i][idx('設備類別')] === category && data[i][idx('週期')] === targetCycle) {
+    if (overrideId) {
+      if (String(data[i][idx('表單ID')] || '').trim() !== overrideId ||
+          data[i][idx('週期')] !== targetCycle) {
+        continue;
+      }
+    } else if (data[i][idx('設備類別')] !== category || data[i][idx('週期')] !== targetCycle) {
+      continue;
+    }
+    {
       // 中英相容（'結果選項' / 'resultOptions'）
       const ropIdx = findCol_(headers, '結果選項', 'resultOptions');
       const ropRaw = ropIdx >= 0 ? String(data[i][ropIdx] || '') : '';
