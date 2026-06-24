@@ -5,7 +5,6 @@
  *
  * 支援指令（傳給 bot 的 text message）：
  *   - 狀態 / status         今日填表進度
- *   - 每日作業 / work       同仁每日作業檢核表
  *   - 待發文 / dispatch     查詢自己今日最新公文待發文快照
  *   - 異常 / open           待處理異常事件清單
  *   - 通報 / incident       日常異常事件通報表
@@ -162,8 +161,7 @@ function cmdHelp_(replyToken) {
     text: [
       '📋 可用指令',
       '',
-      '• 狀態 — 填表狀態、月檢提醒與每日作業完成率',
-      '• 每日作業 — 同仁每日作業檢核表',
+      '• 狀態 — 填表狀態與月檢提醒',
       '• 待發文 — 查詢自己今日最新公文待發文快照',
       '• 異常 — 設備檢查異常清單',
       '• 通報 — 日常異常事件通報表',
@@ -208,13 +206,20 @@ function cmdStatus_(replyToken, userId) {
   // 月檢設備：非應檢期(1-5)且非補填提醒期(25+)時，monthlyReminderJob_ 已完全不 push，狀態不會列
   const results = dailyReminderJob({ dryRun: true });
   const messages = [buildChecklistStatusFlex_(results)];
-  if (typeof getDailyWorkCheckStatus_ === 'function' && typeof buildDailyWorkStatusFlex_ === 'function') {
+  if (typeof isDailyWorkCheckEnabled_ === 'function' && isDailyWorkCheckEnabled_() &&
+      typeof getDailyWorkCheckStatus_ === 'function' && typeof buildDailyWorkStatusFlex_ === 'function') {
     messages.push(buildDailyWorkStatusFlex_(getDailyWorkCheckStatus_({ userId })));
   }
   return lineReply_(replyToken, withQuickReply_(messages));
 }
 
 function cmdDailyWorkCheck_(replyToken) {
+  if (typeof isDailyWorkCheckEnabled_ === 'function' && !isDailyWorkCheckEnabled_()) {
+    return lineReply_(replyToken, withQuickReply_({
+      type: 'text',
+      text: '每日作業檢核已暫停使用；後續改由公文待發文雲端檢核於 16:30 / 17:00 提醒。',
+    }));
+  }
   const url = (typeof buildDailyWorkCheckPublicUrl_ === 'function') ? buildDailyWorkCheckPublicUrl_() : '';
   if (!url) return lineReply_(replyToken, { type: 'text', text: '✗ 系統設定 webFrontendUrl 未填，無法建立每日作業檢核連結' });
   return lineReply_(replyToken, withQuickReply_(buildDailyWorkCheckEntryFlex_(url)));

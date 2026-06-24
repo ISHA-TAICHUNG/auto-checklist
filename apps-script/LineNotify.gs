@@ -282,7 +282,6 @@ function defaultQuickReply_() {
   return {
     items: [
       { type: 'action', action: { type: 'message', label: '📊 填表狀態',   text: '狀態' } },
-      { type: 'action', action: { type: 'message', label: '🗓 每日作業',   text: '每日作業' } },
       { type: 'action', action: { type: 'message', label: '📨 待發文',     text: '待發文' } },
       { type: 'action', action: { type: 'message', label: '🚨 設備異常',   text: '異常' } },
       { type: 'action', action: { type: 'message', label: '📝 日常通報',   text: '通報' } },
@@ -1668,7 +1667,6 @@ function buildDefaultLineRichMenu_() {
     .replace(/\/$/, '');
   const indexUrl = frontend ? `${frontend}/index.html` : 'https://isha-taichung.github.io/auto-checklist/index.html';
   const incidentUrl = frontend ? `${frontend}/incident.html` : 'https://isha-taichung.github.io/auto-checklist/incident.html';
-  const workCheckUrl = frontend ? `${frontend}/work-check.html` : 'https://isha-taichung.github.io/auto-checklist/work-check.html';
   return {
     size: { width: 2500, height: 1686 },
     selected: true,
@@ -1676,7 +1674,7 @@ function buildDefaultLineRichMenu_() {
     chatBarText: 'ISHA 工作台',
     areas: [
       lineRichMenuArea_(0, 0, 834, 843, { type: 'uri', uri: indexUrl }),
-      lineRichMenuArea_(834, 0, 833, 843, { type: 'uri', uri: workCheckUrl }),
+      lineRichMenuArea_(834, 0, 833, 843, { type: 'message', text: '待發文' }),
       lineRichMenuArea_(1667, 0, 833, 843, { type: 'message', text: '狀態' }),
       lineRichMenuArea_(0, 843, 834, 843, { type: 'uri', uri: incidentUrl }),
       lineRichMenuArea_(834, 843, 833, 843, { type: 'message', text: '待處理' }),

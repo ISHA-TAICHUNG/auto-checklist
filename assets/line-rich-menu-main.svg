@@ -32,16 +32,16 @@
     <text class="hint" x="389" y="708">開啟檢查表</text>
   </g>
 
-  <!-- 2. 每日作業 -->
+  <!-- 2. 待發文 -->
   <g transform="translate(862 28)">
     <rect class="card" width="777" height="787" rx="46" filter="url(#cardShadow)"/>
     <rect x="0" y="0" width="22" height="787" rx="11" fill="#0F766E"/>
     <text class="brand" x="72" y="92">ISHA 工作台</text>
     <circle cx="388.5" cy="252" r="108" fill="#CCFBF1" stroke="#0F766E" stroke-width="9"/>
-    <text class="symbol" x="388.5" y="252" fill="#0F766E">作</text>
-    <text class="title" x="388.5" y="480" text-anchor="middle">每日作業</text>
-    <text class="subtitle" x="388.5" y="575" text-anchor="middle">課程・異動・公文</text>
-    <text class="hint" x="388.5" y="708">填寫檢核表</text>
+    <text class="symbol" x="388.5" y="252" fill="#0F766E">文</text>
+    <text class="title" x="388.5" y="480" text-anchor="middle">待發文</text>
+    <text class="subtitle" x="388.5" y="575" text-anchor="middle">公文系統提醒</text>
+    <text class="hint" x="388.5" y="708">查看待發文</text>
   </g>
 
   <!-- 3. 填表狀態 -->

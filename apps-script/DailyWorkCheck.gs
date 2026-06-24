@@ -10,6 +10,10 @@ const DAILY_WORKDAY_EXCEPTION_SHEET_NAME = '工作日例外';
 const DAILY_WORK_CHECK_OPTIONS = ['是', '否', '不適用'];
 const DAILY_WORK_OFFICE_SYSTEM_URL = 'https://member.gsscloud.com/cas/login?service=https%3A%2F%2Fod.vitalyun.com%2Fsignin-cas%3Fstate%3DyL-MS4c6hquehs4K_hG8jC6R1xRwT6Zmt5tVHePQzqctjosBnm0yiz-wRVSXrXAooaEfz-UhsmamOn1ShR40xYysxjBS6gG9LhjoS62Hz5jVMw1_f33VuB-k6fS8g35pKPVaCUsNxvS_2oHFM_cbN3q4rzjvIQSdLgSc8Axhr1U2KbCSqLNb5xeBA1USDcVScQrOsaFELw9WftUd7tFa7w';
 
+function isDailyWorkCheckEnabled_() {
+  return isActiveValue_(getSetting_('dailyWorkCheckEnabled', '否'));
+}
+
 function dailyWorkCheckHeaders_() {
   return [
     '檢核日期', '填報時間', '同仁姓名',
@@ -75,9 +79,18 @@ function getDailyWorkStaffByUserId_(userId) {
 }
 
 function getDailyWorkMeta_() {
+  if (!isDailyWorkCheckEnabled_()) {
+    return {
+      ok: true,
+      enabled: false,
+      disabled: true,
+      message: '每日作業檢核已暫停使用，後續改由公文待發文雲端檢核提醒。',
+    };
+  }
   const today = todayStart_();
   return {
     ok: true,
+    enabled: true,
     date: formatISODate_(today),
     dateLabel: formatDailyWorkDateLabel_(today),
     isBusinessDay: isBusinessDay_(today),
@@ -88,6 +101,9 @@ function getDailyWorkMeta_() {
 
 function submitDailyWorkCheck_(payload) {
   payload = payload || {};
+  if (!isDailyWorkCheckEnabled_()) {
+    throw new Error('每日作業檢核已暫停使用');
+  }
   const today = todayStart_();
   if (!isBusinessDay_(today)) throw new Error('每日作業檢核：今日非上班日，不需填寫');
 
@@ -234,6 +250,9 @@ function dailyWorkCheckReminder1700Job() {
 }
 
 function sendDailyWorkCheckReminder_(slot) {
+  if (!isDailyWorkCheckEnabled_()) {
+    return { ok: true, skipped: true, reason: 'daily_work_disabled', slot };
+  }
   const status = getDailyWorkCheckStatus_();
   if (!status.isBusinessDay) return { ok: true, skipped: true, reason: 'non_business_day', slot };
   if (status.total <= 0) return { ok: false, reason: 'no_staff', slot };

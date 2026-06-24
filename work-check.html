@@ -17,7 +17,6 @@
     <div class="sub" data-org-name></div>
     <nav class="site-tabs" aria-label="主要分頁">
       <a href="index.html">檢查填報</a>
-      <a class="active" href="work-check.html">每日作業</a>
       <a href="incident.html">日常通報</a>
     </nav>
   </header>
@@ -63,6 +62,9 @@
         const res = await API.getDailyWorkMeta();
         if (!res.ok) return showError(res.error || '取得每日作業檢核設定失敗');
         meta = res;
+        if (meta.disabled || meta.enabled === false) {
+          return showInfo(meta.message || '每日作業檢核已暫停使用。');
+        }
         if (!meta.isBusinessDay) return showInfo((meta.dateLabel || '今日') + ' 非上班日，今日免填每日作業檢核。');
         if (!meta.staffNames || !meta.staffNames.length) return showError('尚未在「訂閱者清單」設定同仁名單。');
         renderForm();
