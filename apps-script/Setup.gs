@@ -83,6 +83,9 @@ function initializeDatabase() {
   if (typeof setupDailyWorkCheckSheets_ === 'function') {
     setupDailyWorkCheckSheets_(ss);
   }
+  if (typeof setupOfficialDocumentMonitorSheets_ === 'function') {
+    setupOfficialDocumentMonitorSheets_(ss);
+  }
 
   setupSheet_(ss, '節假日關鍵字', ['關鍵字', '備註'],
     CONFIG.HOLIDAY_KEYWORDS_DEFAULT.map(k => [k, '預設'])
@@ -920,6 +923,17 @@ function applyColumnWidthsAndWrap_() {
       '照片數': 70, '照片資料夾連結': 160, 'PDF連結': 160, '待審PDF檔案ID': 160,
       '承辦更新Token': 180, '主管審核Token': 180, 'clientSubmissionId': 130, '流程紀錄': 320, '備註': 180,
     },
+    '公文待發文佇列': {
+      '檢核日期': 100, '檢核時段': 90, '文件Key': 180, '批次ID': 120,
+      '公文文號': 130, '發文字號': 130, '承辦人員': 150, '承辦人姓名': 100,
+      '承辦單位': 130, '限辦日期': 100, '通知狀態': 100, '通知時間': 150,
+      '通知結果': 220, '建立時間': 150, '更新時間': 150, '備註': 200,
+    },
+    '公文待發文執行紀錄': {
+      '批次ID': 120, '檢核日期': 100, '檢核時段': 90, '開始時間': 150,
+      '結束時間': 150, '狀態': 100, '抓取筆數': 90, '寫入筆數': 90,
+      'dryRun': 70, '錯誤摘要': 260, '建立時間': 150,
+    },
     '填報紀錄': {
       '紀錄ID': 90, '送出時間': 140, '檢查日期': 100, '表單類型': 80,
       '設備代號': 110, '設備名稱': 140, '設備類別': 90, '檢點人員': 100,
@@ -946,7 +960,7 @@ function applyColumnWidthsAndWrap_() {
   const wrapCols = ['項目名稱', '表單名稱', '異常說明', '填寫規則', '法規依據',
                     '完整資料JSON', '備註', '型式規格', '場地表分頁', '值',
                     '草稿Doc連結', 'PDF連結', '異常事項', '異常事情', '處理說明',
-                    '主管審核意見', '照片資料夾連結'];
+                    '主管審核意見', '照片資料夾連結', '通知結果', '錯誤摘要'];
 
   Object.keys(profiles).forEach(sheetName => {
     const sheet = ss.getSheetByName(sheetName);
@@ -1101,6 +1115,9 @@ function applyChineseSettingsAndDropdowns() {
       { col: '15天後課程是否報備', options: DAILY_WORK_CHECK_OPTIONS || ['是', '否', '不適用'], strict: true },
       { col: '1天後異動是否完成', options: DAILY_WORK_CHECK_OPTIONS || ['是', '否', '不適用'], strict: true },
       { col: '公文系統是否成功發送', options: DAILY_WORK_CHECK_OPTIONS || ['是', '否', '不適用'], strict: true },
+    ],
+    '公文待發文佇列': [
+      { col: '通知狀態', options: ['待通知', '已通知', '查無LINE', '通知失敗', '略過'], strict: true },
     ],
     '工作日例外': [
       { col: '是否上班', options: ['是', '否'],       migrate: { TRUE: '是', FALSE: '否' } },

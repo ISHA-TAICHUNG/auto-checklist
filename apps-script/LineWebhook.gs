@@ -6,6 +6,7 @@
  * 支援指令（傳給 bot 的 text message）：
  *   - 狀態 / status         今日填表進度
  *   - 每日作業 / work       同仁每日作業檢核表
+ *   - 待發文 / dispatch     查詢自己今日最新公文待發文快照
  *   - 異常 / open           待處理異常事件清單
  *   - 通報 / incident       日常異常事件通報表
  *   - 待處理 / incidents    日常異常事件未結案清單
@@ -70,6 +71,7 @@ function dispatchLineEvent_(ev) {
   // 指令路由
   if (/^(狀態|status)$/i.test(cmd))    return cmdStatus_(replyToken, userId);
   if (/^(每日作業|作業|work|dailywork)$/i.test(cmd)) return cmdDailyWorkCheck_(replyToken);
+  if (/^(待發文|公文待發文|dispatch|documents)$/i.test(cmd)) return cmdOfficialDocumentDispatch_(replyToken, userId);
   if (/^(異常|open)$/i.test(cmd))      return cmdOpenIncidents_(replyToken);
   if (/^(通報|incident)$/i.test(cmd))  return cmdDailyIncidentReport_(replyToken);
   if (/^(待處理|incidents)$/i.test(cmd)) return cmdDailyIncidentList_(replyToken);
@@ -162,6 +164,7 @@ function cmdHelp_(replyToken) {
       '',
       '• 狀態 — 填表狀態、月檢提醒與每日作業完成率',
       '• 每日作業 — 同仁每日作業檢核表',
+      '• 待發文 — 查詢自己今日最新公文待發文快照',
       '• 異常 — 設備檢查異常清單',
       '• 通報 — 日常異常事件通報表',
       '• 待處理 — 日常異常事件未結案清單',
@@ -215,6 +218,13 @@ function cmdDailyWorkCheck_(replyToken) {
   const url = (typeof buildDailyWorkCheckPublicUrl_ === 'function') ? buildDailyWorkCheckPublicUrl_() : '';
   if (!url) return lineReply_(replyToken, { type: 'text', text: '✗ 系統設定 webFrontendUrl 未填，無法建立每日作業檢核連結' });
   return lineReply_(replyToken, withQuickReply_(buildDailyWorkCheckEntryFlex_(url)));
+}
+
+function cmdOfficialDocumentDispatch_(replyToken, userId) {
+  if (typeof getOfficialDocumentQueueStatusForUser_ !== 'function') {
+    return lineReply_(replyToken, { type: 'text', text: '✗ 公文待發文模組尚未部署完成' });
+  }
+  return lineReply_(replyToken, withQuickReply_(getOfficialDocumentQueueStatusForUser_(userId)));
 }
 
 function cmdOpenIncidents_(replyToken) {

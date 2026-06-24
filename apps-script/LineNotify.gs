@@ -283,6 +283,7 @@ function defaultQuickReply_() {
     items: [
       { type: 'action', action: { type: 'message', label: '📊 填表狀態',   text: '狀態' } },
       { type: 'action', action: { type: 'message', label: '🗓 每日作業',   text: '每日作業' } },
+      { type: 'action', action: { type: 'message', label: '📨 待發文',     text: '待發文' } },
       { type: 'action', action: { type: 'message', label: '🚨 設備異常',   text: '異常' } },
       { type: 'action', action: { type: 'message', label: '📝 日常通報',   text: '通報' } },
       { type: 'action', action: { type: 'message', label: '📌 日常待處理', text: '待處理' } },

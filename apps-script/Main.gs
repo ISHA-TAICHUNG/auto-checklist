@@ -113,7 +113,9 @@ function doGet(e) {
                                'lineWebhookHealth', 'lineTargetStatus',
                                'syncLineWebhookEndpoint',
                                'openIssues', 'reminderStatus',
-                               'installDailyWorkCheckTriggers'];
+                               'installDailyWorkCheckTriggers',
+                               'setupOfficialDocumentMonitor',
+                               'processOfficialDocumentQueue'];
         // 破壞性 actions — 需 ADMIN_TOKEN + ALLOW_DESTRUCTIVE_HTTP=YES kill switch
         const DESTRUCTIVE_ACTIONS = ['cleanupAll', 'cleanupDate'];
         if (WRITE_ACTIONS.indexOf(action) >= 0 || DESTRUCTIVE_ACTIONS.indexOf(action) >= 0) {
@@ -405,6 +407,29 @@ function doGet(e) {
             result = installDailyWorkCheckTriggers();
             break;
           }
+          case 'setupOfficialDocumentMonitor': {
+            const ss = SpreadsheetApp.openById(CONFIG.DB_SHEET_ID);
+            setupOfficialDocumentMonitorSheets_(ss);
+            applyColumnWidthsAndWrap_();
+            applyChineseSettingsAndDropdowns();
+            result = {
+              ok: true,
+              action,
+              sheetNames: [OFFICIAL_DOC_QUEUE_SHEET_NAME, OFFICIAL_DOC_RUN_LOG_SHEET_NAME],
+            };
+            break;
+          }
+          case 'processOfficialDocumentQueue': {
+            result = {
+              ok: true,
+              action,
+              ...processOfficialDocumentQueue_({
+                date: e.parameter.date,
+                slot: e.parameter.slot,
+              }),
+            };
+            break;
+          }
           case 'fetchPdf': {
             // 唯讀，且只允許讀「archive root 之下 + mimeType=PDF」的檔案
             // 雙重限制（codex P1 + DB Sheet 移入歸檔資料夾後的延伸保護）：
@@ -484,6 +509,20 @@ function doPost(e) {
 
     let result;
     switch (payload.action || '') {
+      case 'enqueueOfficialDocuments':
+        if (!checkAdminToken_(payload.adminToken)) {
+          throw new Error('未授權：此 action 需 adminToken（Script Properties ADMIN_TOKEN）');
+        }
+        delete payload.adminToken;
+        result = enqueueOfficialDocumentDispatches_(payload);
+        break;
+      case 'processOfficialDocumentQueue':
+        if (!checkAdminToken_(payload.adminToken)) {
+          throw new Error('未授權：此 action 需 adminToken（Script Properties ADMIN_TOKEN）');
+        }
+        delete payload.adminToken;
+        result = processOfficialDocumentQueue_(payload);
+        break;
       case 'approveRecord':
         result = handleApprovalSubmission_(payload);
         break;
@@ -535,6 +574,7 @@ function friendlyError_(err) {
     '處理完成後才能陳核', '缺少陳核主管', '請填寫陳核主管', '審核決定不合法',
     '主管處理意見', '只有處理中事件', '已送主管正式審核',
     '每日作業檢核', '同仁姓名',
+    '公文待發文', '待發文佇列',
     'cleanupAll dryRun 需帶', 'cleanupDate dryRun 需帶', 'cleanupDate 實刪需帶',
     // admin 用錯誤訊息
     '該檔案非', '需要 fileId', '未知 admin action', '未知的 api',
