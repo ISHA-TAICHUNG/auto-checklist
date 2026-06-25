@@ -232,6 +232,7 @@ function processOfficialDocumentQueue_(payload) {
     let notifiedPeople = 0;
     let noLinePeople = 0;
     let failedPeople = 0;
+    const deskEligibleRecords = [];
     Object.keys(groups).forEach(name => {
       const group = groups[name];
       pendingCount += group.rows.length;
@@ -247,12 +248,15 @@ function processOfficialDocumentQueue_(payload) {
         return;
       }
 
+      const records = group.rows.map(item => rowToOfficialDocumentRecord_(item.row, headers));
+      // 登記桌彙總只納入已命中訂閱者清單的承辦人案件；本人推播失敗時仍保留給登記桌追蹤。
+      deskEligibleRecords.push.apply(deskEligibleRecords, records);
       const flex = buildOfficialDocumentDispatchReminderFlex_({
         date: dateStr,
         slot,
         handlerName: group.handlerName,
         unit: group.unit || target.unit || '',
-        records: group.rows.map(item => rowToOfficialDocumentRecord_(item.row, headers)),
+        records,
       });
       const result = linePushTo_(target.userId, withQuickReply_(flex));
       if (result && result.ok) {
@@ -264,26 +268,23 @@ function processOfficialDocumentQueue_(payload) {
       }
     });
 
-    // 公文登記桌:除通知各承辦人外,另把「全部待發文彙總」推給被指定為登記桌的同仁(oversight)
+    // 公文登記桌:只彙總「已比對到訂閱者清單同仁」的待發文,避免無命中時仍扣登記桌主動推播額度。
     // 安全:整個函式由 Cloud Run 於 16:30/17:00 觸發;目前 NOTIFY/DRY_RUN/Scheduler 仍 gated,不會對外發
     let deskNotified = 0;
     let deskFailed = 0;
     const deskFailedPeople = [];
-    if (pendingCount > 0) {
-      const allRecords = [];
-      Object.keys(groups).forEach(gname => {
-        groups[gname].rows.forEach(item => allRecords.push(rowToOfficialDocumentRecord_(item.row, headers)));
-      });
+    const deskEligibleCount = deskEligibleRecords.length;
+    if (deskEligibleCount > 0) {
       const deskTargets = getOfficialDocumentRegistryDeskTargets_();
-      if (deskTargets.length > 0 && allRecords.length > 0) {
+      if (deskTargets.length > 0) {
         const deskFlex = buildOfficialDocumentListFlex_({
           title: '📨 公文待發文彙總（登記桌）',
           altPrefix: '📨 公文待發文彙總',
           color: '#1A73E8',
           date: dateStr,
           slot: slot,
-          records: allRecords,
-          message: '本時段共 ' + allRecords.length + ' 件待發文,請協助追蹤。',
+          records: deskEligibleRecords,
+          message: '本時段共 ' + deskEligibleRecords.length + ' 件待發文已命中訂閱同仁,請協助追蹤。',
         });
         deskTargets.forEach(t => {
           const r = linePushTo_(t.userId, withQuickReply_(deskFlex));
@@ -301,7 +302,7 @@ function processOfficialDocumentQueue_(payload) {
     }
 
     SpreadsheetApp.flush();
-    return { ok: true, date: dateStr, slot, pendingCount, notifiedPeople, noLinePeople, failedPeople, deskNotified, deskFailed, deskFailedPeople };
+    return { ok: true, date: dateStr, slot, pendingCount, deskEligibleCount, notifiedPeople, noLinePeople, failedPeople, deskNotified, deskFailed, deskFailedPeople };
   } finally {
     lock.releaseLock();
   }
