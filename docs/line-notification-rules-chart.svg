@@ -35,8 +35,8 @@
   <text class="section-title" x="112" y="215">收件對象來源</text>
   <text class="section-title" x="112" y="252">單一控管表</text>
   <text class="t" x="510" y="205">訂閱者清單：有 LINE_USER_ID 且未停用者，收到一般公告。</text>
-  <text class="t" x="510" y="242">是否為主管 = 是：收到主管簽核、月檢、每日作業未填提醒。</text>
-  <text class="t" x="510" y="279">是否為同仁 = 是：納入每日作業完成率與未填名單，不會直接逐一推播。</text>
+  <text class="t" x="510" y="242">是否為主管 = 是：收到主管簽核與月檢提醒。</text>
+  <text class="t" x="510" y="279">是否為同仁 = 是：用於公文待發文承辦人比對與本人提醒。</text>
 
   <g transform="translate(80 336)">
     <rect class="blue" x="0" y="0" width="1640" height="62" rx="12"/>
@@ -86,9 +86,9 @@
     <rect class="soft-red" x="1258" y="214" width="150" height="40" rx="20"/><text class="pill red" x="1290" y="241">會扣</text>
     <line class="line" x1="0" y1="270" x2="1640" y2="270"/>
 
-    <text class="t" x="28" y="306">每日作業 16:30 / 17:00</text>
-    <text class="t" x="438" y="306">是否為主管 = 是</text>
-    <text class="t" x="848" y="306">尚未填寫同仁名單</text>
+    <text class="t" x="28" y="306">公文待發文 16:30 / 17:00</text>
+    <text class="t" x="438" y="306">命中同仁 / 公文登記桌</text>
+    <text class="t" x="848" y="306">本人提醒或登記桌彙總</text>
     <rect class="soft-red" x="1258" y="280" width="150" height="40" rx="20"/><text class="pill red" x="1290" y="307">會扣</text>
     <line class="line" x1="0" y1="336" x2="1640" y2="336"/>
 
