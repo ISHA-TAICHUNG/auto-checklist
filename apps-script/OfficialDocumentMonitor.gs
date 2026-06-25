@@ -277,14 +277,14 @@ function processOfficialDocumentQueue_(payload) {
     if (deskEligibleCount > 0) {
       const deskTargets = getOfficialDocumentRegistryDeskTargets_();
       if (deskTargets.length > 0) {
-        const deskFlex = buildOfficialDocumentListFlex_({
+        const deskFlex = buildOfficialDocumentDeskSummaryFlex_({
           title: '📨 公文待發文彙總（登記桌）',
           altPrefix: '📨 公文待發文彙總',
           color: '#1A73E8',
           date: dateStr,
           slot: slot,
           records: deskEligibleRecords,
-          message: '本時段共 ' + deskEligibleRecords.length + ' 件待發文已命中訂閱同仁,請協助追蹤。',
+          message: '本時段命中訂閱同仁 ' + deskEligibleRecords.length + ' 件,請協助追蹤。未訂閱者不在此清單。',
         });
         deskTargets.forEach(t => {
           const r = linePushTo_(t.userId, withQuickReply_(deskFlex));
@@ -556,6 +556,114 @@ function buildOfficialDocumentListFlex_(opts) {
     type: 'flex',
     altText: (opts.altPrefix || '📨 公文待發文') + ' ' + records.length + ' 件',
     contents: bubbles.length === 1 ? bubbles[0] : { type: 'carousel', contents: bubbles },
+  };
+}
+
+function buildOfficialDocumentDeskSummaryFlex_(opts) {
+  opts = opts || {};
+  const records = Array.isArray(opts.records) ? opts.records : [];
+  const summaries = summarizeOfficialDocumentByHandler_(records);
+  const perBubble = 10;
+  const maxBubbles = 12;
+  const chunks = [];
+  for (let i = 0; i < summaries.length; i += perBubble) {
+    chunks.push(summaries.slice(i, i + perBubble));
+  }
+  if (chunks.length === 0) chunks.push([]);
+  const totalPages = Math.min(chunks.length, maxBubbles);
+  const truncatedPeople = chunks.length > maxBubbles ? summaries.length - (perBubble * maxBubbles) : 0;
+  const bubbles = chunks.slice(0, maxBubbles).map((chunk, pageIndex) => {
+    return buildOfficialDocumentDeskSummaryBubble_({
+      title: opts.title || '📨 公文待發文彙總',
+      color: opts.color || '#1A73E8',
+      accentColor: opts.accentColor || '#ffffff',
+      date: opts.date || '',
+      slot: opts.slot || '',
+      summaries: chunk,
+      totalCount: records.length,
+      totalPeople: summaries.length,
+      pageNo: pageIndex + 1,
+      totalPages,
+      message: pageIndex === 0 ? opts.message : '',
+      truncatedPeople: pageIndex === maxBubbles - 1 ? truncatedPeople : 0,
+    });
+  });
+  return {
+    type: 'flex',
+    altText: (opts.altPrefix || '📨 公文待發文彙總') + ' ' + summaries.length + ' 人 ' + records.length + ' 件',
+    contents: bubbles.length === 1 ? bubbles[0] : { type: 'carousel', contents: bubbles },
+  };
+}
+
+function summarizeOfficialDocumentByHandler_(records) {
+  const order = [];
+  const map = {};
+  records.forEach(record => {
+    const name = String(record && record.handlerName || '').trim() || '未具名';
+    if (!map[name]) {
+      map[name] = { handlerName: name, count: 0 };
+      order.push(name);
+    }
+    map[name].count++;
+  });
+  return order.map(name => map[name]);
+}
+
+function buildOfficialDocumentDeskSummaryBubble_(opts) {
+  const summaries = Array.isArray(opts.summaries) ? opts.summaries : [];
+  const subtitleParts = [opts.date, opts.slot].filter(Boolean);
+  const body = [
+    { type: 'box', layout: 'baseline', spacing: 'sm', contents: [
+      { type: 'text', text: '待發文', flex: 3, size: 'sm', color: '#666666' },
+      { type: 'text', text: opts.totalCount + ' 件 / ' + opts.totalPeople + ' 人', flex: 6, size: 'sm', color: opts.color || '#1A73E8', weight: 'bold' },
+    ]},
+  ];
+  if (subtitleParts.length > 0) {
+    body.push({ type: 'box', layout: 'baseline', spacing: 'sm', contents: [
+      { type: 'text', text: '時段', flex: 3, size: 'sm', color: '#666666' },
+      { type: 'text', text: subtitleParts.join(' '), flex: 6, size: 'sm', wrap: true },
+    ]});
+  }
+  if (opts.message) {
+    body.push({ type: 'text', text: opts.message, size: 'sm', color: '#202124', margin: 'sm', wrap: true });
+  }
+  body.push({ type: 'separator', margin: 'md' });
+  summaries.forEach(summary => {
+    body.push({
+      type: 'box',
+      layout: 'baseline',
+      spacing: 'sm',
+      margin: 'sm',
+      contents: [
+        { type: 'text', text: summary.handlerName, flex: 6, size: 'sm', weight: 'bold', color: '#202124', wrap: true },
+        { type: 'text', text: summary.count + ' 件', flex: 3, size: 'sm', color: opts.color || '#1A73E8', weight: 'bold', align: 'end' },
+      ],
+    });
+  });
+  if (summaries.length === 0) {
+    body.push({ type: 'text', text: '目前沒有命中訂閱同仁的待發文。', size: 'sm', color: '#5F6368', margin: 'sm', wrap: true });
+  }
+  if (opts.truncatedPeople > 0) {
+    body.push({ type: 'text', text: 'LINE 圖卡容量限制，尚有 ' + opts.truncatedPeople + ' 人請至公文系統查看。', size: 'xs', color: '#5F6368', margin: 'sm', wrap: true });
+  }
+  return {
+    type: 'bubble',
+    header: {
+      type: 'box',
+      layout: 'vertical',
+      backgroundColor: opts.color || '#1A73E8',
+      paddingAll: 'md',
+      contents: [
+        { type: 'text', text: opts.title || '📨 公文待發文彙總', color: '#ffffff', weight: 'bold', size: 'lg', wrap: true },
+        { type: 'text', text: (subtitleParts.join(' ') || '今日') + (opts.totalPages > 1 ? '・第 ' + opts.pageNo + '/' + opts.totalPages + ' 頁' : ''), color: opts.accentColor || '#ffffff', size: 'sm', wrap: true },
+      ],
+    },
+    body: {
+      type: 'box',
+      layout: 'vertical',
+      spacing: 'sm',
+      contents: body,
+    },
   };
 }
 
