@@ -498,6 +498,142 @@ function getOfficialDocumentSnapshot_(payload) {
   };
 }
 
+function resendOfficialDocumentSnapshot_(payload) {
+  payload = payload || {};
+  const snapshot = getOfficialDocumentSnapshot_({
+    date: payload.date,
+    slot: payload.slot,
+  });
+  const recipients = resolveOfficialDocumentSnapshotRecipients_(payload);
+  if (recipients.length === 0) {
+    throw new Error('公文待發文快照補發缺少收件者，請提供 toName 或 toUserId');
+  }
+
+  const filtered = filterOfficialDocumentSubscriberRecords_(snapshot.records);
+  const flex = buildOfficialDocumentDeskSummaryFlex_({
+    title: '📨 公文待發文彙總（補發）',
+    altPrefix: '📨 公文待發文彙總補發',
+    color: '#1A73E8',
+    date: snapshot.date,
+    slot: snapshot.slot,
+    records: filtered.records,
+    message: '依目前快照補發給管理員預覽；此卡只列命中訂閱同仁的案件，未訂閱者不在此清單。',
+  });
+
+  let pushedCount = 0;
+  let failedCount = 0;
+  const failedRecipients = [];
+  recipients.forEach(recipient => {
+    const result = linePushTo_(recipient.userId, withQuickReply_(flex));
+    if (result && result.ok) {
+      pushedCount++;
+    } else {
+      failedCount++;
+      failedRecipients.push({
+        name: recipient.name || '未命名收件者',
+        code: result && result.code ? result.code : '',
+      });
+    }
+  });
+
+  return {
+    ok: true,
+    date: snapshot.date,
+    slot: snapshot.slot,
+    latestSlot: snapshot.latestSlot,
+    snapshotCount: snapshot.count,
+    deskEligibleCount: filtered.records.length,
+    skippedPeople: filtered.skippedPeople,
+    recipientCount: recipients.length,
+    pushedCount,
+    failedCount,
+    failedRecipients,
+  };
+}
+
+function resolveOfficialDocumentSnapshotRecipients_(payload) {
+  const recipients = [];
+  const addRecipient = recipient => {
+    if (!recipient || !recipient.userId) return;
+    if (recipients.some(item => item.userId === recipient.userId)) return;
+    recipients.push({ name: recipient.name || '', userId: recipient.userId });
+  };
+
+  const explicitUserId = String(payload.toUserId || payload.lineUserId || payload.userId || '').trim();
+  if (explicitUserId) {
+    addRecipient({ name: String(payload.toName || payload.name || '').trim(), userId: explicitUserId });
+  }
+
+  const recipientName = String(payload.toName || payload.name || payload.recipientName || '').trim();
+  if (recipientName) {
+    const namedRecipients = findOfficialDocumentSubscriberRecipientsByName_(recipientName);
+    if (namedRecipients.ambiguous) {
+      throw new Error('補發收件者姓名比對不唯一：' + recipientName);
+    }
+    namedRecipients.forEach(addRecipient);
+  }
+
+  if (String(payload.to || payload.target || '').trim() === 'desk') {
+    getOfficialDocumentRegistryDeskTargets_().forEach(addRecipient);
+  }
+
+  return recipients;
+}
+
+function findOfficialDocumentSubscriberRecipientsByName_(targetName) {
+  const target = String(targetName || '').trim();
+  if (!target) return [];
+  const ss = SpreadsheetApp.openById(CONFIG.DB_SHEET_ID);
+  const sheet = getLineSubscriberSheet_(ss);
+  if (!sheet || sheet.getLastRow() < 2) return [];
+  const data = sheet.getDataRange().getValues();
+  const headers = data[0].map(h => String(h || '').trim());
+  const nameCol = headers.indexOf('姓名');
+  const idCol = headers.indexOf('LINE_USER_ID');
+  const activeCol = getLineSubscriberActiveColumnIndex_(headers);
+  if (nameCol < 0 || idCol < 0) return [];
+
+  const matches = [];
+  data.slice(1).forEach(row => {
+    const name = String(row[nameCol] || '').trim();
+    const userId = String(row[idCol] || '').trim();
+    const active = activeCol < 0 ? true : isActiveValue_(row[activeCol]);
+    if (!name || !userId || !active) return;
+    if (name === target || target.indexOf(name) >= 0 || name.indexOf(target) >= 0) {
+      matches.push({ name, userId });
+    }
+  });
+
+  const uniqueIds = Array.from(new Set(matches.map(item => item.userId)));
+  if (uniqueIds.length > 1) {
+    const exact = matches.filter(item => item.name === target);
+    const exactIds = Array.from(new Set(exact.map(item => item.userId)));
+    if (exactIds.length === 1) return exact.filter((item, index) => exact.findIndex(prev => prev.userId === item.userId) === index);
+    const ambiguous = [];
+    ambiguous.ambiguous = true;
+    return ambiguous;
+  }
+  return matches.filter((item, index) => matches.findIndex(prev => prev.userId === item.userId) === index);
+}
+
+function filterOfficialDocumentSubscriberRecords_(records) {
+  const eligible = [];
+  const skippedMap = {};
+  (Array.isArray(records) ? records : []).forEach(record => {
+    const target = findOfficialDocumentStaffLineTarget_(record.handlerName, record.unit);
+    if (target && target.userId && !target.ambiguous) {
+      eligible.push(record);
+    } else {
+      const name = String(record && record.handlerName || '').trim() || '未具名';
+      skippedMap[name] = true;
+    }
+  });
+  return {
+    records: eligible,
+    skippedPeople: Object.keys(skippedMap),
+  };
+}
+
 function buildOfficialDocumentStatusFlex_(status) {
   status = status || {};
   const records = Array.isArray(status.records) ? status.records : [];

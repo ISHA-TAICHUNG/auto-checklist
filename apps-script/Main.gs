@@ -117,7 +117,8 @@ function doGet(e) {
                                'sheetInventory',
                                'setupOfficialDocumentMonitor',
                                'processOfficialDocumentQueue',
-                               'officialDocumentSnapshot'];
+                               'officialDocumentSnapshot',
+                               'resendOfficialDocumentSnapshot'];
         // 破壞性 actions — 需 ADMIN_TOKEN + ALLOW_DESTRUCTIVE_HTTP=YES kill switch
         const DESTRUCTIVE_ACTIONS = ['cleanupAll', 'cleanupDate'];
         if (WRITE_ACTIONS.indexOf(action) >= 0 || DESTRUCTIVE_ACTIONS.indexOf(action) >= 0) {
@@ -447,6 +448,25 @@ function doGet(e) {
               ...getOfficialDocumentSnapshot_({
                 date: e.parameter.date,
                 slot: e.parameter.slot,
+              }),
+            };
+            break;
+          }
+          case 'resendOfficialDocumentSnapshot': {
+            result = {
+              ok: true,
+              action,
+              ...resendOfficialDocumentSnapshot_({
+                date: e.parameter.date,
+                slot: e.parameter.slot,
+                to: e.parameter.to,
+                target: e.parameter.target,
+                toName: e.parameter.toName,
+                name: e.parameter.name,
+                recipientName: e.parameter.recipientName,
+                toUserId: e.parameter.toUserId,
+                lineUserId: e.parameter.lineUserId,
+                userId: e.parameter.userId,
               }),
             };
             break;
