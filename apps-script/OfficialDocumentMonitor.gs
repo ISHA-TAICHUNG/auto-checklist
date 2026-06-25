@@ -135,7 +135,7 @@ function upsertOfficialDocumentQueueRows_(ss, opts) {
   const values = lastRow >= 2 ? sheet.getRange(2, 1, lastRow - 1, headers.length).getValues() : [];
   const existing = {};
   values.forEach((row, i) => {
-    const key = officialDocumentQueueKey_(row[idx('檢核日期')], row[idx('檢核時段')], row[idx('文件Key')]);
+    const key = officialDocumentQueueKey_(officialDocumentDateKey_(row[idx('檢核日期')]), officialDocumentSlotKey_(row[idx('檢核時段')]), row[idx('文件Key')]);
     if (key) existing[key] = { rowNo: i + 2, row };
   });
 
@@ -218,8 +218,8 @@ function processOfficialDocumentQueue_(payload) {
     data.forEach((row, i) => {
       const status = String(row[idx('通知狀態')] || '').trim();
       if (status !== OFFICIAL_DOC_QUEUE_PENDING) return;
-      if (String(row[idx('檢核日期')] || '').trim() !== dateStr) return;
-      if (String(row[idx('檢核時段')] || '').trim() !== slot) return;
+      if (officialDocumentDateKey_(row[idx('檢核日期')]) !== dateStr) return;
+      if (officialDocumentSlotKey_(row[idx('檢核時段')]) !== slot) return;
       const handlerName = String(row[idx('承辦人姓名')] || '').trim();
       if (!handlerName) return;
       if (!groups[handlerName]) groups[handlerName] = { handlerName, unit: '', rows: [] };
@@ -427,11 +427,11 @@ function getOfficialDocumentQueueStatusForUser_(userId) {
   const nameCol = headers.indexOf('承辦人姓名');
   if (dateCol < 0 || slotCol < 0 || nameCol < 0) throw new Error('公文待發文佇列缺少必要欄位');
   const data = sheet.getRange(2, 1, lastRow - 1, headers.length).getValues();
-  const todayRows = data.filter(row => String(row[dateCol] || '').trim() === dateStr);
-  const latestSlot = todayRows.map(row => String(row[slotCol] || '').trim()).filter(Boolean).sort().pop() || '';
+  const todayRows = data.filter(row => officialDocumentDateKey_(row[dateCol]) === dateStr);
+  const latestSlot = todayRows.map(row => officialDocumentSlotKey_(row[slotCol])).filter(Boolean).sort().pop() || '';
   const ownRows = latestSlot ? todayRows.filter(row => {
     const name = String(row[nameCol] || '').trim();
-    const slot = String(row[slotCol] || '').trim();
+    const slot = officialDocumentSlotKey_(row[slotCol]);
     return slot === latestSlot && name === staff.name;
   }) : [];
   const records = ownRows.map(row => rowToOfficialDocumentRecord_(row, headers));
@@ -468,11 +468,11 @@ function getOfficialDocumentSnapshot_(payload) {
   const slotCol = headers.indexOf('檢核時段');
   if (dateCol < 0 || slotCol < 0) throw new Error('公文待發文佇列缺少必要欄位');
   const data = sheet.getRange(2, 1, lastRow - 1, headers.length).getValues();
-  const todayRows = data.filter(row => String(row[dateCol] || '').trim() === dateStr);
-  const latestSlot = todayRows.map(row => String(row[slotCol] || '').trim()).filter(Boolean).sort().pop() || '';
+  const todayRows = data.filter(row => officialDocumentDateKey_(row[dateCol]) === dateStr);
+  const latestSlot = todayRows.map(row => officialDocumentSlotKey_(row[slotCol])).filter(Boolean).sort().pop() || '';
   const targetSlot = requestedSlot || latestSlot;
   const rows = targetSlot
-    ? todayRows.filter(row => String(row[slotCol] || '').trim() === targetSlot)
+    ? todayRows.filter(row => officialDocumentSlotKey_(row[slotCol]) === targetSlot)
     : [];
   const records = rows.map(row => {
     const record = rowToOfficialDocumentRecord_(row, headers);
@@ -684,8 +684,8 @@ function hashOfficialDocumentKey_(text) {
 }
 
 function officialDocumentQueueKey_(dateStr, slot, documentKey) {
-  const d = String(dateStr || '').trim();
-  const s = String(slot || '').trim();
+  const d = officialDocumentDateKey_(dateStr);
+  const s = officialDocumentSlotKey_(slot);
   const k = String(documentKey || '').trim();
   if (!d || !s || !k) return '';
   return d + '|' + s + '|' + k;
@@ -702,10 +702,33 @@ function sanitizeOfficialDocumentDate_(value) {
   return Utilities.formatDate(new Date(), tz_(), 'yyyy-MM-dd');
 }
 
+function officialDocumentDateKey_(value) {
+  if (Object.prototype.toString.call(value) === '[object Date]' && !isNaN(value.getTime())) {
+    return Utilities.formatDate(value, tz_(), 'yyyy-MM-dd');
+  }
+  const text = String(value || '').trim();
+  if (!text) return '';
+  if (/^\d{4}-\d{2}-\d{2}$/.test(text)) return text;
+  const slash = text.match(/^(\d{4})\/(\d{1,2})\/(\d{1,2})$/);
+  if (slash) return slash[1] + '-' + ('0' + slash[2]).slice(-2) + '-' + ('0' + slash[3]).slice(-2);
+  return text;
+}
+
 function sanitizeOfficialDocumentSlot_(value) {
   const text = String(value || '').trim();
   if (/^\d{2}:\d{2}$/.test(text)) return text;
   return Utilities.formatDate(new Date(), tz_(), 'HH:mm');
+}
+
+function officialDocumentSlotKey_(value) {
+  if (Object.prototype.toString.call(value) === '[object Date]' && !isNaN(value.getTime())) {
+    return Utilities.formatDate(value, tz_(), 'HH:mm');
+  }
+  const text = String(value || '').trim();
+  if (!text) return '';
+  const match = text.match(/^(\d{1,2}):(\d{2})(?::\d{2})?$/);
+  if (match) return ('0' + match[1]).slice(-2) + ':' + match[2];
+  return text;
 }
 
 function officialDocumentNow_() {
