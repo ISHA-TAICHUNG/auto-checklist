@@ -444,6 +444,59 @@ function getOfficialDocumentQueueStatusForUser_(userId) {
   });
 }
 
+function getOfficialDocumentSnapshot_(payload) {
+  payload = payload || {};
+  const ss = SpreadsheetApp.openById(CONFIG.DB_SHEET_ID);
+  setupOfficialDocumentMonitorSheets_(ss);
+  const sheet = getOfficialDocumentQueueSheet_(ss);
+  const dateStr = sanitizeOfficialDocumentDate_(payload.date);
+  const requestedSlot = String(payload.slot || '').trim();
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 2) {
+    return {
+      date: dateStr,
+      slot: requestedSlot,
+      latestSlot: '',
+      count: 0,
+      records: [],
+    };
+  }
+
+  const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0].map(h => String(h || '').trim());
+  const dateCol = headers.indexOf('檢核日期');
+  const slotCol = headers.indexOf('檢核時段');
+  if (dateCol < 0 || slotCol < 0) throw new Error('公文待發文佇列缺少必要欄位');
+  const data = sheet.getRange(2, 1, lastRow - 1, headers.length).getValues();
+  const todayRows = data.filter(row => String(row[dateCol] || '').trim() === dateStr);
+  const latestSlot = todayRows.map(row => String(row[slotCol] || '').trim()).filter(Boolean).sort().pop() || '';
+  const targetSlot = requestedSlot || latestSlot;
+  const rows = targetSlot
+    ? todayRows.filter(row => String(row[slotCol] || '').trim() === targetSlot)
+    : [];
+  const records = rows.map(row => {
+    const record = rowToOfficialDocumentRecord_(row, headers);
+    const get = name => {
+      const i = headers.indexOf(name);
+      return i >= 0 ? String(row[i] || '').trim() : '';
+    };
+    return {
+      ...record,
+      notifyStatus: get('通知狀態'),
+      notifyTime: get('通知時間'),
+      notifyResult: get('通知結果'),
+      batchId: get('批次ID'),
+      updatedAt: get('更新時間'),
+    };
+  });
+  return {
+    date: dateStr,
+    slot: targetSlot,
+    latestSlot,
+    count: records.length,
+    records,
+  };
+}
+
 function buildOfficialDocumentStatusFlex_(status) {
   status = status || {};
   const records = Array.isArray(status.records) ? status.records : [];

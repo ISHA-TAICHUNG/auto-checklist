@@ -116,7 +116,8 @@ function doGet(e) {
                                'installDailyWorkCheckTriggers',
                                'sheetInventory',
                                'setupOfficialDocumentMonitor',
-                               'processOfficialDocumentQueue'];
+                               'processOfficialDocumentQueue',
+                               'officialDocumentSnapshot'];
         // 破壞性 actions — 需 ADMIN_TOKEN + ALLOW_DESTRUCTIVE_HTTP=YES kill switch
         const DESTRUCTIVE_ACTIONS = ['cleanupAll', 'cleanupDate'];
         if (WRITE_ACTIONS.indexOf(action) >= 0 || DESTRUCTIVE_ACTIONS.indexOf(action) >= 0) {
@@ -433,6 +434,17 @@ function doGet(e) {
               ok: true,
               action,
               ...processOfficialDocumentQueue_({
+                date: e.parameter.date,
+                slot: e.parameter.slot,
+              }),
+            };
+            break;
+          }
+          case 'officialDocumentSnapshot': {
+            result = {
+              ok: true,
+              action,
+              ...getOfficialDocumentSnapshot_({
                 date: e.parameter.date,
                 slot: e.parameter.slot,
               }),
