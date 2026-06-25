@@ -664,7 +664,30 @@ function buildOfficialDocumentDeskSummaryBubble_(opts) {
       spacing: 'sm',
       contents: body,
     },
+    footer: buildOfficialDocumentFooter_(),
   };
+}
+
+function buildOfficialDocumentFooter_() {
+  const url = buildOfficialDocumentSystemUrl_();
+  if (!url) return undefined;
+  return {
+    type: 'box',
+    layout: 'vertical',
+    spacing: 'sm',
+    contents: [{
+      type: 'button',
+      style: 'primary',
+      height: 'sm',
+      action: { type: 'uri', label: '開啟公文系統', uri: url },
+    }],
+  };
+}
+
+function buildOfficialDocumentSystemUrl_() {
+  const configured = String(getSetting_('officialDocumentSystemUrl', '') || '').trim();
+  const url = configured || 'https://od.vitalyun.com/';
+  return /^https?:\/\//.test(url) ? url : 'https://od.vitalyun.com/';
 }
 
 function buildOfficialDocumentListBubble_(opts) {
@@ -719,6 +742,7 @@ function buildOfficialDocumentListBubble_(opts) {
       spacing: 'sm',
       contents: body,
     },
+    footer: buildOfficialDocumentFooter_(),
   };
 }
 
