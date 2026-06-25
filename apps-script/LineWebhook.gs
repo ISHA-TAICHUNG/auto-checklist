@@ -5,7 +5,7 @@
  *
  * 支援指令（傳給 bot 的 text message）：
  *   - 狀態 / status         今日填表進度
- *   - 待發文 / dispatch     查詢自己今日最新公文待發文快照
+ *   - 待發文 / dispatch     查詢自己今日最新公文待發文快照（非即時登入）
  *   - 異常 / open           待處理異常事件清單
  *   - 通報 / incident       日常異常事件通報表
  *   - 待處理 / incidents    日常異常事件未結案清單
@@ -161,18 +161,25 @@ function cmdHelp_(replyToken) {
     text: [
       '📋 可用指令',
       '',
-      '• 狀態 — 填表狀態與月檢提醒',
-      '• 待發文 — 查詢自己今日最新公文待發文快照',
-      '• 異常 — 設備檢查異常清單',
-      '• 通報 — 日常異常事件通報表',
-      '• 待處理 — 日常異常事件未結案清單',
-      '• 事件 <事件ID> — 查詢日常事件',
-      '• 更新 <事件ID> — 日常事件處理回報連結',
-      '• 陳核 <事件ID> — 處理完成後送主管審核',
-      '• QR選單 — 日檢/月檢 QR Code 選單',
-      '• QR <設備代號> — 產 QR 圖',
-      '• 完成 <事件ID> — 標記異常已完成',
-      '• 我的ID — 顯示你的 userId',
+      '常用功能：',
+      '• 狀態 — 今日填表進度與月檢提醒',
+      '• 待發文 — 顯示雲端檢核(16:30 / 17:00)抓到、屬於你的最新一批待發公文；不是即時登入查詢',
+      '• 異常 — 設備檢查產生的未完成異常',
+      '• 通報 — 開啟日常異常事件通報表',
+      '• 待處理 — 查未結案日常異常事件',
+      '• QR選單 — 設備與教室表單 QR 入口',
+      '',
+      '日常事件：',
+      '• 事件 <事件ID> — 查詢日常事件摘要',
+      '• 更新 <事件ID> — 取得處理回報連結',
+      '• 陳核 <事件ID> — 處理完成後重新通知主管審核',
+      '',
+      '設備異常：',
+      '• 完成 <事件ID> — 將設備檢查異常標記為已完成',
+      '',
+      '其他：',
+      '• QR <設備代號> — 產生單一設備 QR 圖',
+      '• 我的ID — 顯示你的 LINE userId',
       '• 幫助 — 顯示這個清單',
       '',
       '主管簽核通知：',
@@ -188,6 +195,10 @@ function cmdHelp_(replyToken) {
       '• QR CLASSROOM-FX-MEAS-PPE — 復興教室月檢',
       '• QR CLASSROOM-ZM-MEAS-PPE — 忠明教室月檢',
       '（SCBA 已併入三間教室月檢表下方區塊）',
+      '',
+      '待發文注意：',
+      '• 顯示「今日尚未有檢核紀錄」時，代表當日 16:30 批次尚未跑完或尚未寫入快照',
+      '• 看不到本人資料時，請確認 LINE 已在「訂閱者清單」綁定姓名並標記為同仁',
       '',
       '（群組內要加 / 或 @ 開頭）',
     ].join('\n'),
@@ -213,6 +224,7 @@ function cmdStatus_(replyToken, userId) {
   return lineReply_(replyToken, withQuickReply_(messages));
 }
 
+// 舊版每日作業檢核已停用；此指令只保留停用提示，避免舊 quick reply 或舊截圖入口失效無回應。
 function cmdDailyWorkCheck_(replyToken) {
   if (typeof isDailyWorkCheckEnabled_ === 'function' && !isDailyWorkCheckEnabled_()) {
     return lineReply_(replyToken, withQuickReply_({
