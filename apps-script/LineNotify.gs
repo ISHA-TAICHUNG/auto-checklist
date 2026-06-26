@@ -137,6 +137,102 @@ function getLineSubscriberProfileByUserId_(userId) {
   return null;
 }
 
+function lineSubscriberPersonKeySalt_() {
+  const props = PropertiesService.getScriptProperties();
+  let salt = props.getProperty('LINE_SUBSCRIBER_PERSON_KEY_SALT') || '';
+  if (!salt) {
+    salt = uuid_() + '-' + uuid_();
+    props.setProperty('LINE_SUBSCRIBER_PERSON_KEY_SALT', salt);
+  }
+  return salt;
+}
+
+function lineSubscriberPersonKey_(userId) {
+  const id = String(userId || '').trim();
+  if (!id) return '';
+  return 'p_' + sha256Hex_(lineSubscriberPersonKeySalt_() + ':' + id).substring(0, 32);
+}
+
+function listLineSubscriberPeople_() {
+  const people = [];
+  try {
+    if (!CONFIG.DB_SHEET_ID || CONFIG.DB_SHEET_ID.startsWith('REPLACE_')) return people;
+    const sheet = getLineSubscriberSheet_(SpreadsheetApp.openById(CONFIG.DB_SHEET_ID));
+    if (!sheet || sheet.getLastRow() < 2) return people;
+    const data = sheet.getDataRange().getValues();
+    const headers = data[0].map(h => String(h || '').trim());
+    const nameCol = headers.indexOf('姓名');
+    const idCol = headers.indexOf('LINE_USER_ID');
+    const activeCol = getLineSubscriberActiveColumnIndex_(headers);
+    const supervisorCol = getLineSupervisorFlagColumnIndex_(headers);
+    const staffCol = headers.indexOf('是否為同仁');
+    const noteCol = headers.indexOf('備註');
+    if (nameCol < 0 || idCol < 0) return people;
+    data.slice(1).forEach((row, index) => {
+      const name = String(row[nameCol] || '').trim();
+      const userId = String(row[idCol] || '').trim();
+      const active = activeCol < 0 ? true : isActiveValue_(row[activeCol]);
+      if (!name || !userId || !active) return;
+      people.push({
+        name,
+        userId,
+        key: lineSubscriberPersonKey_(userId),
+        isSupervisor: supervisorCol >= 0 ? isActiveValue_(row[supervisorCol]) : false,
+        isStaff: staffCol >= 0 ? isActiveValue_(row[staffCol]) : false,
+        note: noteCol >= 0 ? String(row[noteCol] || '').trim() : '',
+        rowNo: index + 2,
+      });
+    });
+  } catch (err) {
+    Logger.log('[LINE] 讀取訂閱者人員清單失敗: ' + err);
+  }
+  return people;
+}
+
+function publicLineSubscriberPeopleOptions_() {
+  const people = listLineSubscriberPeople_();
+  const byName = {};
+  people.forEach(p => { byName[p.name] = (byName[p.name] || 0) + 1; });
+  return people.map(p => {
+    const label = byName[p.name] > 1 ? `${p.name}（第 ${p.rowNo} 列）` : p.name;
+    return {
+      key: p.key,
+      name: p.name,
+      label,
+      isSupervisor: !!p.isSupervisor,
+      isStaff: !!p.isStaff,
+    };
+  });
+}
+
+function findLineSubscriberPersonByKey_(personKey, opts) {
+  opts = opts || {};
+  const key = String(personKey || '').trim();
+  if (!key) return null;
+  const people = listLineSubscriberPeople_();
+  for (const person of people) {
+    if (person.key !== key) continue;
+    if (opts.requireSupervisor && !person.isSupervisor) return null;
+    if (opts.requireStaff && !(person.isStaff || person.isSupervisor)) return null;
+    return person;
+  }
+  return null;
+}
+
+function findLineSubscriberTargetsByPersonKey_(personKey, opts) {
+  const person = findLineSubscriberPersonByKey_(personKey, opts || {});
+  if (!person || !person.userId) {
+    return { ids: [], ambiguous: false, matchCount: 0, key: String(personKey || '').trim() };
+  }
+  return { ids: [person.userId], ambiguous: false, matchCount: 1, key: person.key, name: person.name };
+}
+
+function lineSubscriberPersonKeyMatchesUser_(personKey, userId) {
+  const key = String(personKey || '').trim();
+  const id = String(userId || '').trim();
+  return !!key && !!id && key === lineSubscriberPersonKey_(id);
+}
+
 function findLineSubscriberTargetsByName_(targetName, opts) {
   opts = opts || {};
   const nameTarget = String(targetName || '').trim();
@@ -153,14 +249,18 @@ function findLineSubscriberTargetsByName_(targetName, opts) {
     const idCol = headers.indexOf('LINE_USER_ID');
     const activeCol = getLineSubscriberActiveColumnIndex_(headers);
     const staffCol = headers.indexOf('是否為同仁');
+    const supervisorCol = getLineSupervisorFlagColumnIndex_(headers);
     if (nameCol < 0 || idCol < 0) return { ids: [], ambiguous: false, matchCount: 0, name: nameTarget };
     const ids = [];
     data.slice(1).forEach(row => {
       const name = String(row[nameCol] || '').trim();
       const id = String(row[idCol] || '').trim();
       const active = activeCol < 0 ? true : isActiveValue_(row[activeCol]);
-      const staffOk = !opts.requireStaff || staffCol < 0 || isActiveValue_(row[staffCol]);
-      if (name === nameTarget && id && active && staffOk) ids.push(id);
+      const isSupervisor = supervisorCol >= 0 ? isActiveValue_(row[supervisorCol]) : false;
+      const isStaff = staffCol >= 0 ? isActiveValue_(row[staffCol]) : false;
+      const staffOk = !opts.requireStaff || isStaff || isSupervisor;
+      const supervisorOk = !opts.requireSupervisor || isSupervisor;
+      if (name === nameTarget && id && active && staffOk && supervisorOk) ids.push(id);
     });
     const uniqueIds = Array.from(new Set(ids));
     return {
@@ -220,7 +320,7 @@ function getSupervisorUserIdsByName_(supervisorName) {
       const name = String(row[nameCol] || '').trim();
       const id = String(row[idCol] || '').trim();
       const active = activeCol < 0 ? true : isActiveValue_(row[activeCol]);
-      if (id && active && name && (name === target || target.indexOf(name) >= 0 || name.indexOf(target) >= 0)) ids.push(id);
+      if (id && active && name === target) ids.push(id);
     });
     return Array.from(new Set(ids));
   } catch (err) {
@@ -229,20 +329,32 @@ function getSupervisorUserIdsByName_(supervisorName) {
   }
 }
 
-function linePushToSupervisorName_(supervisorName, messages) {
+function linePushToSupervisorName_(supervisorName, messages, opts) {
+  opts = opts || {};
   const cfg = getLineConfig_();
   if (!cfg.token) return { ok: false, reason: 'no_token' };
   if (!Array.isArray(messages)) messages = [messages];
-  const ids = getSupervisorUserIdsByName_(supervisorName);
+  let ids = [];
+  let targetMode = 'named';
+  if (opts.personKey) {
+    const keyed = findLineSubscriberTargetsByPersonKey_(opts.personKey, { requireSupervisor: true });
+    ids = keyed.ids || [];
+    targetMode = 'keyed';
+  }
+  if (ids.length === 0) {
+    ids = getSupervisorUserIdsByName_(supervisorName);
+    targetMode = 'named';
+  }
   if (ids.length > 1) {
     const res = lineMulticast_(ids, messages);
-    return Object.assign({ targetMode: 'named', targetCount: ids.length, supervisorName }, res);
+    return Object.assign({ targetMode, targetCount: ids.length, supervisorName }, res);
   }
   if (ids.length === 1) {
     const res = linePushTo_(ids[0], messages, 'push');
-    return Object.assign({ targetMode: 'named', targetCount: 1, supervisorName }, res);
+    return Object.assign({ targetMode, targetCount: 1, supervisorName }, res);
   }
 
+  if (opts.allowFallback === true) {
   const fallbackIds = getSupervisorUserIds_();
   if (fallbackIds.length > 1) {
     const res = lineMulticast_(fallbackIds, messages);
@@ -251,6 +363,7 @@ function linePushToSupervisorName_(supervisorName, messages) {
   if (fallbackIds.length === 1) {
     const res = linePushTo_(fallbackIds[0], messages, 'push');
     return Object.assign({ targetMode: 'fallback', targetCount: 1, supervisorName }, res);
+  }
   }
   Logger.log('[LINE supervisor] 找不到指定主管 LINE_USER_ID，且無 fallback 主管: ' + supervisorName);
   return { ok: false, reason: 'supervisor_not_found', supervisorName, targetMode: 'none', targetCount: 0 };
@@ -279,17 +392,37 @@ function linePushDailyIncidentStakeholders_(incident, messages, opts) {
   }
   if (!Array.isArray(messages)) messages = [messages];
 
+  const keyedResults = [
+    incident && incident.ownerKey,
+    incident && incident.reporterKey,
+  ].map(key => findLineSubscriberTargetsByPersonKey_(key, { requireStaff: opts.requireStaff === true }))
+    .filter(result => result.ids.length === 1);
+  const keyedNames = keyedResults.map(result => String(result.name || '').trim()).filter(Boolean);
   const stakeholderNames = Array.from(new Set([
     incident && incident.owner,
     incident && incident.reporter,
-  ].map(v => String(v || '').trim()).filter(Boolean)));
+  ].map(v => String(v || '').trim()).filter(Boolean)))
+    .filter(name => keyedNames.indexOf(name) < 0);
   const ownerResults = stakeholderNames.map(name =>
     findLineSubscriberTargetsByName_(name, { requireStaff: opts.requireStaff === true })
   );
-  const supervisorIds = opts.includeSupervisors === false ? [] : getSupervisorUserIds_();
+  let supervisorResults = [];
+  if (opts.includeSupervisor !== false && opts.includeSupervisors !== false) {
+    if (incident && incident.supervisorKey) {
+      supervisorResults = [findLineSubscriberTargetsByPersonKey_(incident.supervisorKey, { requireSupervisor: true })];
+    } else if (incident && incident.supervisor) {
+      supervisorResults = [findLineSubscriberTargetsByName_(incident.supervisor, { requireSupervisor: true })];
+    }
+  }
   const targetIds = [];
   const seen = {};
 
+  keyedResults.forEach(result => {
+    const id = result.ids[0];
+    if (!id || seen[id]) return;
+    targetIds.push(id);
+    seen[id] = true;
+  });
   ownerResults.forEach(result => {
     if (result.ambiguous) {
       Logger.log('[LINE daily incident] 訂閱者姓名重複，略過同仁限定推播: ' + result.name + ', matchCount=' + result.matchCount);
@@ -301,25 +434,31 @@ function linePushDailyIncidentStakeholders_(incident, messages, opts) {
     targetIds.push(id);
     seen[id] = true;
   });
-  supervisorIds.forEach(id => {
-    id = String(id || '').trim();
+  supervisorResults.forEach(result => {
+    if (result.ambiguous) {
+      Logger.log('[LINE daily incident] 主管姓名重複，略過主管限定推播: ' + result.name + ', matchCount=' + result.matchCount);
+      return;
+    }
+    const id = result.ids.length === 1 ? String(result.ids[0] || '').trim() : '';
     if (!id || seen[id]) return;
     seen[id] = true;
     targetIds.push(id);
   });
 
   const anyOwnerAmbiguous = ownerResults.some(result => result.ambiguous);
-  const ownerMatchedCount = ownerResults.filter(result => !result.ambiguous && result.ids.length === 1).length;
+  const anySupervisorAmbiguous = supervisorResults.some(result => result.ambiguous);
+  const ownerMatchedCount = keyedResults.length + ownerResults.filter(result => !result.ambiguous && result.ids.length === 1).length;
+  const supervisorMatchedCount = supervisorResults.filter(result => !result.ambiguous && result.ids.length === 1).length;
   const ownerNames = stakeholderNames.join('、');
 
   if (targetIds.length === 0) {
     return {
       ok: false,
-      reason: anyOwnerAmbiguous ? 'ambiguous_owner_line' : 'no_target',
+      reason: anyOwnerAmbiguous || anySupervisorAmbiguous ? 'ambiguous_recipient_line' : 'no_target',
       ownerReason: anyOwnerAmbiguous ? 'ambiguous_owner_line' : 'no_owner_line',
       ownerName: ownerNames,
       ownerMatchCount: ownerMatchedCount,
-      supervisorCount: supervisorIds.length,
+      supervisorCount: supervisorMatchedCount,
       targetMode: 'daily-incident-stakeholders',
       targetCount: 0,
     };
@@ -335,7 +474,7 @@ function linePushDailyIncidentStakeholders_(incident, messages, opts) {
     ownerMatched: ownerMatchedCount > 0,
     ownerReason: anyOwnerAmbiguous ? 'ambiguous_owner_line' : (ownerMatchedCount > 0 ? '' : 'no_owner_line'),
     ownerMatchCount: ownerMatchedCount,
-    supervisorCount: supervisorIds.length,
+    supervisorCount: supervisorMatchedCount,
   }, res);
 }
 
@@ -1684,6 +1823,49 @@ function buildDailyIncidentSupervisorCommentFlex_(incident) {
   };
 }
 
+function buildDailyIncidentClosedFlex_(incident) {
+  const pdfUrl = incident.pdfUrl && /^https?:\/\//.test(incident.pdfUrl) ? incident.pdfUrl : '';
+  return {
+    type: 'flex',
+    altText: `✅ 日常異常事件已結案 ${incident.incidentId || ''}`,
+    contents: {
+      type: 'bubble',
+      header: {
+        type: 'box', layout: 'vertical',
+        backgroundColor: '#137333',
+        paddingAll: 'md',
+        contents: [
+          { type: 'text', text: '✅ 日常異常事件已結案', color: '#ffffff', weight: 'bold', size: 'lg' },
+          { type: 'text', text: incident.incidentId || '', color: '#E6F4EA', size: 'sm' },
+        ],
+      },
+      body: {
+        type: 'box', layout: 'vertical', spacing: 'sm',
+        contents: [
+          dailyIncidentFlexField_('地點', incident.location, { weight: 'bold' }),
+          dailyIncidentFlexField_('事項', incident.subject),
+          dailyIncidentFlexField_('填報人', incident.reporter),
+          dailyIncidentFlexField_('承辦人', incident.owner),
+          dailyIncidentFlexField_('主管', incident.supervisor),
+          dailyIncidentFlexField_('結案時間', incident.reviewTime || '—'),
+          { type: 'separator', margin: 'md' },
+          { type: 'text', text: '主管結案意見', size: 'sm', color: '#666666', margin: 'md' },
+          { type: 'text', text: trimLineText_(incident.reviewComment || '同意結案', 260), size: 'md', color: '#137333', weight: 'bold', wrap: true },
+        ],
+      },
+      footer: pdfUrl ? {
+        type: 'box', layout: 'vertical', spacing: 'sm',
+        contents: [{
+          type: 'button',
+          style: 'primary',
+          color: '#137333',
+          action: { type: 'uri', label: '查看結案PDF', uri: pdfUrl },
+        }],
+      } : undefined,
+    },
+  };
+}
+
 /**
  * 高層 API：寄未填提醒（給 Reminder.gs 用）
  * 自動加 Quick Reply 按鈕
@@ -1750,14 +1932,14 @@ function sendApprovalRequest_(record) {
   return linePushToSupervisors_(messages);
 }
 
-function sendDailyIncidentCreated_(incident) {
+function sendDailyIncidentCreated_(incident, opts) {
   const flex = buildDailyIncidentCreatedFlex_(incident);
-  return linePushDailyIncidentStakeholders_(incident, withQuickReply_(flex));
+  return linePushDailyIncidentStakeholders_(incident, withQuickReply_(flex), opts || {});
 }
 
 function sendDailyIncidentReturned_(incident) {
   const flex = buildDailyIncidentReturnedFlex_(incident);
-  return linePushDailyIncidentStakeholders_(incident, withQuickReply_(flex));
+  return linePushDailyIncidentStakeholders_(incident, withQuickReply_(flex), { includeSupervisor: false });
 }
 
 function sendDailyIncidentApprovalRequest_(incident) {
@@ -1766,7 +1948,7 @@ function sendDailyIncidentApprovalRequest_(incident) {
     return { ok: false, reason: 'invalid_daily_incident_approval_url' };
   }
   const flex = buildDailyIncidentApprovalFlex_(incident);
-  return linePushToSupervisorName_(incident.supervisor, withQuickReply_(flex));
+  return linePushToSupervisorName_(incident.supervisor, withQuickReply_(flex), { personKey: incident.supervisorKey });
 }
 
 function sendDailyIncidentProcessingReviewRequest_(incident) {
@@ -1775,12 +1957,17 @@ function sendDailyIncidentProcessingReviewRequest_(incident) {
     return { ok: false, reason: 'invalid_daily_incident_comment_url' };
   }
   const flex = buildDailyIncidentProcessingReviewFlex_(incident);
-  return linePushToSupervisorName_(incident.supervisor, withQuickReply_(flex));
+  return linePushToSupervisorName_(incident.supervisor, withQuickReply_(flex), { personKey: incident.supervisorKey });
 }
 
 function sendDailyIncidentSupervisorComment_(incident) {
   const flex = buildDailyIncidentSupervisorCommentFlex_(incident);
-  return linePushDailyIncidentStakeholders_(incident, withQuickReply_(flex));
+  return linePushDailyIncidentStakeholders_(incident, withQuickReply_(flex), { includeSupervisor: false });
+}
+
+function sendDailyIncidentClosed_(incident) {
+  const flex = buildDailyIncidentClosedFlex_(incident);
+  return linePushDailyIncidentStakeholders_(incident, withQuickReply_(flex), { includeSupervisor: false });
 }
 
 function trimLineText_(text, maxLen) {

@@ -8,6 +8,7 @@
  *   GET  ...exec?api=equipments               — 設備清單
  *   GET  ...exec?api=meta&form=...&eqp=...    — 檢查表模板
  *   GET  ...exec?api=branding                  — 機構名稱（前端啟動載入）
+ *   GET  ...exec?api=dailyIncidentPeople&token=API_TOKEN — 日常事件人員下拉選項（不含 LINE ID）
  *   GET  ...exec?api=dailyWorkMeta             — 每日作業檢核填寫頁設定
  *   GET  ...exec?api=approval&recordId=...&token=... — 主管簽核頁讀取待簽資料
  *   GET  ...exec?api=status                    — 系統狀態（不含 secret）
@@ -82,6 +83,11 @@ function doGet(e) {
 
       case 'dailyWorkMeta':
         result = getDailyWorkMeta_();
+        break;
+
+      case 'dailyIncidentPeople':
+        if (e.parameter.token !== CONFIG.API_TOKEN) throw new Error('未授權');
+        result = getDailyIncidentPeopleOptions_();
         break;
 
       case 'approval': {

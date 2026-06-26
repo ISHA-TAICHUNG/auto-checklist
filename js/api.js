@@ -89,6 +89,10 @@
     getLockedItems: (form, eqp) => apiGet({ api: 'lockedItems', form, eqp }),
     getApproval: (recordId, token) => apiGet({ api: 'approval', recordId, token }),
     getDailyWorkMeta: () => apiGet({ api: 'dailyWorkMeta' }),
+    dailyIncidentPeople: () => {
+      ensureConfigured(true);
+      return apiGet({ api: 'dailyIncidentPeople', token: C.API_TOKEN });
+    },
     submit: (payload) => apiPost(payload),
     submitDailyIncident: (payload) => apiPost(Object.assign({ action: 'submitDailyIncident' }, payload)),
     submitDailyWorkCheck: (payload) => apiPost(Object.assign({ action: 'submitDailyWorkCheck' }, payload)),
