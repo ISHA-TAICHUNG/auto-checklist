@@ -95,6 +95,32 @@ function formatISODate_(date) {
 }
 
 /**
+ * 顯示用日期時間字串。
+ * Google Sheets 讀出的日期可能是 Date 物件，若直接 String() 會變成英文 GMT 字串。
+ */
+function formatDisplayDateTime_(value) {
+  if (!value) return '';
+  if (value instanceof Date && !isNaN(value.getTime())) {
+    return Utilities.formatDate(value, tz_(), 'yyyy/MM/dd HH:mm');
+  }
+  const s = String(value || '').trim();
+  if (!s) return '';
+  const m = s.match(/^(\d{4})[-\/](\d{1,2})[-\/](\d{1,2})(?:[ T](\d{1,2}):(\d{2})(?::\d{2})?)?/);
+  if (m) {
+    const datePart = `${m[1]}/${String(m[2]).padStart(2, '0')}/${String(m[3]).padStart(2, '0')}`;
+    if (m[4] != null && m[5] != null) {
+      return `${datePart} ${String(m[4]).padStart(2, '0')}:${m[5]}`;
+    }
+    return datePart;
+  }
+  const parsed = new Date(s);
+  if (!isNaN(parsed.getTime())) {
+    return Utilities.formatDate(parsed, tz_(), 'yyyy/MM/dd HH:mm');
+  }
+  return s;
+}
+
+/**
  * 將 "YYYY-MM-DD" 字串解析為 Date 物件（以台北時區的 0:00 為準）
  * 直接 new Date('2026-05-31') 會被當 UTC 0:00，台北時區會多 8 小時、跨日不出錯但仍危險
  */

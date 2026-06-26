@@ -779,7 +779,7 @@ function dailyIncidentRowToObject_(headers, row) {
     supervisorKey: String(value('陳核主管Key') || ''),
     reviewStatus: String(value('審核狀態') || ''),
     reviewComment: String(value('主管審核意見') || ''),
-    reviewTime: String(value('主管審核時間') || ''),
+    reviewTime: formatDisplayDateTime_(value('主管審核時間')),
     photoCount: Number(value('照片數') || 0),
     photoFolderUrl: String(value('照片資料夾連結') || ''),
     pdfUrl: String(value('PDF連結') || ''),
