@@ -360,9 +360,9 @@ function requiresSupervisorApproval_(formType, equipment) {
 }
 
 function buildApprovalUrl_(recordId, token) {
-  const base = ScriptApp.getService().getUrl() || getSetting_('webAppUrl', '');
+  const base = getWebAppBaseUrl_();
   if (!base || !/^https?:\/\//.test(base)) return '';
-  return base.split('?')[0].replace(/\/+$/, '') +
+  return base +
     '?page=approve&recordId=' + encodeURIComponent(recordId) +
     '&token=' + encodeURIComponent(token);
 }

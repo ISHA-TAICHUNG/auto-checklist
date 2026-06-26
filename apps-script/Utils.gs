@@ -121,6 +121,24 @@ function formatDisplayDateTime_(value) {
 }
 
 /**
+ * 取得對外可開啟的 Apps Script Web App base URL。
+ * 優先使用 DB 設定的 webAppUrl，避免手動執行或排程情境誤拿到 /dev URL。
+ */
+function getWebAppBaseUrl_() {
+  const configured = (typeof getSetting_ === 'function') ? getSetting_('webAppUrl', '') : '';
+  const configuredBase = normalizeWebAppBaseUrl_(configured);
+  if (configuredBase) return configuredBase;
+  const serviceUrl = ScriptApp.getService().getUrl();
+  return normalizeWebAppBaseUrl_(serviceUrl);
+}
+
+function normalizeWebAppBaseUrl_(url) {
+  const s = String(url || '').trim();
+  if (!/^https?:\/\//.test(s)) return '';
+  return s.split('?')[0].replace(/\/+$/, '');
+}
+
+/**
  * 將 "YYYY-MM-DD" 字串解析為 Date 物件（以台北時區的 0:00 為準）
  * 直接 new Date('2026-05-31') 會被當 UTC 0:00，台北時區會多 8 小時、跨日不出錯但仍危險
  */

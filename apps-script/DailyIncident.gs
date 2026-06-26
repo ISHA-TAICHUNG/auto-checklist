@@ -1192,19 +1192,19 @@ function buildDailyIncidentPublicUrl_() {
 }
 
 function buildDailyIncidentUpdateUrl_(data) {
-  const base = ScriptApp.getService().getUrl() || getSetting_('webAppUrl', '');
+  const base = getWebAppBaseUrl_();
   if (!/^https?:\/\//.test(base)) return '';
   return `${base}?page=incident-update&incidentId=${encodeURIComponent(data.incidentId)}&token=${encodeURIComponent(data.updateToken || '')}`;
 }
 
 function buildDailyIncidentApprovalUrl_(data) {
-  const base = ScriptApp.getService().getUrl() || getSetting_('webAppUrl', '');
+  const base = getWebAppBaseUrl_();
   if (!/^https?:\/\//.test(base)) return '';
   return `${base}?page=incident-approve&incidentId=${encodeURIComponent(data.incidentId)}&token=${encodeURIComponent(data.approvalToken || '')}`;
 }
 
 function buildDailyIncidentSupervisorCommentUrl_(data) {
-  const base = ScriptApp.getService().getUrl() || getSetting_('webAppUrl', '');
+  const base = getWebAppBaseUrl_();
   if (!/^https?:\/\//.test(base)) return '';
   return `${base}?page=incident-comment&incidentId=${encodeURIComponent(data.incidentId)}&token=${encodeURIComponent(data.approvalToken || '')}`;
 }
