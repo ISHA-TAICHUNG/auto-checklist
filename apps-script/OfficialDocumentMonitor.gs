@@ -13,6 +13,7 @@ const OFFICIAL_DOC_QUEUE_NOTIFIED = '已通知';
 const OFFICIAL_DOC_QUEUE_NO_LINE = '查無LINE';
 const OFFICIAL_DOC_QUEUE_FAILED = '通知失敗';
 const OFFICIAL_DOC_QUEUE_SKIPPED = '略過';
+const OFFICIAL_DOC_RETENTION_DAYS = 3;
 
 function officialDocumentQueueHeaders_() {
   return [
@@ -97,6 +98,16 @@ function enqueueOfficialDocumentDispatches_(payload) {
       createdAt: now,
     });
 
+    let cleanupResult = null;
+    if (!dryRun) {
+      try {
+        cleanupResult = cleanupOfficialDocumentMonitorSheets_({ ss, dryRun: false });
+      } catch (cleanupErr) {
+        cleanupResult = { ok: false, error: String(cleanupErr.message || cleanupErr) };
+        Logger.log('[OfficialDocument cleanup] 失敗: ' + cleanupErr + '\n' + (cleanupErr.stack || ''));
+      }
+    }
+
     SpreadsheetApp.flush();
     shouldNotify = !dryRun && payload.notify === true;
     notifyDate = dateStr;
@@ -112,6 +123,7 @@ function enqueueOfficialDocumentDispatches_(payload) {
       fetchedCount: records.length,
       writtenCount: written,
       notifyResult: null,
+      cleanupResult,
     };
   } finally {
     lock.releaseLock();
@@ -196,6 +208,93 @@ function appendOfficialDocumentRunLog_(ss, log) {
   setOfficialDocumentCell_(row, headers, '錯誤摘要', log.errorSummary);
   setOfficialDocumentCell_(row, headers, '建立時間', log.createdAt);
   sheet.getRange(sheet.getLastRow() + 1, 1, 1, headers.length).setValues([row]);
+}
+
+function cleanupOfficialDocumentMonitorSheets_(opts) {
+  opts = opts || {};
+  const ss = opts.ss || SpreadsheetApp.openById(CONFIG.DB_SHEET_ID);
+  setupOfficialDocumentMonitorSheets_(ss);
+  const dryRun = opts.dryRun !== false;
+  const retentionDays = Math.max(1, Number(opts.retentionDays || OFFICIAL_DOC_RETENTION_DAYS) || OFFICIAL_DOC_RETENTION_DAYS);
+  const cutoffDate = officialDocumentRetentionCutoffDate_(retentionDays);
+  const queue = cleanupOfficialDocumentSheetByDate_(getOfficialDocumentQueueSheet_(ss), cutoffDate, dryRun);
+  const runLog = cleanupOfficialDocumentSheetByDate_(getOfficialDocumentRunLogSheet_(ss), cutoffDate, dryRun);
+  SpreadsheetApp.flush();
+  return {
+    ok: true,
+    dryRun,
+    retentionDays,
+    cutoffDate,
+    queue,
+    runLog,
+  };
+}
+
+function cleanupOfficialDocumentSheetByDate_(sheet, cutoffDate, dryRun) {
+  if (!sheet) return { sheetName: '', rows: 0, deleteCount: 0, keptInvalidDateCount: 0, ranges: [] };
+  const lastRow = sheet.getLastRow();
+  const lastCol = sheet.getLastColumn();
+  if (lastRow < 2 || lastCol < 1) {
+    return { sheetName: sheet.getName(), rows: Math.max(lastRow - 1, 0), deleteCount: 0, keptInvalidDateCount: 0, ranges: [] };
+  }
+  const headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0].map(h => String(h || '').trim());
+  const dateCol = headers.indexOf('檢核日期');
+  if (dateCol < 0) throw new Error(sheet.getName() + ' 缺少檢核日期欄位');
+  const data = sheet.getRange(2, 1, lastRow - 1, lastCol).getValues();
+  const rowsToDelete = [];
+  const deletedDates = {};
+  let keptInvalidDateCount = 0;
+  data.forEach((row, i) => {
+    const dateKey = officialDocumentDateKey_(row[dateCol]);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(dateKey)) {
+      keptInvalidDateCount++;
+      return;
+    }
+    if (dateKey < cutoffDate) {
+      rowsToDelete.push(i + 2);
+      deletedDates[dateKey] = true;
+    }
+  });
+  const ranges = officialDocumentContiguousRowRanges_(rowsToDelete);
+  if (!dryRun) {
+    ranges.slice().reverse().forEach(range => {
+      sheet.deleteRows(range.start, range.count);
+    });
+  }
+  return {
+    sheetName: sheet.getName(),
+    rows: data.length,
+    deleteCount: rowsToDelete.length,
+    keptInvalidDateCount,
+    deleteDates: Object.keys(deletedDates).sort(),
+    ranges,
+  };
+}
+
+function officialDocumentContiguousRowRanges_(rowNumbers) {
+  if (!rowNumbers || rowNumbers.length === 0) return [];
+  const sorted = rowNumbers.slice().sort((a, b) => a - b);
+  const ranges = [];
+  let start = sorted[0];
+  let end = sorted[0];
+  for (let i = 1; i < sorted.length; i++) {
+    if (sorted[i] === end + 1) {
+      end = sorted[i];
+      continue;
+    }
+    ranges.push({ start, end, count: end - start + 1 });
+    start = sorted[i];
+    end = sorted[i];
+  }
+  ranges.push({ start, end, count: end - start + 1 });
+  return ranges;
+}
+
+function officialDocumentRetentionCutoffDate_(retentionDays) {
+  const days = Math.max(1, Number(retentionDays || OFFICIAL_DOC_RETENTION_DAYS) || OFFICIAL_DOC_RETENTION_DAYS);
+  const now = new Date();
+  const cutoff = new Date(now.getTime() - (days - 1) * 24 * 60 * 60 * 1000);
+  return Utilities.formatDate(cutoff, tz_(), 'yyyy-MM-dd');
 }
 
 function processOfficialDocumentQueue_(payload) {

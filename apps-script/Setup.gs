@@ -258,15 +258,17 @@ function initializeDatabase() {
   );
   setupApprovalStatusValidation_(ss);
 
-  // 異常事件追蹤（Layer 1）
+  // 機具設備異常事件追蹤（Layer 1）
   // 每填一張表的每個「結果=bad」項目，自動寫一列到這
-  setupSheet_(ss, '異常事件',
+  ensureMachineIncidentSheet_(ss);
+  setupSheet_(ss, MACHINE_INCIDENT_SHEET_NAME,
     ['事件ID', '通報日期', '通報時間', '設備代號', '設備名稱', '設備類別',
      '表單類型', '項次', '項目名稱', '結果代號', '異常說明', '照片數',
      'PDF連結', '紀錄ID',
      '狀態', '預計完成日', '實際完成日', '負責人', '備註'],
     []
   );
+  normalizeMachineIncidentSheet_(ss);
   // 對「狀態」欄加下拉資料驗證
   setupIncidentStatusValidation_(ss);
 
@@ -289,6 +291,7 @@ function applyProjectResourceNames() {
     spreadsheetName: '',
     archiveRootName: '',
     scriptProjectName: '',
+    machineIncidentSheetName: '',
     dailyIncidentSheetName: '',
     dailyIncidentArchiveFolderName: '',
   };
@@ -311,6 +314,9 @@ function applyProjectResourceNames() {
   } catch (err) {
     result.scriptProjectName = 'rename_failed: ' + String(err.message || err);
   }
+
+  const machineIncidentSheet = ensureMachineIncidentSheet_(ss);
+  result.machineIncidentSheetName = machineIncidentSheet ? machineIncidentSheet.getName() : '';
 
   if (typeof setupDailyIncidentSheet_ === 'function') {
     setupDailyIncidentSheet_(ss);
@@ -382,6 +388,33 @@ function setupSheet_(ss, sheetName, headers, initialRows) {
   for (let c = 1; c <= Math.min(headers.length, 26); c++) {
     sheet.autoResizeColumn(c);
   }
+}
+
+function normalizeMachineIncidentSheet_(ss) {
+  const sheet = getMachineIncidentSheet_(ss);
+  if (!sheet) return { deletedColumns: 0 };
+  const expected = new Set([
+    '事件ID', '通報日期', '通報時間', '設備代號', '設備名稱', '設備類別',
+    '表單類型', '項次', '項目名稱', '結果代號', '異常說明', '照片數',
+    'PDF連結', '紀錄ID', '狀態', '預計完成日', '實際完成日', '負責人', '備註',
+  ]);
+  const lastCol = sheet.getLastColumn();
+  const lastRow = sheet.getLastRow();
+  if (lastCol < 1) return { deletedColumns: 0 };
+  const headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0].map(v => String(v || '').trim());
+  let deletedColumns = 0;
+  for (let c = headers.length; c >= 1; c--) {
+    const header = headers[c - 1];
+    if (!header || expected.has(header)) continue;
+    const values = lastRow > 1
+      ? sheet.getRange(2, c, lastRow - 1, 1).getValues().flat()
+      : [];
+    const hasData = values.some(v => String(v || '').trim());
+    if (hasData) continue;
+    sheet.deleteColumn(c);
+    deletedColumns++;
+  }
+  return { deletedColumns };
 }
 
 function ensureSystemSettingDefaults_(ss, rows) {
@@ -661,7 +694,7 @@ function triggerScopesConsent() {
 /**
  * 清掉指定日期的所有測試 / 紀錄資料
  *
- * 用途：清掉某天的測試資料，含填報紀錄 / 異常事件 / Drive PDF
+ * 用途：清掉某天的測試資料，含填報紀錄 / 機具設備異常事件 / Drive PDF
  *
  * 參數：dateStr = 'YYYY-MM-DD'（西元年月日）
  * 回傳：summary 字串（人類可讀的執行報告）
@@ -670,7 +703,7 @@ function triggerScopesConsent() {
  *   只應由 admin endpoint 觸發 + 帶 token
  */
 /**
- * 清掉「所有」填報紀錄 / 異常事件 / Drive PDF
+ * 清掉「所有」填報紀錄 / 機具設備異常事件 / Drive PDF
  *
  * 用途：production launch 前清空所有測試 / 試運轉資料（一次性）
  *
@@ -733,15 +766,15 @@ function cleanupAllSubmissionsAndIncidents_(opts) {
     report.push(`${dryRun ? '[DRY-RUN]' : '✓'} 填報紀錄：${dryRun ? '會刪' : '刪除'} ${dataRows} 列、${dryRun ? '會 trash' : 'trashed'} ${dryRun ? pdfsToTrash.length : trashedPdfs} PDF${pdfErrors ? `（PDF 失敗 ${pdfErrors}）` : ''}`);
   }
 
-  // 2. 異常事件 — 刪所有 data row
-  const incSheet = ss.getSheetByName('異常事件');
+  // 2. 機具設備異常事件 — 刪所有 data row
+  const incSheet = getMachineIncidentSheet_(ss);
   if (incSheet) {
     const lastRow = incSheet.getLastRow();
     const dataRows = lastRow - 1;
     if (dataRows > 0 && !dryRun) {
       incSheet.deleteRows(2, dataRows);
     }
-    report.push(`${dryRun ? '[DRY-RUN]' : '✓'} 異常事件：${dryRun ? '會刪' : '刪除'} ${dataRows} 列`);
+    report.push(`${dryRun ? '[DRY-RUN]' : '✓'} 機具設備異常事件：${dryRun ? '會刪' : '刪除'} ${dataRows} 列`);
   }
 
   const summary = report.join('\n');
@@ -803,8 +836,8 @@ function cleanupTestDataForDate_(dateStr, opts) {
     report.push(`${dryRun ? '[DRY-RUN]' : '✓'} 填報紀錄：${dryRun ? '會刪' : '刪除'} ${recRowsToDelete.length} 列、${dryRun ? '會 trash' : 'trashed'} ${dryRun ? recPdfsToTrash.length : trashedPdfs} PDF${pdfErrors ? `（失敗 ${pdfErrors}）` : ''}`);
   }
 
-  // === 2. 清異常事件 ===
-  const incSheet = ss.getSheetByName('異常事件');
+  // === 2. 清機具設備異常事件 ===
+  const incSheet = getMachineIncidentSheet_(ss);
   let incRowsToDelete = [];
   if (incSheet && incSheet.getLastRow() >= 2) {
     const data = incSheet.getDataRange().getValues();
@@ -825,7 +858,7 @@ function cleanupTestDataForDate_(dateStr, opts) {
         incSheet.deleteRow(incRowsToDelete[r]);
       }
     }
-    report.push(`${dryRun ? '[DRY-RUN]' : '✓'} 異常事件：${dryRun ? '會刪' : '刪除'} ${incRowsToDelete.length} 列`);
+    report.push(`${dryRun ? '[DRY-RUN]' : '✓'} 機具設備異常事件：${dryRun ? '會刪' : '刪除'} ${incRowsToDelete.length} 列`);
   }
 
   const summary = report.join('\n');
@@ -834,9 +867,9 @@ function cleanupTestDataForDate_(dateStr, opts) {
 }
 
 /**
- * 把指定設備的所有未完成異常事件，狀態批次改成「已完成」
+ * 把指定設備的所有未完成機具設備異常事件，狀態批次改成「已完成」
  *
- * 用途：模擬承辦人在「異常事件」表批次標記，主要給 demo 用
+ * 用途：模擬承辦人在「機具設備異常事件」表批次標記，主要給 demo 用
  *      (實際使用建議在試算表手動下拉改，比較看得到上下文)
  *
  * 參數：
@@ -848,8 +881,8 @@ function cleanupTestDataForDate_(dateStr, opts) {
 function markIncidentsCompletedForEquipment_(equipmentId, formType) {
   if (!equipmentId) throw new Error('需提供 equipmentId');
   const ss = SpreadsheetApp.openById(CONFIG.DB_SHEET_ID);
-  const sheet = ss.getSheetByName('異常事件');
-  if (!sheet || sheet.getLastRow() < 2) return '無異常事件可處理';
+  const sheet = getMachineIncidentSheet_(ss);
+  if (!sheet || sheet.getLastRow() < 2) return '無機具設備異常事件可處理';
 
   const data = sheet.getDataRange().getValues();
   const headers = data[0];
@@ -857,7 +890,7 @@ function markIncidentsCompletedForEquipment_(equipmentId, formType) {
   const idxType = headers.indexOf('表單類型');
   const idxStatus = headers.indexOf('狀態');
   const idxCompleted = headers.indexOf('實際完成日');
-  if (idxEqp < 0 || idxStatus < 0) throw new Error('異常事件表缺欄位');
+  if (idxEqp < 0 || idxStatus < 0) throw new Error('機具設備異常事件表缺欄位');
 
   const targetType = formType === 'daily' ? '每日'
                     : formType === 'monthly' ? '每月' : null;
@@ -879,12 +912,12 @@ function markIncidentsCompletedForEquipment_(equipmentId, formType) {
 }
 
 /**
- * 列出「待處理 / 處理中 / 待重檢」異常事件
+ * 列出「待處理 / 處理中 / 待重檢」機具設備異常事件
  * （讓承辦人 / 主管能從外部 API 查目前累積未完成的事件）
  */
 function listOpenIncidents_() {
   const ss = SpreadsheetApp.openById(CONFIG.DB_SHEET_ID);
-  const sheet = ss.getSheetByName('異常事件');
+  const sheet = getMachineIncidentSheet_(ss);
   if (!sheet || sheet.getLastRow() < 2) return { count: 0, incidents: [] };
   const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
   const data = sheet.getRange(2, 1, sheet.getLastRow() - 1, headers.length).getValues();
@@ -935,7 +968,7 @@ function applyColumnWidthsAndWrap_() {
   const ss = SpreadsheetApp.openById(CONFIG.DB_SHEET_ID);
   // 欄寬 profile（pixel）
   const profiles = {
-    '異常事件': {
+    [MACHINE_INCIDENT_SHEET_NAME]: {
       '事件ID': 90, '通報日期': 100, '通報時間': 80,
       '設備代號': 110, '設備名稱': 140, '設備類別': 90,
       '表單類型': 80, '項次': 55, '項目名稱': 240, '結果代號': 80,
@@ -1028,11 +1061,11 @@ function setupApprovalStatusValidation_(ss) {
 }
 
 /**
- * 對「異常事件」表的「狀態」欄加下拉資料驗證
+ * 對「機具設備異常事件」表的「狀態」欄加下拉資料驗證
  * 5 個值：待處理 / 處理中 / 已完成 / 待重檢 / 不處理
  */
 function setupIncidentStatusValidation_(ss) {
-  const sheet = ss.getSheetByName('異常事件');
+  const sheet = getMachineIncidentSheet_(ss);
   if (!sheet) return;
   const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
   const statusCol = headers.indexOf('狀態') + 1;
@@ -1045,7 +1078,7 @@ function setupIncidentStatusValidation_(ss) {
     .setHelpText('請從下拉選單選擇狀態')
     .build();
   range.setDataValidation(rule);
-  Logger.log('「異常事件」狀態欄已加下拉驗證');
+  Logger.log('「機具設備異常事件」狀態欄已加下拉驗證');
 }
 
 /**
@@ -1259,9 +1292,9 @@ function applyChineseSettingsAndDropdowns() {
     if (backfilled > 0) report.push(`✓ 補填「檢查表模板」空白欄位 ${backfilled} 格`);
   }
 
-  // ===== 3. 異常事件.狀態（沿用既有設定） =====
+  // ===== 3. 機具設備異常事件.狀態（沿用既有設定） =====
   setupIncidentStatusValidation_(ss);
-  report.push('✓ 「異常事件.狀態」下拉已套用');
+  report.push('✓ 「機具設備異常事件.狀態」下拉已套用');
 
   const summary = report.join('\n');
   Logger.log(summary);

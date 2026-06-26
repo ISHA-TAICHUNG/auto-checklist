@@ -12,7 +12,7 @@
 | `venueSheetId` | (場地表的 Sheet ID) | 每年新表只要改這裡，不用改程式 |
 | `webAppUrl` | (Apps Script exec URL) | 部署後執行 `setWebAppUrlFromCurrent` 自動填入 |
 | `webFrontendUrl` | (GitHub Pages 網址) | 例：`https://<your-github-username>.github.io/auto-checklist`，提醒信會帶這連結 |
-| `dailyIncidentGroupNotify` | 是 | 新日常異常事件是否推播 LINE 群組 |
+| `dailyIncidentGroupNotify` | 是 | 日常異常事件是否推播給填報人、承辦人與主管 |
 | `dailyIncidentSupervisorNotify` | 是 | 日常異常事件陳核時是否推播主管 |
 | `dailyIncidentArchiveFolderName` | 日常異常事件通報 | Drive 內新增的日常事件歸檔子資料夾 |
 | `lineRichMenuImageUrl` | `https://isha-taichung.github.io/auto-checklist/assets/line-rich-menu-main.png` | LINE 圖文選單圖片網址 |
@@ -24,6 +24,8 @@ LINE 訂閱者、主管、同仁與公文登記桌身分對照表。一般 LINE 
 
 | 姓名 | LINE_USER_ID | 是否為主管 | 是否為同仁 | 公文登記桌 | 備註 |
 |---|---|---|---|---|---|
+
+日常異常事件一般圖卡只會推播給該事件的填報人、承辦人，以及 `是否為主管=是` 的主管；不再廣播給所有訂閱者或所有同仁。LINE 查詢「待處理／事件／更新／陳核」時，主管可看全部日常事件，非主管只看自己是填報人或承辦人的事件。
 
 日常異常事件陳核主管時，系統會優先依「陳核主管」姓名比對此表的 `姓名` 與 `LINE_USER_ID`；若找不到精準對應，則退回通知所有 `是否為主管` 為「是」的訂閱者。
 
@@ -75,7 +77,7 @@ LINE 訂閱者、主管、同仁與公文登記桌身分對照表。一般 LINE 
 
 每次有人送出檢查表就會 append 一列。`完整資料JSON` 存原始 payload 以備查（例如要重新產 PDF）。
 
-## 8. `異常事件`
+## 8. `機具設備異常事件`
 
 設備日檢 / 月檢中勾選不良或異常時，系統會自動在這張表建立設備檢查異常追蹤列。
 

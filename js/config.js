@@ -13,10 +13,10 @@
  */
 window.SYSTEM_CONFIG = {
   // 必填：Apps Script Web App 的 exec URL
-  API_BASE: 'https://script.google.com/macros/s/AKfycbzgLEFvPTL2OdEl-W96GmFkGCnOkaTHPEaWOKwwPjOoHG2xqp0dg4Gj02xtCn9sILOz/exec',
+  API_BASE: 'https://script.google.com/macros/s/AKfycbymAS429p3rEgpZ24U2cDE8JsNaOp7GFGginff1cZXvGiWkEYlN6KPn9O8XYJgnRIVN6w/exec',
 
   // 必填：共享 token（與後端 Config.gs 的 API_TOKEN 一致）
-  API_TOKEN: '246dc615455a79d4b2437c8d48047d15622d282d175c0494',
+  API_TOKEN: '246dc615455a79d4b2437c8d48047d15622d282d175c0494', // gitleaks:allow - GitHub Pages 半公開前端 token
 
   // 機構抬頭 — 由前端啟動時 fetch API_BASE?api=branding 動態載入
   // 實際機構名稱存在後端 DB「系統設定」的 organizationName，不寫死在 source code

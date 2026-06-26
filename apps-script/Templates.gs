@@ -160,7 +160,7 @@ function getTemplateCyclesByCategory_() {
  * 用途：前端載入填表頁時，先 fetch 此函式，把仍在追蹤中的異常項
  *      鎖死成「只能選異常」，並帶入上次的異常說明作預設值。
  *
- * 解鎖條件：異常事件表「狀態」== 「已完成」才視為解除（嚴格模式）
+ * 解鎖條件：機具設備異常事件表「狀態」== 「已完成」才視為解除（嚴格模式）
  *           其他狀態（待處理 / 處理中 / 待重檢 / 不處理 / 空字串）都仍鎖
  *
  * 同一項次（order）有多筆 → 取最新一筆（依通報日期 desc）
@@ -169,18 +169,18 @@ function getTemplateCyclesByCategory_() {
  */
 function getLockedItemsForEquipment_(equipmentId, formType) {
   const ss = SpreadsheetApp.openById(CONFIG.DB_SHEET_ID);
-  const sheet = ss.getSheetByName('異常事件');
+  const sheet = getMachineIncidentSheet_(ss);
   if (!sheet || sheet.getLastRow() < 2) return [];
 
   const data = sheet.getDataRange().getValues();
   const headers = data[0];
   const idx = name => headers.indexOf(name);
 
-  // 欄位防呆：「異常事件」表如果還沒初始化會缺欄位，避免崩潰
+  // 欄位防呆：「機具設備異常事件」表如果還沒初始化會缺欄位，避免崩潰
   const REQUIRED = ['設備代號', '表單類型', '項次', '項目名稱', '通報日期', '異常說明', '狀態'];
   for (const col of REQUIRED) {
     if (idx(col) < 0) {
-      Logger.log(`getLockedItemsForEquipment_：「異常事件」缺欄位 ${col}，回空陣列`);
+      Logger.log(`getLockedItemsForEquipment_：「機具設備異常事件」缺欄位 ${col}，回空陣列`);
       return [];
     }
   }

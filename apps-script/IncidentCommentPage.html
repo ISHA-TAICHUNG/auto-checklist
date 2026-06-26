@@ -249,9 +249,9 @@
     }
     function noticeText(notice) {
       if (!notice) return '';
-      if (notice.skipped) return 'LINE 群組通知設定目前關閉，主管意見已寫入事件紀錄。';
-      if (notice.ok) return '已將主管意見以 LINE 圖卡資訊推送，承辦可繼續更新處理狀況。';
-      if (notice.reason === 'no_target') return 'LINE 未設定群組或收件人，主管意見已寫入事件紀錄。';
+      if (notice.skipped) return '日常事件 LINE 通知設定目前關閉，主管意見已寫入事件紀錄。';
+      if (notice.ok) return '已將主管意見以 LINE 圖卡資訊推送給承辦與主管，承辦可繼續更新處理狀況。';
+      if (notice.reason === 'no_target') return '找不到承辦或主管 LINE 收件人，主管意見已寫入事件紀錄。';
       if (notice.reason === 'no_token') return 'LINE_CHANNEL_ACCESS_TOKEN 未設定，主管意見未推播。';
       return '主管意見圖卡通知未送出，請確認 LINE 設定。';
     }

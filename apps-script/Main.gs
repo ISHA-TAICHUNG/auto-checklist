@@ -113,6 +113,9 @@ function doGet(e) {
                                'lineWebhookHealth', 'lineTargetStatus',
                                'syncLineWebhookEndpoint',
                                'openIssues', 'reminderStatus',
+                               'systemStatus', 'archiveWriteHealth', 'lastPostError',
+                               'dailyReminderTriggerStatus',
+                               'installDailyReminderTrigger',
                                'installDailyWorkCheckTriggers',
                                'sheetInventory',
                                'setupOfficialDocumentMonitor',
@@ -120,13 +123,13 @@ function doGet(e) {
                                'officialDocumentSnapshot',
                                'resendOfficialDocumentSnapshot'];
         // 破壞性 actions — 需 ADMIN_TOKEN + ALLOW_DESTRUCTIVE_HTTP=YES kill switch
-        const DESTRUCTIVE_ACTIONS = ['cleanupAll', 'cleanupDate'];
+        const DESTRUCTIVE_ACTIONS = ['cleanupAll', 'cleanupDate', 'cleanupOfficialDocumentMonitor'];
         if (WRITE_ACTIONS.indexOf(action) >= 0 || DESTRUCTIVE_ACTIONS.indexOf(action) >= 0) {
           if (!checkAdminToken_(e.parameter.adminToken)) {
             throw new Error('未授權：此 action 需 adminToken（Script Properties ADMIN_TOKEN）');
           }
         }
-        if (DESTRUCTIVE_ACTIONS.indexOf(action) >= 0 && !destructiveHttpAllowed_()) {
+        if (DESTRUCTIVE_ACTIONS.indexOf(action) >= 0 && destructiveActionWillDelete_(action, e.parameter) && !destructiveHttpAllowed_()) {
           throw new Error('未授權：破壞性 action 預設禁止 HTTP 呼叫，請在 Apps Script 編輯器手動執行函式（或設 Script Property ALLOW_DESTRUCTIVE_HTTP=YES）');
         }
         switch (action) {
@@ -406,6 +409,92 @@ function doGet(e) {
             result = { ok: true, dryRun: true, count: results.length, results };
             break;
           }
+          case 'systemStatus': {
+            const status = getSystemStatus_();
+            result = {
+              ok: true,
+              action,
+              timeZone: status.timeZone,
+              triggers: status.triggers,
+              counts: status.counts,
+              archive: { ok: status.archive && status.archive.ok },
+              venue: { ok: status.venue && status.venue.ok, title: status.venue && status.venue.title },
+              settings: {
+                webFrontendUrl: status.settings && status.settings.webFrontendUrl,
+                webAppUrl: status.settings && status.settings.webAppUrl,
+                monthlyCheckWindowStart: status.settings && status.settings.monthlyCheckWindowStart,
+                monthlyCheckWindowEnd: status.settings && status.settings.monthlyCheckWindowEnd,
+                monthlyReminderStartDay: status.settings && status.settings.monthlyReminderStartDay,
+                dailyWorkCheckEnabled: status.settings && status.settings.dailyWorkCheckEnabled,
+              },
+            };
+            break;
+          }
+          case 'archiveWriteHealth': {
+            try {
+              const root = getArchiveRootFolder_();
+              const blob = Utilities.newBlob(
+                'archive write health ' + Utilities.formatDate(new Date(), tz_(), 'yyyy-MM-dd HH:mm:ss'),
+                'text/plain',
+                '_archive_write_health.txt'
+              );
+              const file = root.createFile(blob);
+              const fileId = file.getId();
+              file.setTrashed(true);
+              result = {
+                ok: true,
+                action,
+                archiveRootName: root.getName(),
+                createdAndTrashed: true,
+                fileIdMasked: String(fileId).substring(0, 6) + '...',
+              };
+            } catch (innerErr) {
+              result = { ok: false, action, error: String(innerErr.message || innerErr) };
+            }
+            break;
+          }
+          case 'lastPostError': {
+            let parsed = null;
+            try {
+              const raw = PropertiesService.getScriptProperties().getProperty('LAST_POST_ERROR_JSON') || '';
+              parsed = raw ? JSON.parse(raw) : null;
+            } catch (_) {}
+            result = { ok: true, action, lastPostError: parsed };
+            break;
+          }
+          case 'dailyReminderTriggerStatus': {
+            const triggers = ScriptApp.getProjectTriggers()
+              .filter(t => t.getHandlerFunction() === 'dailyReminderJob')
+              .map(t => ({
+                handler: t.getHandlerFunction(),
+                type: String(t.getEventType()),
+              }));
+            result = {
+              ok: true,
+              action,
+              expectedHour: CONFIG.REMINDER_TRIGGER_HOUR,
+              count: triggers.length,
+              triggers,
+            };
+            break;
+          }
+          case 'installDailyReminderTrigger': {
+            installDailyReminderTrigger();
+            const triggers = ScriptApp.getProjectTriggers()
+              .filter(t => t.getHandlerFunction() === 'dailyReminderJob')
+              .map(t => ({
+                handler: t.getHandlerFunction(),
+                type: String(t.getEventType()),
+              }));
+            result = {
+              ok: true,
+              action,
+              expectedHour: CONFIG.REMINDER_TRIGGER_HOUR,
+              count: triggers.length,
+              triggers,
+            };
+            break;
+          }
           case 'installDailyWorkCheckTriggers': {
             result = installDailyWorkCheckTriggers();
             break;
@@ -467,6 +556,16 @@ function doGet(e) {
                 toUserId: e.parameter.toUserId,
                 lineUserId: e.parameter.lineUserId,
                 userId: e.parameter.userId,
+              }),
+            };
+            break;
+          }
+          case 'cleanupOfficialDocumentMonitor': {
+            result = {
+              ok: true,
+              action,
+              ...cleanupOfficialDocumentMonitorSheets_({
+                dryRun: String(e.parameter.dryRun || '').toLowerCase() !== 'false',
               }),
             };
             break;
@@ -592,6 +691,13 @@ function doPost(e) {
 
   } catch (err) {
     Logger.log('doPost 失敗：' + err + '\n' + (err.stack || ''));
+    try {
+      PropertiesService.getScriptProperties().setProperty('LAST_POST_ERROR_JSON', JSON.stringify({
+        at: Utilities.formatDate(new Date(), tz_(), 'yyyy-MM-dd HH:mm:ss'),
+        message: String((err && err.message) || err).substring(0, 1000),
+        stack: String((err && err.stack) || '').substring(0, 3000),
+      }));
+    } catch (_) {}
     return jsonResponse_({ ok: false, error: friendlyError_(err) });
   }
 }
@@ -625,6 +731,19 @@ function friendlyError_(err) {
     'webhook_token', 'invalid_webhook_token'];
   if (businessErrors.some(k => msg.indexOf(k) >= 0)) return msg;
   return '系統處理失敗，請聯絡管理員';
+}
+
+function destructiveActionWillDelete_(action, params) {
+  params = params || {};
+  switch (String(action || '')) {
+    case 'cleanupAll':
+    case 'cleanupDate':
+      return String(params.dryRun || '') !== '1';
+    case 'cleanupOfficialDocumentMonitor':
+      return String(params.dryRun || '').toLowerCase() === 'false';
+    default:
+      return false;
+  }
 }
 
 function approvalPageResponse_(e) {

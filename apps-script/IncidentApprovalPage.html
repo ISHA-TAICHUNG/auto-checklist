@@ -115,8 +115,13 @@
       if (incident.reviewStatus !== '待主管審核') {
         const info = document.createElement('div');
         info.className = 'alert alert-info';
-        info.textContent = '此事件目前不是待主管審核狀態。';
+        info.textContent = incident.processStatus === '處理中'
+          ? '此事件目前仍在處理中，尚未進入正式主管審核。若要提供意見，請使用主管處理意見頁。'
+          : '此事件目前尚未進入正式主管審核，暫時不能同意結案或退回補正。';
         root.appendChild(info);
+        if (incident.processStatus === '處理中' && incident.commentUrl) {
+          root.appendChild(linkButton('開啟主管意見頁', incident.commentUrl));
+        }
         return;
       }
 
@@ -164,6 +169,11 @@
       google.script.run
         .withSuccessHandler(res => {
           if (!res || !res.ok) return alert('審核失敗：' + ((res && res.error) || '未知錯誤'));
+          if (res.invalidState) {
+            incident = res.incident || incident;
+            renderPage();
+            return;
+          }
           renderResult(
             res.returned ? '已退回補正' : '已審核結案',
             res.fileUrl || (res.incident && res.incident.pdfUrl),

@@ -105,6 +105,76 @@ function isLineSubscriberUser_(userId) {
   return getLineSubscriberUserIds_().indexOf(id) >= 0;
 }
 
+function getLineSubscriberProfileByUserId_(userId) {
+  const id = String(userId || '').trim();
+  if (!id) return null;
+  try {
+    if (!CONFIG.DB_SHEET_ID || CONFIG.DB_SHEET_ID.startsWith('REPLACE_')) return null;
+    const sheet = getLineSubscriberSheet_(SpreadsheetApp.openById(CONFIG.DB_SHEET_ID));
+    if (!sheet || sheet.getLastRow() < 2) return null;
+    const data = sheet.getDataRange().getValues();
+    const headers = data[0].map(h => String(h || '').trim());
+    const nameCol = headers.indexOf('姓名');
+    const idCol = headers.indexOf('LINE_USER_ID');
+    const activeCol = getLineSubscriberActiveColumnIndex_(headers);
+    const supervisorCol = getLineSupervisorFlagColumnIndex_(headers);
+    const staffCol = headers.indexOf('是否為同仁');
+    if (idCol < 0) return null;
+    for (let i = 1; i < data.length; i++) {
+      const rowId = String(data[i][idCol] || '').trim();
+      const active = activeCol < 0 ? true : isActiveValue_(data[i][activeCol]);
+      if (rowId !== id || !active) continue;
+      return {
+        name: nameCol >= 0 ? String(data[i][nameCol] || '').trim() : '',
+        userId: rowId,
+        isSupervisor: supervisorCol >= 0 ? isActiveValue_(data[i][supervisorCol]) : false,
+        isStaff: staffCol >= 0 ? isActiveValue_(data[i][staffCol]) : false,
+      };
+    }
+  } catch (err) {
+    Logger.log('[LINE] 依 userId 讀取訂閱者資料失敗: ' + err);
+  }
+  return null;
+}
+
+function findLineSubscriberTargetsByName_(targetName, opts) {
+  opts = opts || {};
+  const nameTarget = String(targetName || '').trim();
+  if (!nameTarget) return { ids: [], ambiguous: false, matchCount: 0, name: nameTarget };
+  try {
+    if (!CONFIG.DB_SHEET_ID || CONFIG.DB_SHEET_ID.startsWith('REPLACE_')) {
+      return { ids: [], ambiguous: false, matchCount: 0, name: nameTarget };
+    }
+    const sheet = getLineSubscriberSheet_(SpreadsheetApp.openById(CONFIG.DB_SHEET_ID));
+    if (!sheet || sheet.getLastRow() < 2) return { ids: [], ambiguous: false, matchCount: 0, name: nameTarget };
+    const data = sheet.getDataRange().getValues();
+    const headers = data[0].map(h => String(h || '').trim());
+    const nameCol = headers.indexOf('姓名');
+    const idCol = headers.indexOf('LINE_USER_ID');
+    const activeCol = getLineSubscriberActiveColumnIndex_(headers);
+    const staffCol = headers.indexOf('是否為同仁');
+    if (nameCol < 0 || idCol < 0) return { ids: [], ambiguous: false, matchCount: 0, name: nameTarget };
+    const ids = [];
+    data.slice(1).forEach(row => {
+      const name = String(row[nameCol] || '').trim();
+      const id = String(row[idCol] || '').trim();
+      const active = activeCol < 0 ? true : isActiveValue_(row[activeCol]);
+      const staffOk = !opts.requireStaff || staffCol < 0 || isActiveValue_(row[staffCol]);
+      if (name === nameTarget && id && active && staffOk) ids.push(id);
+    });
+    const uniqueIds = Array.from(new Set(ids));
+    return {
+      ids: uniqueIds,
+      ambiguous: uniqueIds.length > 1,
+      matchCount: uniqueIds.length,
+      name: nameTarget,
+    };
+  } catch (err) {
+    Logger.log('[LINE] 依姓名讀取訂閱者 LINE_USER_ID 失敗: ' + err);
+    return { ids: [], ambiguous: false, matchCount: 0, name: nameTarget, error: String(err) };
+  }
+}
+
 function getSupervisorUserIds_() {
   return getSupervisorUserIdsFromSheet_();
 }
@@ -198,6 +268,75 @@ function linePushToSupervisors_(messages) {
   if (supervisorIds.length === 1) return linePushTo_(supervisorIds[0], messages, 'push');
   Logger.log('[LINE supervisor] 無標記為主管的 LINE_USER_ID，略過主管通知');
   return { ok: false, reason: 'no_supervisor' };
+}
+
+function linePushDailyIncidentStakeholders_(incident, messages, opts) {
+  opts = opts || {};
+  const cfg = getLineConfig_();
+  if (!cfg.token) {
+    Logger.log('[LINE daily incident] LINE_CHANNEL_ACCESS_TOKEN 未設定，略過限定推播');
+    return { ok: false, reason: 'no_token' };
+  }
+  if (!Array.isArray(messages)) messages = [messages];
+
+  const stakeholderNames = Array.from(new Set([
+    incident && incident.owner,
+    incident && incident.reporter,
+  ].map(v => String(v || '').trim()).filter(Boolean)));
+  const ownerResults = stakeholderNames.map(name =>
+    findLineSubscriberTargetsByName_(name, { requireStaff: opts.requireStaff === true })
+  );
+  const supervisorIds = opts.includeSupervisors === false ? [] : getSupervisorUserIds_();
+  const targetIds = [];
+  const seen = {};
+
+  ownerResults.forEach(result => {
+    if (result.ambiguous) {
+      Logger.log('[LINE daily incident] 訂閱者姓名重複，略過同仁限定推播: ' + result.name + ', matchCount=' + result.matchCount);
+      return;
+    }
+    if (result.ids.length !== 1) return;
+    const id = result.ids[0];
+    if (!id || seen[id]) return;
+    targetIds.push(id);
+    seen[id] = true;
+  });
+  supervisorIds.forEach(id => {
+    id = String(id || '').trim();
+    if (!id || seen[id]) return;
+    seen[id] = true;
+    targetIds.push(id);
+  });
+
+  const anyOwnerAmbiguous = ownerResults.some(result => result.ambiguous);
+  const ownerMatchedCount = ownerResults.filter(result => !result.ambiguous && result.ids.length === 1).length;
+  const ownerNames = stakeholderNames.join('、');
+
+  if (targetIds.length === 0) {
+    return {
+      ok: false,
+      reason: anyOwnerAmbiguous ? 'ambiguous_owner_line' : 'no_target',
+      ownerReason: anyOwnerAmbiguous ? 'ambiguous_owner_line' : 'no_owner_line',
+      ownerName: ownerNames,
+      ownerMatchCount: ownerMatchedCount,
+      supervisorCount: supervisorIds.length,
+      targetMode: 'daily-incident-stakeholders',
+      targetCount: 0,
+    };
+  }
+
+  const res = targetIds.length > 1
+    ? lineMulticast_(targetIds, messages)
+    : linePushTo_(targetIds[0], messages, 'push');
+  return Object.assign({
+    targetMode: 'daily-incident-stakeholders',
+    targetCount: targetIds.length,
+    ownerName: ownerNames,
+    ownerMatched: ownerMatchedCount > 0,
+    ownerReason: anyOwnerAmbiguous ? 'ambiguous_owner_line' : (ownerMatchedCount > 0 ? '' : 'no_owner_line'),
+    ownerMatchCount: ownerMatchedCount,
+    supervisorCount: supervisorIds.length,
+  }, res);
 }
 
 /**
@@ -515,7 +654,7 @@ function buildReminderFlex_(category, equipments, webFrontendUrl, opts) {
  * 異常事件即時通報卡片
  *
  * pdfUrl:   該筆異常對應的填報 PDF（incident.fileUrl）
- * sheetUrl: 異常事件追蹤 Google Sheet（INCIDENT_SHEET_URL）
+ * sheetUrl: 機具設備異常事件 Google Sheet（INCIDENT_SHEET_URL）
  *
  * footer 顯示：兩個按鈕（PDF + Sheet），都有就都顯示，否則只顯示有的
  */
@@ -567,7 +706,7 @@ function buildIncidentFlex_(incident, pdfUrl, sheetUrl) {
           ...(sheetUrl ? [{
             type: 'button',
             style: 'secondary',
-            action: { type: 'uri', label: '📋 異常事件表', uri: sheetUrl },
+            action: { type: 'uri', label: '📋 機具異常表', uri: sheetUrl },
           }] : []),
           {
             type: 'button',
@@ -598,7 +737,7 @@ function incidentSummaryItemBox_(incident) {
 
 /**
  * 同一次設備檢查的多個異常項目彙整成一則 LINE 通知。
- * 資料表仍維持逐項建立異常事件，避免後續追蹤失去明細。
+ * 資料表仍維持逐項建立機具設備異常事件，避免後續追蹤失去明細。
  */
 function buildIncidentSummaryFlex_(summary, pdfUrl, sheetUrl) {
   const incidents = Array.isArray(summary.incidents) ? summary.incidents : [];
@@ -633,7 +772,7 @@ function buildIncidentSummaryFlex_(summary, pdfUrl, sheetUrl) {
           ...(photoCount > 0 ? [dailyIncidentFlexField_('照片', `${photoCount} 張`)] : []),
           { type: 'separator', margin: 'md' },
           ...shown.map(incidentSummaryItemBox_),
-          ...(omitted > 0 ? [{ type: 'text', text: `另有 ${omitted} 項異常，請開啟 PDF、異常事件表或點擊查看全部待處理異常。`, size: 'xs', color: '#5F6368', wrap: true, margin: 'sm' }] : []),
+          ...(omitted > 0 ? [{ type: 'text', text: `另有 ${omitted} 項異常，請開啟 PDF、機具設備異常事件表或點擊查看全部待處理異常。`, size: 'xs', color: '#5F6368', wrap: true, margin: 'sm' }] : []),
         ],
       },
       footer: {
@@ -650,7 +789,7 @@ function buildIncidentSummaryFlex_(summary, pdfUrl, sheetUrl) {
           ...(sheetUrl ? [{
             type: 'button',
             style: 'secondary',
-            action: { type: 'uri', label: '📋 異常事件表', uri: sheetUrl },
+            action: { type: 'uri', label: '📋 機具異常表', uri: sheetUrl },
           }] : []),
           {
             type: 'button',
@@ -1585,7 +1724,7 @@ function buildSupervisorReminderLinkText_(equipments, webFrontendUrl, opts) {
 /**
  * 高層 API：寄異常即時通報
  * incident.fileUrl  → 該次填報 PDF（優先顯示）
- * INCIDENT_SHEET_URL → 異常事件追蹤 Sheet（備援/輔助）
+ * INCIDENT_SHEET_URL → 機具設備異常事件 Sheet（備援/輔助）
  * 自動加 Quick Reply 按鈕
  */
 function sendIncidentAlert_(incident) {
@@ -1613,12 +1752,12 @@ function sendApprovalRequest_(record) {
 
 function sendDailyIncidentCreated_(incident) {
   const flex = buildDailyIncidentCreatedFlex_(incident);
-  return linePush_(withQuickReply_(flex));
+  return linePushDailyIncidentStakeholders_(incident, withQuickReply_(flex));
 }
 
 function sendDailyIncidentReturned_(incident) {
   const flex = buildDailyIncidentReturnedFlex_(incident);
-  return linePush_(withQuickReply_(flex));
+  return linePushDailyIncidentStakeholders_(incident, withQuickReply_(flex));
 }
 
 function sendDailyIncidentApprovalRequest_(incident) {
@@ -1641,7 +1780,7 @@ function sendDailyIncidentProcessingReviewRequest_(incident) {
 
 function sendDailyIncidentSupervisorComment_(incident) {
   const flex = buildDailyIncidentSupervisorCommentFlex_(incident);
-  return linePush_(withQuickReply_(flex));
+  return linePushDailyIncidentStakeholders_(incident, withQuickReply_(flex));
 }
 
 function trimLineText_(text, maxLen) {

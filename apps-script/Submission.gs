@@ -135,14 +135,14 @@ function handleSubmission_(payload) {
         }
       }
     });
-    // b) 鎖定項驗證：「異常事件」未完成的 order，本次 result 必須仍為 bad
+    // b) 鎖定項驗證：「機具設備異常事件」未完成的 order，本次 result 必須仍為 bad
     //    (避免使用者繞過前端鎖定送出「良好」)
     const lockedItems = getLockedItemsForEquipment_(payload.equipmentId, payload.formType);
     if (lockedItems.length > 0) {
       const lockedOrders = new Set(lockedItems.map(l => l.order));
       payload.items.forEach(it => {
         if (lockedOrders.has(Number(it.order)) && it.result !== badValue) {
-          throw new Error(`第 ${it.order} 項目「${it.name}」仍有未處理異常，無法標為「${it.result}」，需先在『異常事件追蹤』表把狀態改為「已完成」才能解鎖`);
+          throw new Error(`第 ${it.order} 項目「${it.name}」仍有未處理異常，無法標為「${it.result}」，需先在『機具設備異常事件』表把狀態改為「已完成」才能解鎖`);
         }
       });
     }
@@ -360,7 +360,7 @@ function requiresSupervisorApproval_(formType, equipment) {
 }
 
 function buildApprovalUrl_(recordId, token) {
-  const base = getSetting_('webAppUrl', '') || ScriptApp.getService().getUrl();
+  const base = ScriptApp.getService().getUrl() || getSetting_('webAppUrl', '');
   if (!base || !/^https?:\/\//.test(base)) return '';
   return base.split('?')[0].replace(/\/+$/, '') +
     '?page=approve&recordId=' + encodeURIComponent(recordId) +
@@ -499,7 +499,7 @@ function updateApprovalRecord_(sheet, headers, rowNo, values) {
 
 function updateIncidentPdfLinks_(recordId, fileUrl) {
   const ss = SpreadsheetApp.openById(CONFIG.DB_SHEET_ID);
-  const sheet = ss.getSheetByName('異常事件');
+  const sheet = getMachineIncidentSheet_(ss);
   if (!sheet || sheet.getLastRow() < 2) return;
   const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
   const recordCol = headers.indexOf('紀錄ID');
@@ -677,7 +677,7 @@ function notifyLineIncidents_(recordId, submittedAt, checkDate, payload, equipme
 }
 
 /**
- * 把 payload 內每個「結果=bad」項目寫入「異常事件」工作表
+ * 把 payload 內每個「結果=bad」項目寫入「機具設備異常事件」工作表
  *
  * 一筆檢查表可能產生多筆異常事件（例如 3 項 X）
  * 每筆都有獨立的事件ID、初始狀態 = 待處理
@@ -690,9 +690,9 @@ function writeIncidents_({ recordId, submittedAt, checkDate, formType, equipment
   if (!Array.isArray(payload.items) || !payload.items.length) return;
 
   const ss = SpreadsheetApp.openById(CONFIG.DB_SHEET_ID);
-  const sheet = ss.getSheetByName('異常事件');
+  const sheet = getMachineIncidentSheet_(ss);
   if (!sheet) {
-    Logger.log('「異常事件」表不存在，跳過異常追蹤寫入');
+    Logger.log('「機具設備異常事件」表不存在，跳過異常追蹤寫入');
     return;
   }
   const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];

@@ -96,6 +96,36 @@ const CONFIG = {
 
 };
 
+const MACHINE_INCIDENT_SHEET_NAME = '機具設備異常事件';
+const MACHINE_INCIDENT_LEGACY_SHEET_NAMES = ['異常事件'];
+
+function getMachineIncidentSheet_(ss) {
+  ss = ss || SpreadsheetApp.openById(CONFIG.DB_SHEET_ID);
+  return ss.getSheetByName(MACHINE_INCIDENT_SHEET_NAME)
+    || MACHINE_INCIDENT_LEGACY_SHEET_NAMES
+      .map(name => ss.getSheetByName(name))
+      .find(sheet => !!sheet)
+    || null;
+}
+
+function ensureMachineIncidentSheet_(ss) {
+  ss = ss || SpreadsheetApp.openById(CONFIG.DB_SHEET_ID);
+  const current = ss.getSheetByName(MACHINE_INCIDENT_SHEET_NAME);
+  if (current) return current;
+  for (const legacyName of MACHINE_INCIDENT_LEGACY_SHEET_NAMES) {
+    const legacy = ss.getSheetByName(legacyName);
+    if (legacy) {
+      try {
+        legacy.setName(MACHINE_INCIDENT_SHEET_NAME);
+      } catch (err) {
+        Logger.log('機具設備異常事件分頁改名失敗，沿用舊分頁：' + err);
+      }
+      return legacy;
+    }
+  }
+  return null;
+}
+
 /**
  * 從 DB「系統設定」工作表讀取設定值；找不到則回傳 fallback
  */

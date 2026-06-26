@@ -5,7 +5,7 @@
  *
  * 支援指令（傳給 bot 的 text message）：
  *   - 狀態 / status         今日填表進度
- *   - 待發文 / dispatch     查詢自己今日最新公文待發文快照（非即時登入）
+ *   - 待發文 / dispatch     查詢自己今日公文待發文快照（非即時登入）
  *   - 異常 / open           待處理異常事件清單
  *   - 通報 / incident       日常異常事件通報表
  *   - 待處理 / incidents    日常異常事件未結案清單
@@ -73,27 +73,27 @@ function dispatchLineEvent_(ev) {
   if (/^(待發文|公文待發文|dispatch|documents)$/i.test(cmd)) return cmdOfficialDocumentDispatch_(replyToken, userId);
   if (/^(異常|open)$/i.test(cmd))      return cmdOpenIncidents_(replyToken);
   if (/^(通報|incident)$/i.test(cmd))  return cmdDailyIncidentReport_(replyToken);
-  if (/^(待處理|incidents)$/i.test(cmd)) return cmdDailyIncidentList_(replyToken);
+  if (/^(待處理|incidents)$/i.test(cmd)) return cmdDailyIncidentList_(replyToken, userId);
   let dailyMatch = matchDailyIncidentLineCommand_(cmd, '事件');
   if (dailyMatch) {
     const incId = dailyMatch;
-    return cmdDailyIncidentDetail_(replyToken, incId);
+    return cmdDailyIncidentDetail_(replyToken, incId, userId);
   }
   dailyMatch = matchDailyIncidentLineCommand_(cmd, '更新');
   if (dailyMatch) {
     const incId = dailyMatch;
-    return cmdDailyIncidentUpdate_(replyToken, incId);
+    return cmdDailyIncidentUpdate_(replyToken, incId, userId);
   }
   dailyMatch = matchDailyIncidentLineCommand_(cmd, '陳核');
   if (dailyMatch) {
     const incId = dailyMatch;
-    return cmdDailyIncidentSubmitApproval_(replyToken, incId);
+    return cmdDailyIncidentSubmitApproval_(replyToken, incId, userId);
   }
   dailyMatch = matchDailyIncidentLineCommand_(cmd, '結案');
   if (dailyMatch) {
     return lineReply_(replyToken, withQuickReply_(buildDailyIncidentNoticeFlex_(
       '🖊 日常事件由主管審核結案',
-      '日常異常事件需由主管開啟審核圖卡，按「同意結案」後才算正式結案。承辦請先在處理回報頁將狀態改為「處理完成」並陳核主管。',
+      '日常異常事件需由主管開啟審核圖卡，按「同意結案」後才算正式結案。請先在處理回報頁將狀態改為「處理完成」並陳核主管。',
       { color: '#1a73e8' }
     )));
   }
@@ -115,7 +115,7 @@ function dispatchLineEvent_(ev) {
   if (source.type === 'user') {
     return lineReply_(replyToken, {
       type: 'text',
-      text: '看不懂這個指令。請輸入「幫助」查看完整指令，或點下方按鈕操作。',
+      text: '看不懂這個操作。請輸入「幫助」查看可用清單，或點下方按鈕操作。',
     });
   }
 }
@@ -159,46 +159,46 @@ function cmdHelp_(replyToken) {
   return lineReply_(replyToken, {
     type: 'text',
     text: [
-      '📋 可用指令',
+      'ISHA 通知小幫手｜可用指令',
       '',
       '常用功能：',
-      '• 狀態 — 今日填表進度與月檢提醒',
-      '• 待發文 — 顯示雲端檢核(16:30 / 17:00)抓到、屬於你的最新一批待發公文；不是即時登入查詢',
-      '• 異常 — 設備檢查產生的未完成異常',
-      '• 通報 — 開啟日常異常事件通報表',
-      '• 待處理 — 查未結案日常異常事件',
-      '• QR選單 — 設備與教室表單 QR 入口',
+      '狀態：今日填表進度、月檢應填 / 補填提醒',
+      '待發文：查看 16:30 / 17:00 雲端檢核快照，不是即時登入公文系統',
+      '異常：查機具設備檢查產生的未完成異常',
+      '通報：開啟日常異常事件通報表',
+      '待處理：查未結案日常異常事件',
+      'QR選單：設備、教室月檢表單入口',
       '',
       '日常事件：',
-      '• 事件 <事件ID> — 查詢日常事件摘要',
-      '• 更新 <事件ID> — 取得處理回報連結',
-      '• 陳核 <事件ID> — 處理完成後重新通知主管審核',
+      '事件 <事件ID>：查詢日常事件摘要',
+      '更新 <事件ID>：取得處理回報連結',
+      '陳核 <事件ID>：處理完成後通知主管審核',
+      '日常事件只顯示本人填報 / 承辦案件；主管可查看全部。',
       '',
-      '設備異常：',
-      '• 完成 <事件ID> — 將設備檢查異常標記為已完成',
+      '機具設備異常：',
+      '完成 <事件ID>：將機具設備異常標記為已完成',
       '',
-      '其他：',
-      '• QR <設備代號> — 產生單一設備 QR 圖',
-      '• 我的ID — 顯示你的 LINE userId',
-      '• 幫助 — 顯示這個清單',
+      'QR 快捷：',
+      'QR CRANE-LJ-001：固定式起重機',
+      'QR FORK-LJ-A～FORK-LJ-F：堆高機 A～F',
+      'QR AWP-LJ-001：車載式高空工作車',
+      'QR AWP-LJ-SP-001：自走高空車',
+      'QR CLASSROOM-LJ-MEAS-PPE：龍井教室月檢',
+      'QR CLASSROOM-FX-MEAS-PPE：復興教室月檢',
+      'QR CLASSROOM-ZM-MEAS-PPE：忠明教室月檢',
       '',
-      '主管簽核通知：',
-      '• 由 DB「訂閱者清單」的「是否為主管」控制',
-      '• 用於三間教室、堆高機、固定式起重機的月檢',
-      '',
-      '日檢快捷：',
-      '• QR AWP-LJ-001 — 車載式高空工作車',
-      '• QR AWP-LJ-SP-001 — 自走式高空工作車',
-      '',
-      '教室防護具月檢快捷：',
-      '• QR CLASSROOM-LJ-MEAS-PPE — 龍井教室月檢',
-      '• QR CLASSROOM-FX-MEAS-PPE — 復興教室月檢',
-      '• QR CLASSROOM-ZM-MEAS-PPE — 忠明教室月檢',
-      '（SCBA 已併入三間教室月檢表下方區塊）',
+      '提醒與通知：',
+      '日檢 / 月檢未填提醒由系統排程推播。',
+      '三間教室、堆高機、固定式起重機月檢完成後會通知主管簽核。',
+      '主管通知由「訂閱者清單」的「是否為主管」控制。',
       '',
       '待發文注意：',
-      '• 顯示「今日尚未有檢核紀錄」時，代表當日 16:30 批次尚未跑完或尚未寫入快照',
-      '• 看不到本人資料時，請確認 LINE 已在「訂閱者清單」綁定姓名並標記為同仁',
+      '看不到本人資料時，請確認 LINE 已在「訂閱者清單」綁定姓名並標記為同仁。',
+      '顯示尚未有檢核紀錄時，代表當日批次尚未跑完或尚未寫入快照。',
+      '',
+      '其他：',
+      '我的ID：顯示你的 LINE userId',
+      '幫助：顯示這個清單',
       '',
       '請直接在 ISHA 通知小幫手的一對一聊天中操作。',
     ].join('\n'),
@@ -256,15 +256,19 @@ function cmdDailyIncidentReport_(replyToken) {
   return lineReply_(replyToken, withQuickReply_(buildDailyIncidentReportEntryFlex_(url)));
 }
 
-function cmdDailyIncidentList_(replyToken) {
-  const res = listOpenDailyIncidents_();
+function cmdDailyIncidentList_(replyToken, userId) {
+  const res = (typeof listOpenDailyIncidentsForLineUser_ === 'function')
+    ? listOpenDailyIncidentsForLineUser_(userId)
+    : listOpenDailyIncidents_();
   const incidents = res.incidents || [];
   return lineReply_(replyToken, withQuickReply_(buildDailyIncidentListFlex_(incidents)));
 }
 
-function cmdDailyIncidentDetail_(replyToken, incidentId) {
+function cmdDailyIncidentDetail_(replyToken, incidentId, userId) {
   try {
-    const inc = getDailyIncidentPublicDetail_(incidentId);
+    const inc = (typeof getDailyIncidentPublicDetailForLineUser_ === 'function')
+      ? getDailyIncidentPublicDetailForLineUser_(incidentId, userId)
+      : getDailyIncidentPublicDetail_(incidentId);
     const flex = buildDailyIncidentCreatedFlex_(inc, {
       title: '📌 日常異常事件',
       color: '#1a73e8',
@@ -276,9 +280,11 @@ function cmdDailyIncidentDetail_(replyToken, incidentId) {
   }
 }
 
-function cmdDailyIncidentUpdate_(replyToken, incidentId) {
+function cmdDailyIncidentUpdate_(replyToken, incidentId, userId) {
   try {
-    const inc = getDailyIncidentPublicDetail_(incidentId);
+    const inc = (typeof getDailyIncidentPublicDetailForLineUser_ === 'function')
+      ? getDailyIncidentPublicDetailForLineUser_(incidentId, userId)
+      : getDailyIncidentPublicDetail_(incidentId);
     if (!inc.updateUrl) return lineReply_(replyToken, { type: 'text', text: '✗ 系統設定 webAppUrl 未填，無法建立處理回報連結' });
     const flex = buildDailyIncidentCreatedFlex_(inc, {
       title: '🛠 日常事件處理回報',
@@ -291,9 +297,11 @@ function cmdDailyIncidentUpdate_(replyToken, incidentId) {
   }
 }
 
-function cmdDailyIncidentSubmitApproval_(replyToken, incidentId) {
+function cmdDailyIncidentSubmitApproval_(replyToken, incidentId, userId) {
   try {
-    const res = submitDailyIncidentForApproval_({ incidentId });
+    const res = (typeof submitDailyIncidentForApprovalFromLine_ === 'function')
+      ? submitDailyIncidentForApprovalFromLine_({ incidentId }, userId)
+      : submitDailyIncidentForApproval_({ incidentId });
     if (!res.ok) return lineReply_(replyToken, { type: 'text', text: '✗ 陳核失敗' });
     const inc = res.incident;
     const flex = buildDailyIncidentCreatedFlex_(inc, {
@@ -363,8 +371,8 @@ function cmdComplete_(replyToken, incIdPrefix, byUserId) {
   }
   // 用 prefix 找完整事件 ID
   const ss = SpreadsheetApp.openById(CONFIG.DB_SHEET_ID);
-  const sheet = ss.getSheetByName('異常事件');
-  if (!sheet) return lineReply_(replyToken, { type: 'text', text: '✗ 找不到「異常事件」表' });
+  const sheet = getMachineIncidentSheet_(ss);
+  if (!sheet) return lineReply_(replyToken, { type: 'text', text: '✗ 找不到「機具設備異常事件」表' });
   const data = sheet.getDataRange().getValues();
   const headers = data[0];
   const idCol = headers.indexOf('事件ID');
@@ -372,7 +380,7 @@ function cmdComplete_(replyToken, incIdPrefix, byUserId) {
   const completedCol = headers.indexOf('實際完成日');
   const ownerCol = headers.indexOf('負責人');
   if (idCol < 0 || statusCol < 0) {
-    return lineReply_(replyToken, { type: 'text', text: '✗ 「異常事件」表缺欄位' });
+    return lineReply_(replyToken, { type: 'text', text: '✗ 「機具設備異常事件」表缺欄位' });
   }
   // 先找所有符合 prefix 的「未完成」列，若 >1 拒絕（避免一次標多筆）
   const matched = [];

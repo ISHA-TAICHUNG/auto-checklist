@@ -1,7 +1,7 @@
 /**
  * ===== 日常異常事件通報模組（Phase A additive）=====
  *
- * 這條流程獨立於既有設備檢查與「異常事件」表：
+ * 這條流程獨立於既有設備檢查與「機具設備異常事件」表：
  * - 公開 incident.html 建立事件
  * - GAS 內部 token 頁更新處理狀況 / 主管審核
  * - 填單即產 PDF；每次更新/送審/審核都重產目前階段 PDF 並保留流程時序
@@ -101,7 +101,7 @@ function setupDailyIncidentValidations_(ss) {
 
 function ensureDailyIncidentSettings_(ss) {
   ensureSystemSettingDefaults_(ss, [
-    ['dailyIncidentGroupNotify', '是', '新日常異常事件是否推播 LINE 訂閱者'],
+    ['dailyIncidentGroupNotify', '是', '日常異常事件是否推播給承辦同仁與主管'],
     ['dailyIncidentSupervisorNotify', '是', '日常異常事件陳核時是否推播主管'],
     ['dailyIncidentArchiveFolderName', DAILY_INCIDENT_ARCHIVE_DEFAULT, '日常異常事件通報 Drive 子資料夾名稱'],
   ]);
@@ -350,7 +350,14 @@ function approveDailyIncident_(payload) {
   if (found.data.reviewStatus === '已結案') {
     return { ok: true, alreadyClosed: true, incident: publicDailyIncidentSummary_(found.data) };
   }
-  if (found.data.reviewStatus !== '待主管審核') throw new Error('此日常事件尚未送主管審核');
+  if (found.data.reviewStatus !== '待主管審核') {
+    return {
+      ok: true,
+      invalidState: true,
+      message: '此日常事件尚未送主管審核',
+      incident: publicDailyIncidentSummary_(found.data),
+    };
+  }
 
   const reviewTime = Utilities.formatDate(new Date(), tz_(), 'yyyy-MM-dd HH:mm:ss');
   if (decision === 'return') {
@@ -533,9 +540,62 @@ function listOpenDailyIncidents_() {
   return { count: incidents.length, incidents };
 }
 
+function listOpenDailyIncidentsForLineUser_(userId) {
+  const ctx = dailyIncidentLineAccessContext_(userId);
+  const res = listOpenDailyIncidents_();
+  const incidents = res.incidents || [];
+  if (ctx.isSupervisor) return res;
+  const filtered = incidents.filter(inc => dailyIncidentLineUserCanAccess_(inc, ctx));
+  return { count: filtered.length, incidents: filtered };
+}
+
 function getDailyIncidentPublicDetail_(incidentId) {
   const found = getDailyIncidentRecord_(normalizeDailyIncidentId_(incidentId));
   return publicDailyIncidentSummary_(found.data);
+}
+
+function getDailyIncidentPublicDetailForLineUser_(incidentId, userId) {
+  const found = getDailyIncidentRecord_(normalizeDailyIncidentId_(incidentId));
+  assertDailyIncidentLineAccess_(found.data, userId);
+  return publicDailyIncidentSummary_(found.data);
+}
+
+function submitDailyIncidentForApprovalFromLine_(payload, userId) {
+  payload = payload || {};
+  const found = getDailyIncidentRecord_(normalizeDailyIncidentId_(payload.incidentId));
+  assertDailyIncidentLineAccess_(found.data, userId);
+  return submitDailyIncidentForApproval_(payload);
+}
+
+function dailyIncidentLineAccessContext_(userId) {
+  const profile = (typeof getLineSubscriberProfileByUserId_ === 'function')
+    ? getLineSubscriberProfileByUserId_(userId)
+    : null;
+  return {
+    userId: String(userId || '').trim(),
+    name: profile && profile.name ? String(profile.name || '').trim() : '',
+    isSupervisor: !!(profile && profile.isSupervisor),
+    isStaff: !!(profile && profile.isStaff),
+    isSubscriber: !!profile,
+  };
+}
+
+function dailyIncidentLineUserCanAccess_(incident, ctx) {
+  ctx = ctx || {};
+  if (ctx.isSupervisor) return true;
+  const name = String(ctx.name || '').trim();
+  if (!name) return false;
+  return [incident.owner, incident.reporter]
+    .map(v => String(v || '').trim())
+    .filter(Boolean)
+    .indexOf(name) >= 0;
+}
+
+function assertDailyIncidentLineAccess_(incident, userId) {
+  const ctx = dailyIncidentLineAccessContext_(userId);
+  if (!dailyIncidentLineUserCanAccess_(incident, ctx)) {
+    throw new Error('你沒有權限查看這筆日常事件');
+  }
 }
 
 function findDailyIncidentByClientId_(clientId) {
@@ -1054,19 +1114,19 @@ function buildDailyIncidentPublicUrl_() {
 }
 
 function buildDailyIncidentUpdateUrl_(data) {
-  const base = getSetting_('webAppUrl', '') || ScriptApp.getService().getUrl();
+  const base = ScriptApp.getService().getUrl() || getSetting_('webAppUrl', '');
   if (!/^https?:\/\//.test(base)) return '';
   return `${base}?page=incident-update&incidentId=${encodeURIComponent(data.incidentId)}&token=${encodeURIComponent(data.updateToken || '')}`;
 }
 
 function buildDailyIncidentApprovalUrl_(data) {
-  const base = getSetting_('webAppUrl', '') || ScriptApp.getService().getUrl();
+  const base = ScriptApp.getService().getUrl() || getSetting_('webAppUrl', '');
   if (!/^https?:\/\//.test(base)) return '';
   return `${base}?page=incident-approve&incidentId=${encodeURIComponent(data.incidentId)}&token=${encodeURIComponent(data.approvalToken || '')}`;
 }
 
 function buildDailyIncidentSupervisorCommentUrl_(data) {
-  const base = getSetting_('webAppUrl', '') || ScriptApp.getService().getUrl();
+  const base = ScriptApp.getService().getUrl() || getSetting_('webAppUrl', '');
   if (!/^https?:\/\//.test(base)) return '';
   return `${base}?page=incident-comment&incidentId=${encodeURIComponent(data.incidentId)}&token=${encodeURIComponent(data.approvalToken || '')}`;
 }
