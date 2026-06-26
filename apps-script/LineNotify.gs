@@ -56,16 +56,19 @@ function getLineSubscriberActiveColumnIndex_(headers) {
   return -1;
 }
 
-function getLineSubscriberUserIds_() {
+function getLineSubscriberUserIds_(opts) {
+  opts = opts || {};
   const cacheKey = 'lineSubscriberSheetUserIds:v2';
-  try {
-    const cached = CacheService.getScriptCache().get(cacheKey);
-    if (cached) {
-      const parsed = JSON.parse(cached);
-      if (Array.isArray(parsed)) return parsed;
+  if (!opts.forceRefresh) {
+    try {
+      const cached = CacheService.getScriptCache().get(cacheKey);
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed)) return parsed;
+      }
+    } catch (err) {
+      Logger.log('[LINE] 訂閱者快取讀取失敗，改讀 DB: ' + err);
     }
-  } catch (err) {
-    Logger.log('[LINE] 訂閱者快取讀取失敗，改讀 DB: ' + err);
   }
 
   const ids = [];
@@ -102,7 +105,9 @@ function getLineSubscriberUserIds_() {
 function isLineSubscriberUser_(userId) {
   const id = String(userId || '').trim();
   if (!id) return false;
-  return getLineSubscriberUserIds_().indexOf(id) >= 0;
+  if (getLineSubscriberUserIds_().indexOf(id) >= 0) return true;
+  // 新同仁剛登錄時，120 秒快取可能尚未包含新 ID；沒命中就即時讀 DB 一次。
+  return getLineSubscriberUserIds_({ forceRefresh: true }).indexOf(id) >= 0;
 }
 
 function getLineSubscriberProfileByUserId_(userId) {
