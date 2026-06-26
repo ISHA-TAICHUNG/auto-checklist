@@ -412,11 +412,14 @@ function linePushDailyIncidentStakeholders_(incident, messages, opts) {
     findLineSubscriberTargetsByName_(name, { requireStaff: opts.requireStaff === true })
   );
   let supervisorResults = [];
+  let supervisorFallbackIds = [];
   if (opts.includeSupervisor !== false && opts.includeSupervisors !== false) {
     if (incident && incident.supervisorKey) {
       supervisorResults = [findLineSubscriberTargetsByPersonKey_(incident.supervisorKey, { requireSupervisor: true })];
     } else if (incident && incident.supervisor) {
       supervisorResults = [findLineSubscriberTargetsByName_(incident.supervisor, { requireSupervisor: true })];
+    } else if (opts.includeAllSupervisorsWhenNoSelected === true) {
+      supervisorFallbackIds = getSupervisorUserIds_();
     }
   }
   const targetIds = [];
@@ -449,11 +452,18 @@ function linePushDailyIncidentStakeholders_(incident, messages, opts) {
     seen[id] = true;
     targetIds.push(id);
   });
+  supervisorFallbackIds.forEach(id => {
+    id = String(id || '').trim();
+    if (!id || seen[id]) return;
+    seen[id] = true;
+    targetIds.push(id);
+  });
 
   const anyOwnerAmbiguous = ownerResults.some(result => result.ambiguous);
   const anySupervisorAmbiguous = supervisorResults.some(result => result.ambiguous);
   const ownerMatchedCount = keyedResults.length + ownerResults.filter(result => !result.ambiguous && result.ids.length === 1).length;
-  const supervisorMatchedCount = supervisorResults.filter(result => !result.ambiguous && result.ids.length === 1).length;
+  const supervisorMatchedCount = supervisorResults.filter(result => !result.ambiguous && result.ids.length === 1).length
+    + supervisorFallbackIds.length;
   const ownerNames = stakeholderNames.join('、');
 
   if (targetIds.length === 0) {

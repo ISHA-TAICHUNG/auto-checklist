@@ -256,6 +256,7 @@ function handleDailyIncidentSubmission_(payload) {
     } else {
       notify = maybeNotifyDailyIncidentCreated_(data, {
         includeSupervisor: !(data.processStatus === '處理中' && data.supervisor),
+        includeAllSupervisorsWhenNoSelected: !data.supervisor,
       });
       if (data.processStatus === '處理中' && data.supervisor) {
         supervisorNotice = maybeNotifyDailyIncidentProcessingSupervisor_(data);

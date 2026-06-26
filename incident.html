@@ -67,7 +67,7 @@
 
       const info = document.createElement('div');
       info.className = 'alert alert-info';
-      info.textContent = 'LINE 圖卡只會通知本事件的填報人、承辦人與指定主管。承辦人為主要處理者；填報人未選時會自動與承辦人相同。';
+      info.textContent = 'LINE 圖卡會通知本事件的填報人、承辦人與主管；若未指定主管，初次通報會通知所有主管。承辦人為主要處理者，填報人未選時會自動與承辦人相同。';
       root.appendChild(info);
 
       const card = makeCard('事件內容');
