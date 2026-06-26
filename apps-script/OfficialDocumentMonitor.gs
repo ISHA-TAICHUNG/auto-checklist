@@ -34,6 +34,21 @@ function officialDocumentRunLogHeaders_() {
 function setupOfficialDocumentMonitorSheets_(ss) {
   setupSheet_(ss, OFFICIAL_DOC_QUEUE_SHEET_NAME, officialDocumentQueueHeaders_(), []);
   setupSheet_(ss, OFFICIAL_DOC_RUN_LOG_SHEET_NAME, officialDocumentRunLogHeaders_(), []);
+  applyOfficialDocumentMonitorFormats_(ss);
+}
+
+function applyOfficialDocumentMonitorFormats_(ss) {
+  [
+    getOfficialDocumentQueueSheet_(ss),
+    getOfficialDocumentRunLogSheet_(ss),
+  ].forEach(sheet => {
+    if (!sheet) return;
+    const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0].map(h => String(h || '').trim());
+    const slotCol = headers.indexOf('檢核時段') + 1;
+    if (slotCol > 0) {
+      sheet.getRange(1, slotCol, sheet.getMaxRows(), 1).setNumberFormat('@');
+    }
+  });
 }
 
 function getOfficialDocumentQueueSheet_(ss) {
@@ -1089,6 +1104,11 @@ function sanitizeOfficialDocumentSlot_(value) {
 
 function officialDocumentSlotKey_(value) {
   if (Object.prototype.toString.call(value) === '[object Date]' && !isNaN(value.getTime())) {
+    const parts = dateParts_(value);
+    if (parts.y <= 1900) {
+      const taipeiTimeOnly = new Date(value.getTime() + 8 * 60 * 60 * 1000);
+      return Utilities.formatDate(taipeiTimeOnly, tz_(), 'HH:mm');
+    }
     return Utilities.formatDate(value, tz_(), 'HH:mm');
   }
   const text = String(value || '').trim();
