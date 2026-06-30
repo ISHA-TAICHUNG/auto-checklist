@@ -6,7 +6,7 @@
  * 配置（在 GAS Script Properties 設定，不寫進 source code）：
  *   - LINE_CHANNEL_ACCESS_TOKEN  (必填) Channel 長期 access token
  *   - LINE_CHANNEL_SECRET        (選填) Webhook 簽章驗證用
- *   - 一般公告通知收件者：DB「訂閱者清單」的 LINE_USER_ID
+ *   - 一般公告通知收件者：DB「訂閱者清單」中「是否訂閱」= 是 且有 LINE_USER_ID
  *   - 主管通知收件者：DB「訂閱者清單」中「是否為主管」= 是
  *   - LINE_TARGET_GROUP_ID / LINE_TARGET_USER_IDS 僅保留為舊設定診斷欄位，不主導公告通知
  *   - LINE_ADMIN_USER_IDS        (選填) 管理者 userId（升級通知用）
@@ -21,6 +21,12 @@
 const LINE_API = 'https://api.line.me/v2/bot';
 const LINE_API_DATA = 'https://api-data.line.me/v2/bot';
 const LINE_RICH_MENU_IMAGE_DEFAULT_URL = 'https://isha-taichung.github.io/auto-checklist/assets/line-rich-menu-main.png';
+const LINE_NOTIFICATION_COLUMNS = {
+  MACHINE_INCIDENT: '機具設備異常',
+  MACHINE_DAILY_REMINDER: '機具設備日檢點未填',
+  MACHINE_MONTHLY_REMINDER: '機具設備月檢點未填',
+  CLASSROOM_MONTHLY: '三間教室月檢',
+};
 
 /**
  * 取得 LINE 配置（每次 fresh 讀 properties — 避免 warm start 拿到舊值）
@@ -56,9 +62,48 @@ function getLineSubscriberActiveColumnIndex_(headers) {
   return -1;
 }
 
+function resolveLineNotificationColumn_(opts) {
+  opts = opts || {};
+  const raw = String(opts.notificationColumn || opts.notificationType || '').trim();
+  if (!raw) return '';
+  return LINE_NOTIFICATION_COLUMNS[raw] || raw;
+}
+
+function isLineNotificationEnabled_(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return true;
+  return isActiveValue_(raw);
+}
+
+function isLineClassroomMonthlyEquipment_(equipment) {
+  equipment = equipment || {};
+  const equipmentId = String(equipment.equipmentId || '').trim().toUpperCase();
+  const category = String(equipment.category || '').trim();
+  return [
+    'CLASSROOM-LJ-MEAS-PPE',
+    'CLASSROOM-FX-MEAS-PPE',
+    'CLASSROOM-ZM-MEAS-PPE',
+  ].indexOf(equipmentId) >= 0 || category.indexOf('教室') >= 0;
+}
+
+function lineMonthlyNotificationColumnForEquipment_(equipment) {
+  return isLineClassroomMonthlyEquipment_(equipment)
+    ? LINE_NOTIFICATION_COLUMNS.CLASSROOM_MONTHLY
+    : LINE_NOTIFICATION_COLUMNS.MACHINE_MONTHLY_REMINDER;
+}
+
+function lineMonthlyNotificationColumnForRecord_(record) {
+  record = record || {};
+  const equipment = record.equipment || record;
+  const formType = String(record.formType || record.formTypeZh || '').trim();
+  if (formType && formType !== 'monthly' && formType !== '每月') return '';
+  return lineMonthlyNotificationColumnForEquipment_(equipment);
+}
+
 function getLineSubscriberUserIds_(opts) {
   opts = opts || {};
-  const cacheKey = 'lineSubscriberSheetUserIds:v2';
+  const notificationColumn = resolveLineNotificationColumn_(opts);
+  const cacheKey = 'lineSubscriberSheetUserIds:v3:' + (notificationColumn || 'all');
   if (!opts.forceRefresh) {
     try {
       const cached = CacheService.getScriptCache().get(cacheKey);
@@ -80,11 +125,15 @@ function getLineSubscriberUserIds_(opts) {
         const headers = data[0].map(h => String(h || '').trim());
         const idCol = headers.indexOf('LINE_USER_ID');
         const activeCol = getLineSubscriberActiveColumnIndex_(headers);
+        const notificationCol = notificationColumn ? headers.indexOf(notificationColumn) : -1;
         if (idCol >= 0) {
           data.slice(1).forEach(row => {
             const id = String(row[idCol] || '').trim();
             const active = activeCol < 0 ? true : isActiveValue_(row[activeCol]);
-            if (id && active) ids.push(id);
+            const notificationEnabled = notificationColumn
+              ? isLineNotificationEnabled_(notificationCol >= 0 ? row[notificationCol] : '')
+              : true;
+            if (id && active && notificationEnabled) ids.push(id);
           });
         }
       }
@@ -280,11 +329,13 @@ function findLineSubscriberTargetsByName_(targetName, opts) {
   }
 }
 
-function getSupervisorUserIds_() {
-  return getSupervisorUserIdsFromSheet_();
+function getSupervisorUserIds_(opts) {
+  return getSupervisorUserIdsFromSheet_(opts || {});
 }
 
-function getSupervisorUserIdsFromSheet_() {
+function getSupervisorUserIdsFromSheet_(opts) {
+  opts = opts || {};
+  const notificationColumn = resolveLineNotificationColumn_(opts);
   try {
     if (!CONFIG.DB_SHEET_ID || CONFIG.DB_SHEET_ID.startsWith('REPLACE_')) return [];
     const sheet = getLineSubscriberSheet_(SpreadsheetApp.openById(CONFIG.DB_SHEET_ID));
@@ -292,13 +343,19 @@ function getSupervisorUserIdsFromSheet_() {
     const data = sheet.getDataRange().getValues();
     const headers = data[0].map(h => String(h || '').trim());
     const idCol = headers.indexOf('LINE_USER_ID');
-    const activeCol = getLineSupervisorFlagColumnIndex_(headers);
+    const subscribeCol = getLineSubscriberActiveColumnIndex_(headers);
+    const supervisorCol = getLineSupervisorFlagColumnIndex_(headers);
+    const notificationCol = notificationColumn ? headers.indexOf(notificationColumn) : -1;
     if (idCol < 0) return [];
     const ids = [];
     data.slice(1).forEach(row => {
       const id = String(row[idCol] || '').trim();
-      const active = activeCol < 0 ? true : isActiveValue_(row[activeCol]);
-      if (id && active) ids.push(id);
+      const subscribed = subscribeCol < 0 ? true : isActiveValue_(row[subscribeCol]);
+      const isSupervisor = supervisorCol < 0 ? true : isActiveValue_(row[supervisorCol]);
+      const notificationEnabled = notificationColumn
+        ? isLineNotificationEnabled_(notificationCol >= 0 ? row[notificationCol] : '')
+        : true;
+      if (id && subscribed && isSupervisor && notificationEnabled) ids.push(id);
     });
     return Array.from(new Set(ids));
   } catch (err) {
@@ -307,7 +364,9 @@ function getSupervisorUserIdsFromSheet_() {
   }
 }
 
-function getSupervisorUserIdsByName_(supervisorName) {
+function getSupervisorUserIdsByName_(supervisorName, opts) {
+  opts = opts || {};
+  const notificationColumn = resolveLineNotificationColumn_(opts);
   const target = String(supervisorName || '').trim();
   if (!target) return [];
   try {
@@ -318,14 +377,20 @@ function getSupervisorUserIdsByName_(supervisorName) {
     const headers = data[0].map(h => String(h || '').trim());
     const nameCol = headers.indexOf('姓名');
     const idCol = headers.indexOf('LINE_USER_ID');
-    const activeCol = getLineSupervisorFlagColumnIndex_(headers);
+    const subscribeCol = getLineSubscriberActiveColumnIndex_(headers);
+    const supervisorCol = getLineSupervisorFlagColumnIndex_(headers);
+    const notificationCol = notificationColumn ? headers.indexOf(notificationColumn) : -1;
     if (nameCol < 0 || idCol < 0) return [];
     const ids = [];
     data.slice(1).forEach(row => {
       const name = String(row[nameCol] || '').trim();
       const id = String(row[idCol] || '').trim();
-      const active = activeCol < 0 ? true : isActiveValue_(row[activeCol]);
-      if (id && active && name === target) ids.push(id);
+      const subscribed = subscribeCol < 0 ? true : isActiveValue_(row[subscribeCol]);
+      const isSupervisor = supervisorCol < 0 ? true : isActiveValue_(row[supervisorCol]);
+      const notificationEnabled = notificationColumn
+        ? isLineNotificationEnabled_(notificationCol >= 0 ? row[notificationCol] : '')
+        : true;
+      if (id && subscribed && isSupervisor && notificationEnabled && name === target) ids.push(id);
     });
     return Array.from(new Set(ids));
   } catch (err) {
@@ -347,7 +412,7 @@ function linePushToSupervisorName_(supervisorName, messages, opts) {
     targetMode = 'keyed';
   }
   if (ids.length === 0) {
-    ids = getSupervisorUserIdsByName_(supervisorName);
+    ids = getSupervisorUserIdsByName_(supervisorName, opts);
     targetMode = 'named';
   }
   if (ids.length > 1) {
@@ -360,32 +425,41 @@ function linePushToSupervisorName_(supervisorName, messages, opts) {
   }
 
   if (opts.allowFallback === true) {
-  const fallbackIds = getSupervisorUserIds_();
-  if (fallbackIds.length > 1) {
-    const res = lineMulticast_(fallbackIds, messages);
-    return Object.assign({ targetMode: 'fallback', targetCount: fallbackIds.length, supervisorName }, res);
-  }
-  if (fallbackIds.length === 1) {
-    const res = linePushTo_(fallbackIds[0], messages, 'push');
-    return Object.assign({ targetMode: 'fallback', targetCount: 1, supervisorName }, res);
-  }
+    const fallbackIds = getSupervisorUserIds_(opts);
+    if (fallbackIds.length > 1) {
+      const res = lineMulticast_(fallbackIds, messages);
+      return Object.assign({ targetMode: 'fallback', targetCount: fallbackIds.length, supervisorName }, res);
+    }
+    if (fallbackIds.length === 1) {
+      const res = linePushTo_(fallbackIds[0], messages, 'push');
+      return Object.assign({ targetMode: 'fallback', targetCount: 1, supervisorName }, res);
+    }
   }
   Logger.log('[LINE supervisor] 找不到指定主管 LINE_USER_ID，且無 fallback 主管: ' + supervisorName);
   return { ok: false, reason: 'supervisor_not_found', supervisorName, targetMode: 'none', targetCount: 0 };
 }
 
-function linePushToSupervisors_(messages) {
+function linePushToSupervisors_(messages, opts) {
+  opts = opts || {};
   const cfg = getLineConfig_();
   if (!cfg.token) {
     Logger.log('[LINE supervisor] LINE_CHANNEL_ACCESS_TOKEN 未設定，略過 push');
     return { ok: false, reason: 'no_token' };
   }
   if (!Array.isArray(messages)) messages = [messages];
-  const supervisorIds = getSupervisorUserIds_();
-  if (supervisorIds.length > 1) return lineMulticast_(supervisorIds, messages);
-  if (supervisorIds.length === 1) return linePushTo_(supervisorIds[0], messages, 'push');
+  const notificationColumn = resolveLineNotificationColumn_(opts);
+  const supervisorIds = getSupervisorUserIds_(opts);
+  const targetMode = notificationColumn ? 'supervisors:' + notificationColumn : 'supervisors';
+  if (supervisorIds.length > 1) {
+    const res = lineMulticast_(supervisorIds, messages);
+    return Object.assign({ targetMode, targetCount: supervisorIds.length }, res);
+  }
+  if (supervisorIds.length === 1) {
+    const res = linePushTo_(supervisorIds[0], messages, 'push');
+    return Object.assign({ targetMode, targetCount: 1 }, res);
+  }
   Logger.log('[LINE supervisor] 無標記為主管的 LINE_USER_ID，略過主管通知');
-  return { ok: false, reason: 'no_supervisor' };
+  return { ok: false, reason: 'no_supervisor', targetMode, targetCount: 0 };
 }
 
 function linePushDailyIncidentStakeholders_(incident, messages, opts) {
@@ -499,7 +573,8 @@ function linePushDailyIncidentStakeholders_(incident, messages, opts) {
  *   - 沒有啟用欄時，有 LINE_USER_ID 的列都視為訂閱者
  *   - 不再使用 LINE_TARGET_GROUP_ID / LINE_TARGET_USER_IDS 決定公告收件者
  */
-function linePush_(messages) {
+function linePush_(messages, opts) {
+  opts = opts || {};
   const cfg = getLineConfig_();
   if (!cfg.token) {
     Logger.log('[LINE] LINE_CHANNEL_ACCESS_TOKEN 未設定，略過 push');
@@ -507,17 +582,19 @@ function linePush_(messages) {
   }
   if (!Array.isArray(messages)) messages = [messages];
 
-  const subscriberIds = getLineSubscriberUserIds_();
+  const notificationColumn = resolveLineNotificationColumn_(opts);
+  const subscriberIds = getLineSubscriberUserIds_(opts);
+  const targetMode = notificationColumn ? 'subscriber-list:' + notificationColumn : 'subscriber-list';
   if (subscriberIds.length > 1) {
     const res = lineMulticast_(subscriberIds, messages);
-    return Object.assign({ targetMode: 'subscriber-list', targetCount: subscriberIds.length }, res);
+    return Object.assign({ targetMode, targetCount: subscriberIds.length }, res);
   }
   if (subscriberIds.length === 1) {
     const res = linePushTo_(subscriberIds[0], messages, 'push');
-    return Object.assign({ targetMode: 'subscriber-list', targetCount: 1 }, res);
+    return Object.assign({ targetMode, targetCount: 1 }, res);
   }
   Logger.log('[LINE] 訂閱者清單沒有可推播的 LINE_USER_ID，略過公告通知');
-  return { ok: false, reason: 'no_subscribers', targetMode: 'subscriber-list', targetCount: 0 };
+  return { ok: false, reason: 'no_subscribers', targetMode, targetCount: 0 };
 }
 
 /**
@@ -659,9 +736,9 @@ function buildQrMenuFlex_() {
           qrMenuButton_('車載高空車', 'QR AWP-LJ-001'),
           qrMenuButton_('自走高空車', 'QR AWP-LJ-SP-001'),
         ]),
-        buildQrMenuBubble_('場地防護具日檢', '防護具歸防護具：場地用防護具', '#5F6368', [
-          qrMenuButton_('起重機防護具', 'QR VENUE-CRANE'),
-          qrMenuButton_('堆高機防護具', 'QR VENUE-FORK'),
+        buildQrMenuBubble_('每日場地防護具檢點', '場地附屬防護具：起重機 / 堆高機', '#5F6368', [
+          qrMenuButton_('起重機場地防護具', 'QR VENUE-CRANE'),
+          qrMenuButton_('堆高機場地防護具', 'QR VENUE-FORK'),
         ]),
         buildQrMenuBubble_('教室防護具月檢', '量測設備與個人防護具月檢', '#137333', [
           qrMenuButton_('龍井教室月檢', 'QR CLASSROOM-LJ-MEAS-PPE'),
@@ -726,6 +803,42 @@ function lineReply_(replyToken, messages) {
     muteHttpExceptions: true,
   });
   return { ok: res.getResponseCode() === 200 };
+}
+
+function getLineMessageQuotaStatus_() {
+  const cfg = getLineConfig_();
+  if (!cfg.token) return { ok: false, reason: 'no_token' };
+
+  function fetchLineQuota_(path) {
+    const res = UrlFetchApp.fetch(`${LINE_API}${path}`, {
+      method: 'get',
+      headers: { 'Authorization': 'Bearer ' + cfg.token },
+      muteHttpExceptions: true,
+    });
+    const code = res.getResponseCode();
+    const text = res.getContentText();
+    let body = text;
+    try { body = JSON.parse(text); } catch (e) {}
+    return { ok: code >= 200 && code < 300, code, body };
+  }
+
+  const quota = fetchLineQuota_('/message/quota');
+  const consumption = fetchLineQuota_('/message/quota/consumption');
+  let remaining = null;
+  if (quota.ok && consumption.ok &&
+      quota.body && quota.body.type === 'limited' &&
+      typeof quota.body.value === 'number' &&
+      consumption.body && typeof consumption.body.totalUsage === 'number') {
+    remaining = quota.body.value - consumption.body.totalUsage;
+  }
+
+  return {
+    ok: quota.ok && consumption.ok,
+    quota,
+    consumption,
+    remaining,
+    isExhausted: typeof remaining === 'number' ? remaining <= 0 : null,
+  };
 }
 
 // ===================================================================
@@ -1324,6 +1437,51 @@ function buildSubscriberRegistrationFlex_() {
   };
 }
 
+function buildLineFriendWelcomeFlex_() {
+  return {
+    type: 'flex',
+    altText: '歡迎加入 ISHA 通知小幫手，請先取得我的ID',
+    quickReply: {
+      items: [
+        { type: 'action', action: { type: 'message', label: '取得我的ID', text: '我的ID' } },
+        { type: 'action', action: { type: 'message', label: '查看幫助', text: '幫助' } },
+      ],
+    },
+    contents: {
+      type: 'bubble',
+      header: {
+        type: 'box',
+        layout: 'vertical',
+        backgroundColor: '#1F3A5F',
+        paddingAll: 'md',
+        contents: [
+          { type: 'text', text: '歡迎加入 ISHA 通知小幫手', color: '#ffffff', weight: 'bold', size: 'lg', wrap: true },
+          { type: 'text', text: '請先完成個人 ID 登錄', color: '#DDE7F3', size: 'sm' },
+        ],
+      },
+      body: {
+        type: 'box',
+        layout: 'vertical',
+        spacing: 'sm',
+        contents: [
+          { type: 'text', text: '請按下方「取得我的ID」，並將畫面顯示的 LINE_USER_ID 連同姓名回報給管理員。', size: 'sm', color: '#202124', wrap: true },
+          { type: 'text', text: '若沒有看到歡迎訊息或按鈕，也可直接在聊天室輸入「我的ID」。', size: 'sm', color: '#1F3A5F', wrap: true, weight: 'bold' },
+          { type: 'text', text: '管理員登錄到訂閱者清單後，才可使用狀態、待處理、日常通報、公文待發文等功能。', size: 'sm', color: '#5f6368', wrap: true },
+        ],
+      },
+      footer: {
+        type: 'box',
+        layout: 'vertical',
+        spacing: 'sm',
+        contents: [
+          { type: 'button', style: 'primary', height: 'sm', action: { type: 'message', label: '取得我的ID', text: '我的ID' } },
+          { type: 'button', style: 'secondary', height: 'sm', action: { type: 'message', label: '查看可用指令', text: '幫助' } },
+        ],
+      },
+    },
+  };
+}
+
 function buildOpenIncidentBubble_(incident) {
   const incidentId = String(incident.incidentId || '');
   const shortId = incidentId ? incidentId.substring(0, 8) : '';
@@ -1886,16 +2044,18 @@ function buildDailyIncidentClosedFlex_(incident) {
  * 自動加 Quick Reply 按鈕
  */
 function sendReminder_(category, equipments, webFrontendUrl, opts) {
+  opts = opts || {};
   const flex = buildReminderFlex_(category, equipments, webFrontendUrl || '', opts);
-  return linePush_(withQuickReply_(flex));
+  return linePush_(withQuickReply_(flex), { notificationColumn: opts.notificationColumn });
 }
 
 function sendSupervisorReminder_(category, equipments, webFrontendUrl, opts) {
+  opts = opts || {};
   const flex = buildReminderFlex_(category, equipments, webFrontendUrl || '', opts);
   const messages = [flex];
   const text = buildSupervisorReminderLinkText_(equipments, webFrontendUrl || '', opts);
   if (text) messages.push({ type: 'text', text });
-  return linePushToSupervisors_(withQuickReply_(messages));
+  return linePushToSupervisors_(withQuickReply_(messages), { notificationColumn: opts.notificationColumn });
 }
 
 function buildSupervisorReminderLinkText_(equipments, webFrontendUrl, opts) {
@@ -1928,14 +2088,18 @@ function sendIncidentAlert_(incident) {
   const pdfUrl = incident.fileUrl || incident.pdfUrl || '';
   const sheetUrl = PropertiesService.getScriptProperties().getProperty('INCIDENT_SHEET_URL') || '';
   const flex = buildIncidentFlex_(incident, pdfUrl, sheetUrl);
-  return linePush_(withQuickReply_(flex));
+  return linePush_(withQuickReply_(flex), {
+    notificationColumn: LINE_NOTIFICATION_COLUMNS.MACHINE_INCIDENT,
+  });
 }
 
 function sendIncidentSummaryAlert_(summary) {
   const pdfUrl = summary.fileUrl || summary.pdfUrl || '';
   const sheetUrl = PropertiesService.getScriptProperties().getProperty('INCIDENT_SHEET_URL') || '';
   const flex = buildIncidentSummaryFlex_(summary, pdfUrl, sheetUrl);
-  return linePush_(withQuickReply_(flex));
+  return linePush_(withQuickReply_(flex), {
+    notificationColumn: LINE_NOTIFICATION_COLUMNS.MACHINE_INCIDENT,
+  });
 }
 
 function sendApprovalRequest_(record) {
@@ -1944,7 +2108,9 @@ function sendApprovalRequest_(record) {
   }
   const flex = buildApprovalRequestFlex_(record);
   const messages = withQuickReply_(flex);
-  return linePushToSupervisors_(messages);
+  return linePushToSupervisors_(messages, {
+    notificationColumn: lineMonthlyNotificationColumnForRecord_(record),
+  });
 }
 
 function sendDailyIncidentCreated_(incident, opts) {

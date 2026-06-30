@@ -190,7 +190,7 @@ function handleSubmission_(payload) {
         draftFile.moveTo(pendingFolder);
         draftDocUrl = draftFile.getUrl();
       } else {
-        // 一般日檢 / 機具月檢 / 防護具日檢：檢查人簽名後直接正式歸檔，不走主管簽核。
+        // 一般日檢 / 機具月檢 / 每日場地防護具檢點：檢查人簽名後直接正式歸檔，不走主管簽核。
         const pdfBlob = buildPdf_(payload.formType, {
           recordId, submittedAt, checkDate, equipment, payload, template: tplMeta,
         });

@@ -167,7 +167,9 @@ function sendUnfilledReminder_(equipment, date, usage) {
       const allEqps = getEquipmentList_().filter(e => e.category === equipment.category);
       // 修 codex P1.1 (round 2): sendReminder_ 失敗時 return {ok:false} 不 throw
       // 必須檢查回傳值 ok === true，否則 throw 進 catch 走 email fallback
-      const r = sendReminder_(equipment.category, allEqps, safeFillLink);
+      const r = sendReminder_(equipment.category, allEqps, safeFillLink, {
+        notificationColumn: LINE_NOTIFICATION_COLUMNS.MACHINE_DAILY_REMINDER,
+      });
       if (r && r.ok === true) {
         Logger.log(`[Reminder] 已透過 LINE 通知 ${equipment.category} ${allEqps.length} 台未填`);
         return;

@@ -79,6 +79,7 @@
     function renderForm() {
       const root = document.getElementById('content');
       root.textContent = '';
+      updatePageTitle(resolveDailyPageTitle());
 
       // ----- 設備資訊卡 -----
       const infoCard = makeCard('設備資訊');
@@ -265,6 +266,21 @@
       root.appendChild(submitArea);
 
       submitBtn.onclick = onSubmit;
+    }
+
+    function resolveDailyPageTitle() {
+      const equipment = (formMeta && formMeta.equipment) || {};
+      if (String(equipment.category || '').trim() === '防護具檢點') {
+        return '每日場地防護具檢點表';
+      }
+      return (formMeta && formMeta.template && formMeta.template.templateName) || '每日作業前檢點表';
+    }
+
+    function updatePageTitle(titleText) {
+      const safeTitle = titleText || '每日作業前檢點表';
+      document.title = 'ISHA ' + safeTitle;
+      const heading = document.querySelector('.header h1');
+      if (heading) heading.textContent = safeTitle;
     }
 
     function makeCard(titleText) {

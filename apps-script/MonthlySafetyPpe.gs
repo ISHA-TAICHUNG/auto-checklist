@@ -507,6 +507,9 @@ function sendMonthlyUnfilledReminder_(equipment, date) {
         itemLabel: '待填表單',
         itemIcon: '📋',
         buttonLabel: '填寫月檢',
+        notificationColumn: typeof lineMonthlyNotificationColumnForEquipment_ === 'function'
+          ? lineMonthlyNotificationColumnForEquipment_(equipment)
+          : '',
       });
       if (r && r.ok === true) return;
       throw new Error(`LINE 月檢提醒失敗（非 throw 路徑）: ${JSON.stringify(r)}`);

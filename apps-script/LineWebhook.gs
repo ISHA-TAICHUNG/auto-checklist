@@ -45,6 +45,10 @@ function handleLineWebhook_(rawBody) {
 }
 
 function dispatchLineEvent_(ev) {
+  if (ev.type === 'follow') {
+    return lineReply_(ev.replyToken, buildLineFriendWelcomeFlex_());
+  }
+
   // 只處理 message + text 類型
   if (ev.type !== 'message' || !ev.message || ev.message.type !== 'text') return;
   const text = String(ev.message.text || '').trim();
@@ -190,10 +194,12 @@ function cmdHelp_(replyToken) {
       '提醒與通知：',
       '日檢 / 月檢未填提醒由系統排程推播。',
       '三間教室、堆高機、固定式起重機月檢完成後會通知主管簽核。',
-      '主管通知由「訂閱者清單」的「是否為主管」控制。',
+      '一般推播由「訂閱者清單」的「是否訂閱」控制；設為否就不收主動通知。',
+      '設備異常、日檢未填、機具月檢未填、三間教室月檢可再用同名欄位分別控制。',
+      '主管通知由「是否為主管」加上對應通知欄位共同控制。',
       '',
       '待發文注意：',
-      '看不到本人資料時，請確認 LINE 已在「訂閱者清單」綁定姓名並標記為同仁。',
+      '看不到本人資料時，請確認 LINE 已在「訂閱者清單」綁定姓名、是否訂閱=是，並標記為同仁。',
       '顯示尚未有檢核紀錄時，代表當日批次尚未跑完或尚未寫入快照。',
       '',
       '其他：',

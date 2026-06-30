@@ -489,11 +489,21 @@ function setupSubscriberSheet_(ss) {
     sheet = legacy;
   }
   if (!sheet) {
-    setupSheet_(ss, '訂閱者清單', ['姓名', 'LINE_USER_ID', '是否為主管', '是否為同仁', '公文登記桌', '備註'], []);
+    setupSheet_(ss, '訂閱者清單', getSubscriberSheetHeaders_(), []);
     sheet = ss.getSheetByName('訂閱者清單');
   }
   ensureSubscriberSheetHeaders_(sheet);
   return sheet;
+}
+
+function getSubscriberNotificationColumns_() {
+  return ['機具設備異常', '機具設備日檢點未填', '機具設備月檢點未填', '三間教室月檢'];
+}
+
+function getSubscriberSheetHeaders_() {
+  return ['姓名', 'LINE_USER_ID', '是否訂閱', '是否為主管', '是否為同仁']
+    .concat(getSubscriberNotificationColumns_())
+    .concat(['公文登記桌', '備註']);
 }
 
 function ensureSubscriberSheetHeaders_(sheet) {
@@ -506,11 +516,32 @@ function ensureSubscriberSheetHeaders_(sheet) {
     headers[legacyActiveCol] = '是否為主管';
   }
 
-  ['姓名', 'LINE_USER_ID', '是否為主管', '是否為同仁', '公文登記桌', '備註'].forEach(name => {
+  getSubscriberSheetHeaders_().forEach(name => {
     if (headers.indexOf(name) >= 0) return;
     sheet.getRange(1, sheet.getLastColumn() + 1).setValue(name);
     headers.push(name);
   });
+
+  const idCol = headers.indexOf('LINE_USER_ID');
+  const defaultYesCols = ['是否訂閱'].concat(getSubscriberNotificationColumns_())
+    .map(name => headers.indexOf(name))
+    .filter(i => i >= 0);
+  if (idCol >= 0 && defaultYesCols.length && sheet.getLastRow() >= 2) {
+    const range = sheet.getRange(2, 1, sheet.getLastRow() - 1, headers.length);
+    const data = range.getValues();
+    let changed = false;
+    data.forEach(row => {
+      const id = String(row[idCol] || '').trim();
+      if (!id) return;
+      defaultYesCols.forEach(col => {
+        const current = String(row[col] || '').trim();
+        if (current) return;
+        row[col] = '是';
+        changed = true;
+      });
+    });
+    if (changed) range.setValues(data);
+  }
 }
 
 function syncSupervisorIdsToSheet_() {
@@ -529,6 +560,7 @@ function syncSupervisorIdsToSheet_() {
   const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0].map(h => String(h || '').trim());
   const nameCol = headers.indexOf('姓名');
   const idCol = headers.indexOf('LINE_USER_ID');
+  const subscribeCol = headers.indexOf('是否訂閱');
   const activeCol = getLineSupervisorFlagColumnIndex_(headers);
   const noteCol = headers.indexOf('備註');
   if (idCol < 0 || activeCol < 0) throw new Error('訂閱者清單缺必要欄位');
@@ -556,6 +588,10 @@ function syncSupervisorIdsToSheet_() {
         row[activeCol] = '否';
         dirty = true;
       }
+      if (subscribeCol >= 0 && !String(row[subscribeCol] || '').trim()) {
+        row[subscribeCol] = '是';
+        dirty = true;
+      }
       if (noteCol >= 0 && !String(row[noteCol] || '').trim()) {
         row[noteCol] = '由目前訂閱者同步';
         dirty = true;
@@ -570,6 +606,7 @@ function syncSupervisorIdsToSheet_() {
     const row = new Array(headers.length).fill('');
     if (nameCol >= 0) row[nameCol] = '訂閱者' + (i + 1);
     row[idCol] = id;
+    if (subscribeCol >= 0) row[subscribeCol] = '是';
     row[activeCol] = '否';
     if (noteCol >= 0) row[noteCol] = '由目前訂閱者同步';
     appendRows.push(row);
@@ -1168,8 +1205,13 @@ function applyChineseSettingsAndDropdowns() {
       { col: '表單ID',   options: templateIds,        strict: false },
     ],
     '訂閱者清單': [
+      { col: '是否訂閱', options: ['是', '否'],       migrate: { TRUE: '是', FALSE: '否' } },
       { col: '是否為主管', options: ['是', '否'],       migrate: { TRUE: '是', FALSE: '否' } },
       { col: '是否為同仁', options: ['是', '否'],       migrate: { TRUE: '是', FALSE: '否' } },
+      { col: '機具設備異常', options: ['是', '否'],       migrate: { TRUE: '是', FALSE: '否' } },
+      { col: '機具設備日檢點未填', options: ['是', '否'], migrate: { TRUE: '是', FALSE: '否' } },
+      { col: '機具設備月檢點未填', options: ['是', '否'], migrate: { TRUE: '是', FALSE: '否' } },
+      { col: '三間教室月檢', options: ['是', '否'],       migrate: { TRUE: '是', FALSE: '否' } },
       { col: '公文登記桌', options: ['是', '否'],       migrate: { TRUE: '是', FALSE: '否' } },
     ],
     '每日作業檢核': [
@@ -1691,7 +1733,7 @@ function ensureVenueUsageKeywordSetting_(ss, category, keyword) {
 }
 
 /**
- * 加防護具檢點 — template / items / 場地
+ * 加每日場地防護具檢點 — template / items / 場地
  *
  * 設計：
  * - 場地當特殊「設備」處理，category = '防護具檢點'
@@ -1703,24 +1745,31 @@ function ensureVenueUsageKeywordSetting_(ss, category, keyword) {
  */
 function addPpeTemplatesAndEquipments() {
   const ss = SpreadsheetApp.openById(CONFIG.DB_SHEET_ID);
-  const result = { templateAdded: 0, itemsAdded: 0, venuesAdded: 0 };
+  const result = { templateAdded: 0, templateRenamed: 0, itemsAdded: 0, venuesAdded: 0 };
+  const ppeTemplateName = '每日場地防護具檢點表';
 
   // ===== 1. 加模板 F-PPE-D =====
   const tplSheet = ss.getSheetByName('檢查表模板');
   const tplHeaders = tplSheet.getRange(1, 1, 1, tplSheet.getLastColumn()).getValues()[0];
   const tplLastRow = tplSheet.getLastRow();
   const existingTplIds = new Set();
-  if (tplLastRow > 1) {
-    const tplIdCol = tplHeaders.indexOf('表單ID');
+  const tplIdCol = tplHeaders.indexOf('表單ID');
+  const tplNameCol = tplHeaders.indexOf('表單名稱');
+  let existingPpeTemplateRow = -1;
+  if (tplLastRow > 1 && tplIdCol >= 0) {
     tplSheet.getRange(2, tplIdCol + 1, tplLastRow - 1, 1).getValues()
-      .forEach(r => existingTplIds.add(String(r[0])));
+      .forEach((r, i) => {
+        const id = String(r[0] || '').trim();
+        existingTplIds.add(id);
+        if (id === 'F-PPE-D') existingPpeTemplateRow = i + 2;
+      });
   }
   if (!existingTplIds.has('F-PPE-D')) {
     const tplRow = new Array(tplHeaders.length).fill('');
     const setT = (name, v) => { const i = tplHeaders.indexOf(name); if (i >= 0) tplRow[i] = v; };
     setT('表單ID',   'F-PPE-D');
     setT('設備類別', '防護具檢點');
-    setT('表單名稱', '防護具每日檢點表');
+    setT('表單名稱', ppeTemplateName);
     setT('週期',     '每日');
     setT('法規依據', '職業安全衛生設施規則 §286');
     setT('填寫規則', '良好打「V」/ 不良打「X」（不良需於記事欄註明）');
@@ -1729,6 +1778,12 @@ function addPpeTemplatesAndEquipments() {
     setT('啟用',     '是');
     tplSheet.getRange(tplSheet.getLastRow() + 1, 1, 1, tplHeaders.length).setValues([tplRow]);
     result.templateAdded = 1;
+  } else if (existingPpeTemplateRow > 0 && tplNameCol >= 0) {
+    const nameCell = tplSheet.getRange(existingPpeTemplateRow, tplNameCol + 1);
+    if (String(nameCell.getValue() || '').trim() !== ppeTemplateName) {
+      nameCell.setValue(ppeTemplateName);
+      result.templateRenamed = 1;
+    }
   }
 
   // ===== 2. 加項目（2 項：安全帽 / 安全背心）=====
@@ -1797,10 +1852,10 @@ function addPpeTemplatesAndEquipments() {
     result.venuesAdded = newEqRows.length;
   }
 
-  // ===== 4. 重新套用 dropdown（讓「防護具檢點區」進設備類別下拉）=====
+  // ===== 4. 重新套用 dropdown（讓「每日場地防護具檢點」進設備類別下拉）=====
   try { applyChineseSettingsAndDropdowns(); } catch (e) { Logger.log('dropdown 重套失敗：' + e); }
 
-  const summary = `✓ template +${result.templateAdded}、items +${result.itemsAdded}、venues +${result.venuesAdded}`;
+  const summary = `✓ template +${result.templateAdded}、renamed +${result.templateRenamed}、items +${result.itemsAdded}、venues +${result.venuesAdded}`;
   Logger.log(summary);
   return summary;
 }

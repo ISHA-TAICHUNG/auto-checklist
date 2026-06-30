@@ -116,7 +116,7 @@ function doGet(e) {
                                'updateMonthlySettingNotes',
                                'applyProjectResourceNames', 'installRichMenu',
                                'deleteRichMenu', 'richMenuStatus', 'richMenuHealth',
-                               'lineWebhookHealth', 'lineTargetStatus',
+                               'lineWebhookHealth', 'lineTargetStatus', 'lineQuotaStatus',
                                'syncLineWebhookEndpoint',
                                'openIssues', 'reminderStatus',
                                'systemStatus', 'archiveWriteHealth', 'lastPostError',
@@ -311,6 +311,14 @@ function doGet(e) {
               subscriberTargetCount: Array.from(new Set(subscriberIds || [])).length,
               supervisorTargetCount,
               notifyMode: 'subscriber-list',
+            };
+            break;
+          }
+          case 'lineQuotaStatus': {
+            result = {
+              ok: true,
+              action,
+              ...getLineMessageQuotaStatus_(),
             };
             break;
           }

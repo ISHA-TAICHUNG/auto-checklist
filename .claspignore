@@ -1,0 +1,13 @@
+# Live Apps Script deployment uses apps-script/*.js.
+# The tracked *.gs files are the GitHub-safe source copy and must not be pushed
+# together with *.js, because clasp treats both as the same Apps Script file name.
+**/*.gs
+
+# Local clasp / agent metadata
+**/.clasp.json
+**/.claspignore
+**/.claude_review_state.json
+
+# Local/system files
+**/.DS_Store
+**/node_modules/**
