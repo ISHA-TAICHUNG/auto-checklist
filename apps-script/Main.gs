@@ -124,6 +124,7 @@ function doGet(e) {
                                'installDailyReminderTrigger',
                                'installDailyWorkCheckTriggers',
                                'sheetInventory',
+                               'generateMonthlyPpeSummary',
                                'setupOfficialDocumentMonitor',
                                'processOfficialDocumentQueue',
                                'officialDocumentSnapshot',
@@ -518,6 +519,18 @@ function doGet(e) {
               ok: true,
               action,
               ...getDatabaseSheetInventory_(),
+            };
+            break;
+          }
+          case 'generateMonthlyPpeSummary': {
+            result = {
+              ok: true,
+              action,
+              ...generateMonthlyPpeSummary_({
+                year: e.parameter.year,
+                month: e.parameter.month,
+                rocYear: e.parameter.rocYear,
+              }),
             };
             break;
           }
