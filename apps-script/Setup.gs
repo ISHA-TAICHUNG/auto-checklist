@@ -506,6 +506,50 @@ function getSubscriberSheetHeaders_() {
     .concat(['公文登記桌', '備註']);
 }
 
+function getSubscriberSheetHeaderNotes_() {
+  return {
+    '姓名': '同仁或主管姓名。日常事件、公文待發文會用姓名比對通知對象。',
+    'LINE_USER_ID': 'LINE 使用者 ID。由同仁在 LINE 輸入「我的ID」取得後填入。',
+    '是否訂閱': '主動推播總開關。是＝允許系統主動推播；否＝仍可使用指令查詢，但不收主動通知。這是試算表控管，不是 LINE@ 後台的好友狀態。',
+    '是否為主管': '主管身分。是＝可收到主管簽核、主管審閱等主管通知。',
+    '是否為同仁': '同仁身分。是＝可作為日常事件填報/承辦人、公文待發文承辦人等對象。',
+    '機具設備異常': '細分通知開關。是＝可收到機具設備檢查異常通知。',
+    '機具設備日檢點未填': '細分通知開關。是＝可收到機具設備日檢未填提醒。',
+    '機具設備月檢點未填': '細分通知開關。是＝可收到機具設備月檢未填提醒，以及月度防護具彙整確認提醒。',
+    '三間教室月檢': '細分通知開關。是＝可收到三間教室月檢未填/簽核相關提醒。',
+    '公文登記桌': '公文登記桌身分。是＝可收到已命中訂閱同仁的待發文彙總。',
+    '備註': '純備註欄，不控制通知。若要暫停主動通知，請改「是否訂閱」或各細分通知欄。',
+  };
+}
+
+function applySubscriberSheetUsability_(sheet) {
+  if (!sheet) return;
+  const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0].map(h => String(h || '').trim());
+  const notes = getSubscriberSheetHeaderNotes_();
+  const widths = {
+    '姓名': 100,
+    'LINE_USER_ID': 260,
+    '是否訂閱': 120,
+    '是否為主管': 110,
+    '是否為同仁': 110,
+    '機具設備異常': 120,
+    '機具設備日檢點未填': 150,
+    '機具設備月檢點未填': 150,
+    '三間教室月檢': 120,
+    '公文登記桌': 120,
+    '備註': 220,
+  };
+  sheet.setFrozenRows(1);
+  headers.forEach((header, i) => {
+    const col = i + 1;
+    if (notes[header]) sheet.getRange(1, col).setNote(notes[header]);
+    if (widths[header]) sheet.setColumnWidth(col, widths[header]);
+    if (notes[header]) {
+      try { sheet.showColumns(col); } catch (e) { Logger.log('訂閱者清單欄位顯示失敗：' + header + ' / ' + e); }
+    }
+  });
+}
+
 function ensureSubscriberSheetHeaders_(sheet) {
   const lastCol = Math.max(sheet.getLastColumn(), 1);
   const headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0].map(h => String(h || '').trim());
@@ -542,6 +586,7 @@ function ensureSubscriberSheetHeaders_(sheet) {
     });
     if (changed) range.setValues(data);
   }
+  applySubscriberSheetUsability_(sheet);
 }
 
 function syncSupervisorIdsToSheet_() {
