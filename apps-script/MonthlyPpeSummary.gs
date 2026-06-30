@@ -87,7 +87,15 @@ function monthlyPpeSummaryReminderJob(opts) {
 }
 
 function monthlyPpeConfirmPageResponse_(e) {
-  const html = HtmlService.createTemplateFromFile('MonthlyPpeConfirmPage')
+  const params = (e && e.parameter) || {};
+  const template = HtmlService.createTemplateFromFile('MonthlyPpeConfirmPage');
+  template.initialParamsJson = JSON.stringify({
+    year: params.year || '',
+    month: params.month || '',
+    token: params.token || '',
+  }).replace(/</g, '\\u003c');
+
+  const html = template
     .evaluate()
     .setTitle('月度防護具彙整確認')
     .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);

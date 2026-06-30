@@ -248,8 +248,13 @@
   </main>
 
   <script>
+    const INITIAL_PARAMS = <?!= initialParamsJson ?>;
     const state = {
-      params: Object.fromEntries(new URLSearchParams(location.search).entries()),
+      params: Object.assign(
+        {},
+        Object.fromEntries(new URLSearchParams(location.search).entries()),
+        INITIAL_PARAMS
+      ),
       statusOptions: [],
       records: []
     };
