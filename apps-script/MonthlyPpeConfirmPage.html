@@ -323,6 +323,13 @@
     document.getElementById('clearSignature').addEventListener('click', () => pad.clear());
     document.getElementById('confirmForm').addEventListener('submit', submitForm);
 
+    function resizeSignaturePadAfterReveal() {
+      requestAnimationFrame(() => {
+        pad.resize();
+        requestAnimationFrame(() => pad.resize());
+      });
+    }
+
     function loadData() {
       google.script.run
         .withSuccessHandler(renderData)
@@ -344,6 +351,7 @@
       document.getElementById('loadingPanel').classList.add('hidden');
       document.getElementById('summaryPanel').classList.remove('hidden');
       document.getElementById('confirmForm').classList.remove('hidden');
+      resizeSignaturePadAfterReveal();
       document.getElementById('monthLabel').textContent = res.month.label;
 
       const summaryGrid = document.getElementById('summaryGrid');
