@@ -1,8 +1,10 @@
 /**
  * ===== 月度防護具檢點彙整確認表 =====
  *
- * 用途：將「每日場地防護具檢點」當月紀錄彙整成一份承辦人簽名確認 PDF。
- * 這份表只彙整既有填報紀錄；月度確認由承辦人在 PDF 確認區簽名留痕。
+ * 用途：依「場地使用紀錄」彙整當月需確認的場地防護具配置狀態，
+ *      由承辦人於月底/月初逐筆確認狀態、補充備註並簽名產出 PDF。
+ *
+ * 注意：本表不是每日人工檢點替代品；它是月度彙整確認留痕。
  */
 
 const MONTHLY_PPE_SUMMARY_FOLDER_NAME = '月度防護具檢點彙整確認表';
@@ -10,36 +12,32 @@ const MONTHLY_PPE_SUMMARY_EQUIPMENTS = [
   { id: 'VENUE-CRANE', label: '起重機防護具' },
   { id: 'VENUE-FORK', label: '堆高機防護具' },
 ];
+const MONTHLY_PPE_CONFIRMATION_STATUSES = ['未接獲異常', '異常已改善', '異常待追蹤', '不適用'];
 
 function generateMonthlyPpeSummary(options) {
   return generateMonthlyPpeSummary_(options || {});
 }
 
 function generateMonthlyPpeSummary_(options) {
-  const month = monthlyPpeResolveMonth_(options || {});
-  const ss = SpreadsheetApp.openById(CONFIG.DB_SHEET_ID);
-  const incidentMap = monthlyPpeCollectMachineIncidents_(ss, month);
-  const records = monthlyPpeCollectRecords_(ss, month, incidentMap);
-  const grouped = monthlyPpeGroupRecords_(records);
-  const pdf = monthlyPpeCreateSummaryPdf_(month, grouped, records);
+  const summary = monthlyPpeBuildSummary_(options || {});
+  const confirmation = monthlyPpeNormalizeConfirmation_(options && options.confirmation);
+  if (options && Array.isArray(options.rows)) {
+    monthlyPpeApplyConfirmationRows_(summary.records, options.rows);
+    summary.grouped = monthlyPpeGroupRecords_(summary.records);
+    summary.equipments = monthlyPpeEquipmentSummaries_(summary.grouped);
+  }
+  const pdf = monthlyPpeCreateSummaryPdf_(summary.month, summary.grouped, summary.records, confirmation);
 
   return {
-    month: month.label,
+    month: summary.month.label,
+    confirmUrl: summary.confirmUrl,
     fileName: pdf.fileName,
     fileId: pdf.fileId,
     fileUrl: pdf.fileUrl,
     folderUrl: pdf.folderUrl,
-    recordCount: records.length,
-    equipments: MONTHLY_PPE_SUMMARY_EQUIPMENTS.map(e => {
-      const rows = grouped[e.id] || [];
-      return {
-        equipmentId: e.id,
-        label: e.label,
-        recordCount: rows.length,
-        checkedDateCount: monthlyPpeUniqueDates_(rows).length,
-        abnormalRecordCount: rows.filter(r => r.abnormalCount > 0).length,
-      };
-    }),
+    recordCount: summary.records.length,
+    equipments: summary.equipments,
+    confirmed: !!confirmation.signatureDataUrl,
   };
 }
 
@@ -60,20 +58,23 @@ function monthlyPpeSummaryReminderJob(opts) {
   }
 
   const targetMonth = monthlyPpePreviousMonth_(today);
+  const summary = monthlyPpeBuildSummary_({
+    year: targetMonth.year,
+    month: targetMonth.month,
+  });
+
   if (dryRun) {
     return {
       action: 'wouldRemind',
       category: '月度防護具檢點彙整確認',
       formType: '每月',
       month: targetMonth.label,
-      reason: '每月第一個工作日提醒承辦簽名確認',
+      recordCount: summary.recordCount,
+      confirmUrl: summary.confirmUrl,
+      reason: '每月第一個工作日提醒承辦彙整確認並簽名',
     };
   }
 
-  const summary = generateMonthlyPpeSummary_({
-    year: targetMonth.year,
-    month: targetMonth.month,
-  });
   const result = sendMonthlyPpeSummaryReminder_(summary);
   return Object.assign({
     action: result && result.ok ? 'reminded' : 'reminderFailed',
@@ -81,8 +82,85 @@ function monthlyPpeSummaryReminderJob(opts) {
     formType: '每月',
     month: targetMonth.label,
     recordCount: summary.recordCount,
-    fileUrl: summary.fileUrl,
+    confirmUrl: summary.confirmUrl,
   }, result || {});
+}
+
+function monthlyPpeConfirmPageResponse_(e) {
+  const html = HtmlService.createTemplateFromFile('MonthlyPpeConfirmPage')
+    .evaluate()
+    .setTitle('月度防護具彙整確認')
+    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+  return html;
+}
+
+function getMonthlyPpeConfirmationPageData(payload) {
+  return getMonthlyPpeConfirmationPageData_(payload || {});
+}
+
+function getMonthlyPpeConfirmationPageData_(payload) {
+  const month = monthlyPpeResolveMonth_(payload || {});
+  monthlyPpeValidateConfirmationToken_(month, payload && payload.token);
+  const summary = monthlyPpeBuildSummary_(month);
+  return {
+    ok: true,
+    month: monthlyPpeMonthPayload_(month),
+    confirmUrl: summary.confirmUrl,
+    statusOptions: MONTHLY_PPE_CONFIRMATION_STATUSES.slice(),
+    recordCount: summary.recordCount,
+    equipments: summary.equipments,
+    records: summary.records.map(monthlyPpeRecordPayload_),
+  };
+}
+
+function submitMonthlyPpeConfirmationFromPage(payload) {
+  payload = payload || {};
+  const month = monthlyPpeResolveMonth_(payload);
+  monthlyPpeValidateConfirmationToken_(month, payload.token);
+
+  const handlerName = sanitizeText_(payload.handlerName, 60).trim();
+  if (!handlerName) throw new Error('請填寫承辦人姓名');
+  validateSignature_(payload.signatureDataUrl);
+
+  const summary = monthlyPpeBuildSummary_(month);
+  monthlyPpeApplyConfirmationRows_(summary.records, payload.rows || []);
+  summary.grouped = monthlyPpeGroupRecords_(summary.records);
+  summary.equipments = monthlyPpeEquipmentSummaries_(summary.grouped);
+
+  const confirmation = monthlyPpeNormalizeConfirmation_({
+    handlerName,
+    summaryNote: payload.summaryNote,
+    signatureDataUrl: payload.signatureDataUrl,
+    confirmedAt: new Date(),
+  });
+  const pdf = monthlyPpeCreateSummaryPdf_(summary.month, summary.grouped, summary.records, confirmation);
+
+  return {
+    ok: true,
+    month: summary.month.label,
+    fileName: pdf.fileName,
+    fileId: pdf.fileId,
+    fileUrl: pdf.fileUrl,
+    folderUrl: pdf.folderUrl,
+    recordCount: summary.records.length,
+    confirmedAt: monthlyPpeDisplayDateTime_(confirmation.confirmedAt),
+  };
+}
+
+function monthlyPpeBuildSummary_(options) {
+  const month = options && options.start ? options : monthlyPpeResolveMonth_(options || {});
+  const ss = SpreadsheetApp.openById(CONFIG.DB_SHEET_ID);
+  const incidentMap = monthlyPpeCollectMachineIncidents_(ss, month);
+  const records = monthlyPpeCollectRecords_(ss, month, incidentMap);
+  const grouped = monthlyPpeGroupRecords_(records);
+  return {
+    month,
+    records,
+    grouped,
+    recordCount: records.length,
+    equipments: monthlyPpeEquipmentSummaries_(grouped),
+    confirmUrl: monthlyPpeBuildConfirmUrl_(month),
+  };
 }
 
 function monthlyPpePreviousMonth_(date) {
@@ -124,7 +202,7 @@ function buildMonthlyPpeSummaryReminderFlex_(summary) {
   }));
   return {
     type: 'flex',
-    altText: `🦺 ${summary.month || ''} 防護具彙整確認表`,
+    altText: `🦺 ${summary.month || ''} 防護具彙整確認`,
     contents: {
       type: 'bubble',
       header: {
@@ -142,14 +220,14 @@ function buildMonthlyPpeSummaryReminderFlex_(summary) {
         layout: 'vertical',
         spacing: 'sm',
         contents: [
-          { type: 'text', text: '請承辦人開啟 PDF，於「承辦人簽名確認」欄簽名留痕。', size: 'sm', color: '#202124', wrap: true },
+          { type: 'text', text: '請承辦人開啟確認頁，逐日確認防護具配置狀態並簽名產出 PDF。', size: 'sm', color: '#202124', wrap: true },
           { type: 'separator', margin: 'md' },
           {
             type: 'box',
             layout: 'baseline',
             spacing: 'sm',
             contents: [
-              { type: 'text', text: '彙整紀錄', flex: 5, size: 'sm', color: '#666666' },
+              { type: 'text', text: '待確認筆數', flex: 5, size: 'sm', color: '#666666' },
               { type: 'text', text: countLabel, flex: 2, size: 'sm', color: '#202124', weight: 'bold', align: 'end' },
             ],
           },
@@ -167,8 +245,8 @@ function buildMonthlyPpeSummaryReminderFlex_(summary) {
             color: '#5F6368',
             action: {
               type: 'uri',
-              label: '開啟確認 PDF',
-              uri: summary.fileUrl || 'https://drive.google.com/',
+              label: '開啟確認頁',
+              uri: summary.confirmUrl || 'https://drive.google.com/',
             },
           },
         ],
@@ -250,68 +328,36 @@ function monthlyPpeResolveMonth_(options) {
 }
 
 function monthlyPpeCollectRecords_(ss, month, incidentMap) {
-  const sheet = ss.getSheetByName('填報紀錄');
-  if (!sheet || sheet.getLastRow() < 2) return [];
-
-  const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0]
-    .map(h => String(h || '').trim());
-  const idx = (...names) => findCol_(headers, ...names);
-  const col = {
-    recordId: idx('紀錄ID'),
-    submittedAt: idx('送出時間'),
-    checkDate: idx('檢查日期'),
-    formType: idx('表單類型'),
-    equipmentId: idx('設備代號'),
-    equipmentName: idx('設備名稱'),
-    category: idx('設備類別'),
-    inspector: idx('檢點人員', '檢查人'),
-    incidentCount: idx('異常事件數'),
-    payloadJson: idx('完整資料JSON'),
-    pdfUrl: idx('PDF連結'),
-    note: idx('備註'),
-  };
-  if (col.recordId < 0 || col.checkDate < 0 || col.equipmentId < 0) {
-    throw new Error('填報紀錄缺少必要欄位：紀錄ID / 檢查日期 / 設備代號');
-  }
-
-  const targetIds = MONTHLY_PPE_SUMMARY_EQUIPMENTS.map(e => e.id);
-  const values = sheet.getRange(2, 1, sheet.getLastRow() - 1, headers.length).getValues();
   const out = [];
-
-  values.forEach(row => {
-    const equipmentId = monthlyPpeCell_(row, col.equipmentId).toUpperCase();
-    if (targetIds.indexOf(equipmentId) < 0) return;
-
-    const date = monthlyPpeParseDate_(row[col.checkDate]);
-    if (!date) return;
-    const iso = formatISODate_(date);
-    if (iso < month.startIso || iso >= month.nextIso) return;
-
-    const formTypeLabel = monthlyPpeCell_(row, col.formType);
-    if (formTypeLabel && formTypeLabel !== '每日') return;
-
-    const payload = monthlyPpeParsePayload_(monthlyPpeCell_(row, col.payloadJson));
-    const recordId = monthlyPpeCell_(row, col.recordId);
-    const linkedIncidents = incidentMap[recordId] || [];
-    const badItems = monthlyPpeBadItemsFromPayload_(payload);
-    const sheetIncidentCount = Number(row[col.incidentCount] || 0);
-    const abnormalCount = Math.max(sheetIncidentCount || 0, badItems.length, linkedIncidents.length);
-
-    out.push({
-      recordId,
-      checkDate: iso,
-      submittedAt: monthlyPpeDisplayDateTime_(row[col.submittedAt]),
-      equipmentId,
-      equipmentLabel: monthlyPpeEquipmentLabel_(equipmentId),
-      equipmentName: monthlyPpeCell_(row, col.equipmentName),
-      category: monthlyPpeCell_(row, col.category),
-      inspector: monthlyPpeCell_(row, col.inspector) || monthlyPpeCell_(payload.inspector),
-      abnormalCount,
-      abnormalSummary: monthlyPpeAbnormalSummary_(badItems, linkedIncidents),
-      incidentStatusSummary: monthlyPpeIncidentStatusSummary_(linkedIncidents),
-      pdfUrl: monthlyPpeCell_(row, col.pdfUrl),
-      note: monthlyPpeCell_(row, col.note),
-    });
+  MONTHLY_PPE_SUMMARY_EQUIPMENTS.forEach(item => {
+    const equipment = getEquipmentById_(item.id);
+    if (!equipment || !equipment.active) return;
+    for (let d = new Date(month.start.getTime()); d < month.next; d.setDate(d.getDate() + 1)) {
+      const checkDate = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+      const usage = getVenueUsage_(equipment, checkDate);
+      if (!usage || !usage.used) continue;
+      const iso = formatISODate_(checkDate);
+      const key = `${item.id}|${iso}`;
+      const linkedIncidents = ((incidentMap && incidentMap.byEquipmentDate) || {})[key] || [];
+      const abnormalCount = linkedIncidents.length;
+      out.push({
+        key,
+        checkDate: iso,
+        equipmentId: item.id,
+        equipmentLabel: item.label,
+        equipmentName: equipment.equipmentName || item.label,
+        category: equipment.category || '',
+        location: equipment.location || '',
+        usageContent: usage.content || '',
+        usageReason: usage.reason || '',
+        sourceLabel: '場地使用紀錄',
+        status: abnormalCount > 0 ? '異常待追蹤' : '未接獲異常',
+        note: '',
+        abnormalCount,
+        abnormalSummary: monthlyPpeAbnormalSummary_([], linkedIncidents),
+        incidentStatusSummary: monthlyPpeIncidentStatusSummary_(linkedIncidents),
+      });
+    }
   });
 
   out.sort((a, b) => {
@@ -323,7 +369,8 @@ function monthlyPpeCollectRecords_(ss, month, incidentMap) {
 
 function monthlyPpeCollectMachineIncidents_(ss, month) {
   const sheet = getMachineIncidentSheet_(ss);
-  if (!sheet || sheet.getLastRow() < 2) return {};
+  const map = { byRecordId: {}, byEquipmentDate: {} };
+  if (!sheet || sheet.getLastRow() < 2) return map;
 
   const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0]
     .map(h => String(h || '').trim());
@@ -337,11 +384,10 @@ function monthlyPpeCollectMachineIncidents_(ss, month) {
     description: idx('異常說明'),
     status: idx('狀態'),
   };
-  if (col.recordId < 0 || col.date < 0 || col.equipmentId < 0) return {};
+  if (col.date < 0 || col.equipmentId < 0) return map;
 
   const targetIds = MONTHLY_PPE_SUMMARY_EQUIPMENTS.map(e => e.id);
   const values = sheet.getRange(2, 1, sheet.getLastRow() - 1, headers.length).getValues();
-  const map = {};
 
   values.forEach(row => {
     const equipmentId = monthlyPpeCell_(row, col.equipmentId).toUpperCase();
@@ -350,15 +396,21 @@ function monthlyPpeCollectMachineIncidents_(ss, month) {
     if (!date) return;
     const iso = formatISODate_(date);
     if (iso < month.startIso || iso >= month.nextIso) return;
-    const recordId = monthlyPpeCell_(row, col.recordId);
-    if (!recordId) return;
-    if (!map[recordId]) map[recordId] = [];
-    map[recordId].push({
+    const item = {
       order: monthlyPpeCell_(row, col.order),
       itemName: monthlyPpeCell_(row, col.itemName),
       description: monthlyPpeCell_(row, col.description),
       status: monthlyPpeCell_(row, col.status) || '待處理',
-    });
+    };
+    const recordId = monthlyPpeCell_(row, col.recordId);
+    if (recordId) {
+      if (!map.byRecordId[recordId]) map.byRecordId[recordId] = [];
+      map.byRecordId[recordId].push(item);
+      map[recordId] = map.byRecordId[recordId]; // backward-compatible shape
+    }
+    const dateKey = `${equipmentId}|${iso}`;
+    if (!map.byEquipmentDate[dateKey]) map.byEquipmentDate[dateKey] = [];
+    map.byEquipmentDate[dateKey].push(item);
   });
   return map;
 }
@@ -373,7 +425,39 @@ function monthlyPpeGroupRecords_(records) {
   return grouped;
 }
 
-function monthlyPpeCreateSummaryPdf_(month, grouped, records) {
+function monthlyPpeEquipmentSummaries_(grouped) {
+  return MONTHLY_PPE_SUMMARY_EQUIPMENTS.map(e => {
+    const rows = grouped[e.id] || [];
+    return {
+      equipmentId: e.id,
+      label: e.label,
+      recordCount: rows.length,
+      checkedDateCount: monthlyPpeUniqueDates_(rows).length,
+      abnormalRecordCount: rows.filter(r => r.abnormalCount > 0 || r.status === '異常待追蹤').length,
+      confirmedNormalCount: rows.filter(r => r.status === '未接獲異常').length,
+    };
+  });
+}
+
+function monthlyPpeApplyConfirmationRows_(records, rows) {
+  const byKey = {};
+  (rows || []).forEach(row => {
+    const key = String(row && row.key || '').trim();
+    if (!key) return;
+    byKey[key] = {
+      status: monthlyPpeNormalizeStatus_(row.status),
+      note: sanitizeText_(row.note || '', 300).trim(),
+    };
+  });
+  records.forEach(record => {
+    const update = byKey[record.key];
+    if (!update) return;
+    record.status = update.status;
+    record.note = update.note;
+  });
+}
+
+function monthlyPpeCreateSummaryPdf_(month, grouped, records, confirmation) {
   const fileName = `${month.rocYm}_月度防護具檢點彙整確認表.pdf`;
   const folder = monthlyPpeGetSummaryFolder_(month);
   monthlyPpeTrashExistingFiles_(folder, fileName);
@@ -384,12 +468,12 @@ function monthlyPpeCreateSummaryPdf_(month, grouped, records) {
   body.clear();
   body.setMarginTop(36).setMarginBottom(36).setMarginLeft(36).setMarginRight(36);
 
-  monthlyPpeAppendHeader_(body, month, records);
+  monthlyPpeAppendHeader_(body, month, records, confirmation);
   monthlyPpeAppendSummaryTable_(body, grouped);
   MONTHLY_PPE_SUMMARY_EQUIPMENTS.forEach(e => {
     monthlyPpeAppendDetailTable_(body, e, grouped[e.id] || []);
   });
-  monthlyPpeAppendConfirmArea_(body);
+  monthlyPpeAppendConfirmArea_(body, confirmation);
 
   doc.saveAndClose();
   const blob = DriveApp.getFileById(docId).getAs(MimeType.PDF).setName(fileName);
@@ -404,32 +488,38 @@ function monthlyPpeCreateSummaryPdf_(month, grouped, records) {
   };
 }
 
-function monthlyPpeAppendHeader_(body, month, records) {
+function monthlyPpeAppendHeader_(body, month, records, confirmation) {
   body.appendParagraph('社團法人中華民國工業安全衛生協會附設台中職業訓練中心')
     .setAlignment(DocumentApp.HorizontalAlignment.CENTER)
     .setBold(true);
   body.appendParagraph(MONTHLY_PPE_SUMMARY_FOLDER_NAME)
     .setHeading(DocumentApp.ParagraphHeading.HEADING1)
     .setAlignment(DocumentApp.HorizontalAlignment.CENTER);
-  body.appendParagraph(`彙整月份：${month.label}　產生時間：${Utilities.formatDate(new Date(), tz_(), 'yyyy/MM/dd HH:mm')}`)
+  const generatedAt = Utilities.formatDate(new Date(), tz_(), 'yyyy/MM/dd HH:mm');
+  const confirmedAt = confirmation && confirmation.confirmedAt
+    ? monthlyPpeDisplayDateTime_(confirmation.confirmedAt)
+    : '尚未簽名確認';
+  body.appendParagraph(`彙整月份：${month.label}　產生時間：${generatedAt}　確認時間：${confirmedAt}`)
     .setAlignment(DocumentApp.HorizontalAlignment.CENTER);
-  body.appendParagraph(`本表依當月場地防護具檢點紀錄彙整，供承辦人月度簽名確認留痕。紀錄總數：${records.length} 筆。`)
-    .setSpacingAfter(12);
+  body.appendParagraph(`本表依當月場地使用紀錄自動彙整需確認的場地防護具配置狀態，供承辦人月度檢視、補充狀態與簽名留痕。彙整筆數：${records.length} 筆。`)
+    .setSpacingAfter(8);
+  if (confirmation && confirmation.summaryNote) {
+    body.appendParagraph(`承辦總備註：${confirmation.summaryNote}`).setSpacingAfter(8);
+  }
 }
 
 function monthlyPpeAppendSummaryTable_(body, grouped) {
   body.appendParagraph('一、月度彙整').setHeading(DocumentApp.ParagraphHeading.HEADING2);
-  const rows = [['項目', '檢點日期數', '紀錄筆數', '正常紀錄', '異常紀錄', '最後檢點日']];
+  const rows = [['項目', '使用日期數', '待確認筆數', '未接獲異常', '異常/追蹤', '不適用']];
   MONTHLY_PPE_SUMMARY_EQUIPMENTS.forEach(e => {
     const records = grouped[e.id] || [];
-    const abnormal = records.filter(r => r.abnormalCount > 0).length;
     rows.push([
       e.label,
       String(monthlyPpeUniqueDates_(records).length),
       String(records.length),
-      String(records.length - abnormal),
-      String(abnormal),
-      records.length ? records[records.length - 1].checkDate : '無',
+      String(records.filter(r => r.status === '未接獲異常').length),
+      String(records.filter(r => r.status === '異常已改善' || r.status === '異常待追蹤').length),
+      String(records.filter(r => r.status === '不適用').length),
     ]);
   });
   const table = body.appendTable(rows);
@@ -439,17 +529,17 @@ function monthlyPpeAppendSummaryTable_(body, grouped) {
 
 function monthlyPpeAppendDetailTable_(body, equipment, records) {
   body.appendParagraph(`二、${equipment.label} 明細`).setHeading(DocumentApp.ParagraphHeading.HEADING2);
-  const rows = [['檢點日期', '檢點人員', '結果', '異常摘要', '原始PDF']];
+  const rows = [['日期', '場地/來源內容', '配置狀態', '異常摘要', '承辦備註']];
   if (!records.length) {
-    rows.push(['-', '-', '本月查無紀錄', '-', '-']);
+    rows.push(['-', '-', '本月查無場地使用紀錄', '-', '-']);
   } else {
     records.forEach(r => {
       rows.push([
         r.checkDate,
-        r.inspector || '-',
-        r.abnormalCount > 0 ? `異常 ${r.abnormalCount} 項（${r.incidentStatusSummary || '待確認'}）` : '正常',
+        monthlyPpeShortText_(r.usageContent || r.location || '-', 80),
+        r.status || '未接獲異常',
         r.abnormalSummary || '-',
-        r.pdfUrl ? '已歸檔' : '無',
+        r.note || '-',
       ]);
     });
   }
@@ -458,9 +548,28 @@ function monthlyPpeAppendDetailTable_(body, equipment, records) {
   body.appendParagraph('');
 }
 
-function monthlyPpeAppendConfirmArea_(body) {
-  body.appendParagraph('三、月度確認').setHeading(DocumentApp.ParagraphHeading.HEADING2);
-  body.appendParagraph('確認說明：本月防護具檢點紀錄已完成彙整，請承辦人於下方簽名確認。');
+function monthlyPpeAppendConfirmArea_(body, confirmation) {
+  body.appendParagraph('三、承辦人月度確認').setHeading(DocumentApp.ParagraphHeading.HEADING2);
+  body.appendParagraph('確認說明：承辦人已依本月場地使用紀錄檢視防護具配置狀態，並就異常或不適用日期於明細中標註。');
+  if (confirmation && confirmation.signatureDataUrl) {
+    const table = body.appendTable([
+      ['承辦人', confirmation.handlerName || '-'],
+      ['確認時間', monthlyPpeDisplayDateTime_(confirmation.confirmedAt) || '-'],
+      ['承辦人簽名', ''],
+    ]);
+    monthlyPpeStyleTable_(table, '#188038');
+    const sigCell = table.getRow(2).getCell(1);
+    const sigBlob = dataUrlToBlob_(confirmation.signatureDataUrl, 'monthly-ppe-handler-signature.png');
+    if (sigBlob) {
+      const image = sigCell.appendImage(sigBlob);
+      const width = image.getWidth();
+      if (width > 220) image.setWidth(220);
+    } else {
+      sigCell.appendParagraph('簽名圖無法載入');
+    }
+    return;
+  }
+
   const table = body.appendTable([
     ['承辦人簽名確認'],
     ['\n\n簽名：____________________________　確認日期：________年____月____日\n\n'],
@@ -502,6 +611,76 @@ function monthlyPpeTrashExistingFiles_(folder, fileName) {
   }
 }
 
+function monthlyPpeBuildConfirmUrl_(month) {
+  const base = getWebAppBaseUrl_();
+  if (!base) return '';
+  const params = [
+    'page=monthly-ppe-confirm',
+    `year=${encodeURIComponent(month.year)}`,
+    `month=${encodeURIComponent(month.month)}`,
+    `token=${encodeURIComponent(monthlyPpeConfirmationToken_(month))}`,
+  ];
+  return `${base}?${params.join('&')}`;
+}
+
+function monthlyPpeConfirmationToken_(month) {
+  const secret = String(CONFIG.ADMIN_TOKEN_SHA256 || getAdminToken_() || '').trim();
+  if (!secret || secret.length < 32 || secret === CONFIG.API_TOKEN) throw new Error('月度防護具確認 token 尚未設定');
+  const raw = `${month.year}-${String(month.month).padStart(2, '0')}|monthly-ppe-confirm|${secret}`;
+  const bytes = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, raw, Utilities.Charset.UTF_8);
+  return Utilities.base64EncodeWebSafe(bytes).replace(/=+$/g, '');
+}
+
+function monthlyPpeValidateConfirmationToken_(month, token) {
+  const expected = monthlyPpeConfirmationToken_(month);
+  if (!token || token !== expected) throw new Error('月度防護具確認連結無效');
+}
+
+function monthlyPpeNormalizeConfirmation_(raw) {
+  raw = raw || {};
+  const confirmedAt = raw.confirmedAt instanceof Date ? raw.confirmedAt : (raw.confirmedAt ? new Date(raw.confirmedAt) : null);
+  return {
+    handlerName: sanitizeText_(raw.handlerName || '', 60).trim(),
+    summaryNote: sanitizeText_(raw.summaryNote || '', 500).trim(),
+    signatureDataUrl: raw.signatureDataUrl || raw.signature || '',
+    confirmedAt: confirmedAt && !isNaN(confirmedAt.getTime()) ? confirmedAt : null,
+  };
+}
+
+function monthlyPpeNormalizeStatus_(status) {
+  const s = String(status || '').trim();
+  if (MONTHLY_PPE_CONFIRMATION_STATUSES.indexOf(s) >= 0) return s;
+  return MONTHLY_PPE_CONFIRMATION_STATUSES[0];
+}
+
+function monthlyPpeMonthPayload_(month) {
+  return {
+    year: month.year,
+    month: month.month,
+    label: month.label,
+    startIso: month.startIso,
+    nextIso: month.nextIso,
+    rocYm: month.rocYm,
+  };
+}
+
+function monthlyPpeRecordPayload_(record) {
+  return {
+    key: record.key,
+    checkDate: record.checkDate,
+    equipmentId: record.equipmentId,
+    equipmentLabel: record.equipmentLabel,
+    equipmentName: record.equipmentName,
+    location: record.location,
+    usageContent: record.usageContent,
+    status: record.status,
+    note: record.note,
+    abnormalCount: record.abnormalCount,
+    abnormalSummary: record.abnormalSummary,
+    incidentStatusSummary: record.incidentStatusSummary,
+  };
+}
+
 function monthlyPpeUniqueDates_(records) {
   const seen = {};
   records.forEach(r => {
@@ -513,6 +692,12 @@ function monthlyPpeUniqueDates_(records) {
 function monthlyPpeEquipmentLabel_(equipmentId) {
   const found = MONTHLY_PPE_SUMMARY_EQUIPMENTS.find(e => e.id === equipmentId);
   return found ? found.label : equipmentId;
+}
+
+function monthlyPpeShortText_(value, maxLen) {
+  const text = String(value || '').replace(/\s+/g, ' ').trim();
+  const limit = maxLen || 80;
+  return text.length > limit ? `${text.substring(0, limit - 1)}…` : text;
 }
 
 function monthlyPpeBadItemsFromPayload_(payload) {
@@ -575,7 +760,7 @@ function monthlyPpeDisplayDateTime_(value) {
   if (value instanceof Date && !isNaN(value.getTime())) {
     return Utilities.formatDate(value, tz_(), 'yyyy/MM/dd HH:mm');
   }
-  return String(value || '').trim();
+  return formatDisplayDateTime_(value);
 }
 
 function monthlyPpeCell_(rowOrValue, index) {

@@ -1,0 +1,461 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <base target="_top">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>月度防護具彙整確認</title>
+  <style>
+    :root {
+      --blue: #1a73e8;
+      --green: #188038;
+      --gray-50: #f8fafd;
+      --gray-100: #eef2f7;
+      --gray-300: #d8dee8;
+      --gray-700: #3c4043;
+      --gray-900: #202124;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Noto Sans TC", "Microsoft JhengHei", sans-serif;
+      color: var(--gray-900);
+      background: var(--gray-50);
+      line-height: 1.5;
+    }
+    header {
+      padding: 24px 18px;
+      background: linear-gradient(135deg, #334155, #64748b);
+      color: #fff;
+      text-align: center;
+    }
+    header h1 {
+      margin: 0 0 6px;
+      font-size: 24px;
+      letter-spacing: 0;
+    }
+    header p { margin: 0; opacity: .9; font-size: 14px; }
+    main {
+      width: min(960px, 100%);
+      margin: 0 auto;
+      padding: 18px;
+    }
+    .notice {
+      margin-bottom: 14px;
+      padding: 12px 14px;
+      border: 1px solid #c7d2fe;
+      border-radius: 8px;
+      background: #eef2ff;
+      color: #1e3a8a;
+      font-weight: 700;
+    }
+    .panel {
+      margin: 14px 0;
+      padding: 16px;
+      border: 1px solid var(--gray-300);
+      border-radius: 8px;
+      background: #fff;
+      box-shadow: 0 1px 3px rgba(15, 23, 42, .08);
+    }
+    h2 {
+      margin: 0 0 12px;
+      font-size: 18px;
+    }
+    .summary-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+    }
+    .metric {
+      padding: 10px;
+      border-radius: 8px;
+      background: #f1f5f9;
+    }
+    .metric span {
+      display: block;
+      color: #64748b;
+      font-size: 12px;
+    }
+    .metric strong {
+      display: block;
+      margin-top: 2px;
+      font-size: 20px;
+    }
+    label {
+      display: block;
+      margin: 12px 0 6px;
+      color: var(--gray-700);
+      font-weight: 700;
+      font-size: 14px;
+    }
+    input, select, textarea {
+      width: 100%;
+      padding: 10px 12px;
+      border: 1px solid var(--gray-300);
+      border-radius: 6px;
+      font: inherit;
+      background: #fff;
+    }
+    textarea { min-height: 80px; resize: vertical; }
+    .records {
+      display: grid;
+      gap: 10px;
+    }
+    .record {
+      border: 1px solid var(--gray-300);
+      border-radius: 8px;
+      overflow: hidden;
+      background: #fff;
+    }
+    .record-head {
+      display: flex;
+      gap: 10px;
+      align-items: flex-start;
+      justify-content: space-between;
+      padding: 10px 12px;
+      background: var(--gray-100);
+      font-weight: 800;
+    }
+    .record-head small {
+      display: block;
+      color: #64748b;
+      font-weight: 500;
+    }
+    .record-body { padding: 12px; }
+    .usage {
+      margin-bottom: 10px;
+      color: #475569;
+      font-size: 14px;
+    }
+    .abnormal {
+      margin: 8px 0;
+      padding: 8px;
+      border-radius: 6px;
+      background: #fef2f2;
+      color: #991b1b;
+      font-size: 14px;
+      font-weight: 700;
+    }
+    .row-grid {
+      display: grid;
+      grid-template-columns: 180px 1fr;
+      gap: 10px;
+      align-items: start;
+    }
+    .signature-wrap {
+      border: 2px dashed #94a3b8;
+      border-radius: 8px;
+      background: #fff;
+      overflow: hidden;
+    }
+    canvas {
+      display: block;
+      width: 100%;
+      height: 190px;
+      touch-action: none;
+      background: #fff;
+    }
+    .actions {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-top: 12px;
+    }
+    button {
+      border: 0;
+      border-radius: 8px;
+      padding: 13px 16px;
+      font: inherit;
+      font-weight: 800;
+      cursor: pointer;
+    }
+    .primary { background: var(--blue); color: #fff; }
+    .secondary { background: #e2e8f0; color: #0f172a; }
+    .success { color: #166534; }
+    .error { color: #b91c1c; font-weight: 800; }
+    .hidden { display: none; }
+    a.button-link {
+      display: block;
+      margin-top: 12px;
+      padding: 13px 16px;
+      border-radius: 8px;
+      background: var(--green);
+      color: #fff;
+      text-align: center;
+      text-decoration: none;
+      font-weight: 800;
+    }
+    @media (max-width: 720px) {
+      header h1 { font-size: 22px; }
+      main { padding: 14px; }
+      .summary-grid, .row-grid, .actions { grid-template-columns: 1fr; }
+      .record-head { display: block; }
+      .record-head div + div { margin-top: 4px; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>月度防護具彙整確認</h1>
+    <p id="monthLabel">讀取中...</p>
+  </header>
+  <main>
+    <div class="notice">
+      本頁依場地使用紀錄列出需確認日期；請承辦人逐筆確認防護具配置狀態，最後簽名產出正式 PDF。
+    </div>
+
+    <section class="panel" id="loadingPanel">
+      載入資料中...
+    </section>
+
+    <section class="panel hidden" id="errorPanel">
+      <h2>無法載入</h2>
+      <p class="error" id="errorText"></p>
+    </section>
+
+    <section class="panel hidden" id="summaryPanel">
+      <h2>彙整摘要</h2>
+      <div class="summary-grid" id="summaryGrid"></div>
+    </section>
+
+    <form class="hidden" id="confirmForm">
+      <section class="panel">
+        <h2>承辦確認</h2>
+        <label for="handlerName">承辦人姓名</label>
+        <input id="handlerName" name="handlerName" autocomplete="name" required placeholder="請填寫承辦人姓名">
+        <label for="summaryNote">月度總備註</label>
+        <textarea id="summaryNote" name="summaryNote" placeholder="可填寫整體補充說明，沒有則留空"></textarea>
+      </section>
+
+      <section class="panel">
+        <h2>逐日確認</h2>
+        <div class="records" id="records"></div>
+      </section>
+
+      <section class="panel">
+        <h2>承辦人簽名</h2>
+        <div class="signature-wrap">
+          <canvas id="signatureCanvas"></canvas>
+        </div>
+        <div class="actions">
+          <button type="button" class="secondary" id="clearSignature">清除簽名</button>
+          <button type="submit" class="primary" id="submitBtn">簽名並產生 PDF</button>
+        </div>
+        <p id="submitStatus"></p>
+        <a id="pdfLink" class="button-link hidden" target="_blank" rel="noopener">開啟確認 PDF</a>
+      </section>
+    </form>
+  </main>
+
+  <script>
+    const state = {
+      params: Object.fromEntries(new URLSearchParams(location.search).entries()),
+      statusOptions: [],
+      records: []
+    };
+
+    class SignaturePad {
+      constructor(canvas) {
+        this.canvas = canvas;
+        this.ctx = canvas.getContext('2d');
+        this.drawing = false;
+        this.empty = true;
+        this.resize();
+        window.addEventListener('resize', () => this.resize());
+        canvas.addEventListener('pointerdown', ev => this.start(ev));
+        canvas.addEventListener('pointermove', ev => this.move(ev));
+        canvas.addEventListener('pointerup', ev => this.end(ev));
+        canvas.addEventListener('pointercancel', ev => this.end(ev));
+        canvas.addEventListener('pointerleave', ev => this.end(ev));
+      }
+      resize() {
+        const rect = this.canvas.getBoundingClientRect();
+        const ratio = window.devicePixelRatio || 1;
+        this.canvas.width = Math.max(1, Math.floor(rect.width * ratio));
+        this.canvas.height = Math.max(1, Math.floor(rect.height * ratio));
+        this.ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+        this.ctx.lineWidth = 2.4;
+        this.ctx.lineCap = 'round';
+        this.ctx.lineJoin = 'round';
+        this.ctx.strokeStyle = '#111827';
+        this.empty = true;
+      }
+      point(ev) {
+        const rect = this.canvas.getBoundingClientRect();
+        return { x: ev.clientX - rect.left, y: ev.clientY - rect.top };
+      }
+      start(ev) {
+        ev.preventDefault();
+        this.drawing = true;
+        const p = this.point(ev);
+        this.ctx.beginPath();
+        this.ctx.moveTo(p.x, p.y);
+      }
+      move(ev) {
+        if (!this.drawing) return;
+        ev.preventDefault();
+        const p = this.point(ev);
+        this.ctx.lineTo(p.x, p.y);
+        this.ctx.stroke();
+        this.empty = false;
+      }
+      end(ev) {
+        if (!this.drawing) return;
+        ev.preventDefault();
+        this.drawing = false;
+      }
+      clear() {
+        this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+        this.empty = true;
+      }
+      toDataUrl() {
+        if (this.empty) return '';
+        return this.canvas.toDataURL('image/png');
+      }
+    }
+
+    const pad = new SignaturePad(document.getElementById('signatureCanvas'));
+    document.getElementById('clearSignature').addEventListener('click', () => pad.clear());
+    document.getElementById('confirmForm').addEventListener('submit', submitForm);
+
+    function loadData() {
+      google.script.run
+        .withSuccessHandler(renderData)
+        .withFailureHandler(showError)
+        .getMonthlyPpeConfirmationPageData({
+          year: state.params.year,
+          month: state.params.month,
+          token: state.params.token
+        });
+    }
+
+    function renderData(res) {
+      if (!res || !res.ok) {
+        showError(new Error((res && res.error) || '讀取失敗'));
+        return;
+      }
+      state.statusOptions = res.statusOptions || [];
+      state.records = res.records || [];
+      document.getElementById('loadingPanel').classList.add('hidden');
+      document.getElementById('summaryPanel').classList.remove('hidden');
+      document.getElementById('confirmForm').classList.remove('hidden');
+      document.getElementById('monthLabel').textContent = res.month.label;
+
+      const summaryGrid = document.getElementById('summaryGrid');
+      summaryGrid.innerHTML = [
+        metric('月份', res.month.label),
+        metric('待確認筆數', `${res.recordCount || 0} 筆`),
+        metric('確認項目', (res.equipments || []).map(e => `${e.label} ${e.recordCount || 0}`).join(' / ') || '-')
+      ].join('');
+
+      const records = document.getElementById('records');
+      if (!state.records.length) {
+        records.innerHTML = '<p>本月查無場地使用紀錄。</p>';
+        return;
+      }
+      records.innerHTML = state.records.map(renderRecord).join('');
+    }
+
+    function metric(label, value) {
+      return `<div class="metric"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></div>`;
+    }
+
+    function renderRecord(record) {
+      const abnormal = record.abnormalSummary
+        ? `<div class="abnormal">異常摘要：${escapeHtml(record.abnormalSummary)}</div>`
+        : '';
+      const options = state.statusOptions.map(opt => (
+        `<option value="${escapeHtml(opt)}"${opt === record.status ? ' selected' : ''}>${escapeHtml(opt)}</option>`
+      )).join('');
+      return `
+        <article class="record" data-key="${escapeHtml(record.key)}">
+          <div class="record-head">
+            <div>${escapeHtml(record.checkDate)}<small>${escapeHtml(record.equipmentLabel)}</small></div>
+            <div>${escapeHtml(record.equipmentName || record.location || '')}</div>
+          </div>
+          <div class="record-body">
+            <div class="usage">場地使用內容：${escapeHtml(record.usageContent || '-')}</div>
+            ${abnormal}
+            <div class="row-grid">
+              <div>
+                <label>配置狀態</label>
+                <select class="record-status">${options}</select>
+              </div>
+              <div>
+                <label>承辦備註</label>
+                <input class="record-note" value="${escapeHtml(record.note || '')}" placeholder="沒有補充可留空">
+              </div>
+            </div>
+          </div>
+        </article>
+      `;
+    }
+
+    function submitForm(ev) {
+      ev.preventDefault();
+      const status = document.getElementById('submitStatus');
+      const button = document.getElementById('submitBtn');
+      const signature = pad.toDataUrl();
+      if (!signature) {
+        status.className = 'error';
+        status.textContent = '請先簽名。';
+        return;
+      }
+      const rows = Array.from(document.querySelectorAll('.record')).map(el => ({
+        key: el.dataset.key,
+        status: el.querySelector('.record-status').value,
+        note: el.querySelector('.record-note').value
+      }));
+      status.className = '';
+      status.textContent = '送出中，正在產生 PDF...';
+      button.disabled = true;
+
+      google.script.run
+        .withSuccessHandler(res => {
+          button.disabled = false;
+          if (!res || !res.ok) {
+            status.className = 'error';
+            status.textContent = (res && res.error) || '送出失敗';
+            return;
+          }
+          status.className = 'success';
+          status.textContent = `已完成確認，PDF 已產生：${res.fileName}`;
+          const link = document.getElementById('pdfLink');
+          link.href = res.fileUrl;
+          link.classList.remove('hidden');
+        })
+        .withFailureHandler(err => {
+          button.disabled = false;
+          status.className = 'error';
+          status.textContent = err && err.message ? err.message : String(err || '送出失敗');
+        })
+        .submitMonthlyPpeConfirmationFromPage({
+          year: state.params.year,
+          month: state.params.month,
+          token: state.params.token,
+          handlerName: document.getElementById('handlerName').value,
+          summaryNote: document.getElementById('summaryNote').value,
+          signatureDataUrl: signature,
+          rows
+        });
+    }
+
+    function showError(err) {
+      document.getElementById('loadingPanel').classList.add('hidden');
+      document.getElementById('errorPanel').classList.remove('hidden');
+      document.getElementById('errorText').textContent = err && err.message ? err.message : String(err || '未知錯誤');
+    }
+
+    function escapeHtml(value) {
+      return String(value == null ? '' : value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+
+    loadData();
+  </script>
+</body>
+</html>
