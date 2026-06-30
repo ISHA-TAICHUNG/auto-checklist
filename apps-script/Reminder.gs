@@ -15,8 +15,9 @@
  */
 
 function dailyReminderJob(opts) {
+  opts = opts || {};
   const dryRun = !!(opts && opts.dryRun);
-  const today = todayStart_();
+  const today = opts.today || todayStart_();
   const equipments = getEquipmentList_();
   const results = [];
   const sentCategories = new Set();         // 同類別只寄一次
@@ -67,6 +68,10 @@ function dailyReminderJob(opts) {
   if (typeof monthlyReminderJob_ === 'function') {
     const monthlyResults = monthlyReminderJob_({ dryRun, today });
     monthlyResults.forEach(r => results.push(r));
+  }
+
+  if (typeof monthlyPpeSummaryReminderJob === 'function') {
+    results.push(monthlyPpeSummaryReminderJob({ dryRun, today }));
   }
 
   Logger.log((dryRun ? 'dryRun ' : '') + 'dailyReminderJob 結果：' + JSON.stringify(results));

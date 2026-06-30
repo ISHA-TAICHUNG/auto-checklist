@@ -124,7 +124,7 @@ function doGet(e) {
                                'installDailyReminderTrigger',
                                'installDailyWorkCheckTriggers',
                                'sheetInventory',
-                               'generateMonthlyPpeSummary',
+                               'generateMonthlyPpeSummary', 'monthlyPpeSummaryReminder',
                                'setupOfficialDocumentMonitor',
                                'processOfficialDocumentQueue',
                                'officialDocumentSnapshot',
@@ -420,7 +420,8 @@ function doGet(e) {
           }
           case 'reminderStatus': {
             // 唯讀：跑 dailyReminderJob 的 dry-run，看當日各設備狀態（不寄信）
-            const results = dailyReminderJob({ dryRun: true });
+            const targetDate = e.parameter.date ? parseISODate_(e.parameter.date) : undefined;
+            const results = dailyReminderJob({ dryRun: true, today: targetDate });
             result = { ok: true, dryRun: true, count: results.length, results };
             break;
           }
@@ -530,6 +531,19 @@ function doGet(e) {
                 year: e.parameter.year,
                 month: e.parameter.month,
                 rocYear: e.parameter.rocYear,
+              }),
+            };
+            break;
+          }
+          case 'monthlyPpeSummaryReminder': {
+            const targetDate = e.parameter.date ? parseISODate_(e.parameter.date) : undefined;
+            result = {
+              ok: true,
+              action,
+              dryRun: String(e.parameter.dryRun || '').toLowerCase() === 'true' || e.parameter.dryRun === '1',
+              ...monthlyPpeSummaryReminderJob({
+                dryRun: String(e.parameter.dryRun || '').toLowerCase() === 'true' || e.parameter.dryRun === '1',
+                today: targetDate,
               }),
             };
             break;

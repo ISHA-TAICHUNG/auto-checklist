@@ -1,8 +1,8 @@
 /**
  * ===== 月度防護具檢點彙整確認表 =====
  *
- * 用途：將「每日場地防護具檢點」當月紀錄彙整成一份確認 PDF。
- * 這份表只彙整既有填報紀錄，不會自動產生正式檢點紀錄或代簽。
+ * 用途：將「每日場地防護具檢點」當月紀錄彙整成一份承辦人簽名確認 PDF。
+ * 這份表只彙整既有填報紀錄；月度確認由承辦人在 PDF 確認區簽名留痕。
  */
 
 const MONTHLY_PPE_SUMMARY_FOLDER_NAME = '月度防護具檢點彙整確認表';
@@ -41,6 +41,182 @@ function generateMonthlyPpeSummary_(options) {
       };
     }),
   };
+}
+
+function monthlyPpeSummaryReminderJob(opts) {
+  opts = opts || {};
+  const dryRun = !!opts.dryRun;
+  const today = opts.today || todayStart_();
+  const todayIso = formatISODate_(today);
+
+  if (!monthlyPpeIsFirstBusinessDayOfMonth_(today)) {
+    return {
+      action: 'skip',
+      category: '月度防護具檢點彙整確認',
+      formType: '每月',
+      reason: '非每月第一個工作日',
+      date: todayIso,
+    };
+  }
+
+  const targetMonth = monthlyPpePreviousMonth_(today);
+  if (dryRun) {
+    return {
+      action: 'wouldRemind',
+      category: '月度防護具檢點彙整確認',
+      formType: '每月',
+      month: targetMonth.label,
+      reason: '每月第一個工作日提醒承辦簽名確認',
+    };
+  }
+
+  const summary = generateMonthlyPpeSummary_({
+    year: targetMonth.year,
+    month: targetMonth.month,
+  });
+  const result = sendMonthlyPpeSummaryReminder_(summary);
+  return Object.assign({
+    action: result && result.ok ? 'reminded' : 'reminderFailed',
+    category: '月度防護具檢點彙整確認',
+    formType: '每月',
+    month: targetMonth.label,
+    recordCount: summary.recordCount,
+    fileUrl: summary.fileUrl,
+  }, result || {});
+}
+
+function monthlyPpePreviousMonth_(date) {
+  const p = dateParts_(date || todayStart_());
+  const prev = new Date(p.y, p.m - 2, 1);
+  return monthlyPpeResolveMonth_({ year: prev.getFullYear(), month: prev.getMonth() + 1 });
+}
+
+function monthlyPpeIsFirstBusinessDayOfMonth_(date) {
+  const target = date || todayStart_();
+  const p = dateParts_(target);
+  for (let d = 1; d <= p.d; d++) {
+    const candidate = new Date(p.y, p.m - 1, d);
+    const isBiz = (typeof isBusinessDay_ === 'function')
+      ? isBusinessDay_(candidate)
+      : candidate.getDay() >= 1 && candidate.getDay() <= 5;
+    if (!isBiz) continue;
+    return formatISODate_(candidate) === formatISODate_(target);
+  }
+  return false;
+}
+
+function sendMonthlyPpeSummaryReminder_(summary) {
+  const flex = buildMonthlyPpeSummaryReminderFlex_(summary);
+  return linePushToMonthlyPpeSummaryStaff_(withQuickReply_(flex));
+}
+
+function buildMonthlyPpeSummaryReminderFlex_(summary) {
+  summary = summary || {};
+  const countLabel = `${summary.recordCount || 0} 筆`;
+  const equipmentRows = (summary.equipments || []).map(item => ({
+    type: 'box',
+    layout: 'baseline',
+    spacing: 'sm',
+    contents: [
+      { type: 'text', text: item.label || item.equipmentId || '-', flex: 5, size: 'sm', color: '#202124', weight: 'bold', wrap: true },
+      { type: 'text', text: `${item.recordCount || 0} 筆`, flex: 2, size: 'sm', color: '#137333', weight: 'bold', align: 'end' },
+    ],
+  }));
+  return {
+    type: 'flex',
+    altText: `🦺 ${summary.month || ''} 防護具彙整確認表`,
+    contents: {
+      type: 'bubble',
+      header: {
+        type: 'box',
+        layout: 'vertical',
+        backgroundColor: '#5F6368',
+        paddingAll: 'md',
+        contents: [
+          { type: 'text', text: '🦺 月度防護具確認', color: '#ffffff', weight: 'bold', size: 'lg' },
+          { type: 'text', text: summary.month || '', color: '#F1F3F4', size: 'sm' },
+        ],
+      },
+      body: {
+        type: 'box',
+        layout: 'vertical',
+        spacing: 'sm',
+        contents: [
+          { type: 'text', text: '請承辦人開啟 PDF，於「承辦人簽名確認」欄簽名留痕。', size: 'sm', color: '#202124', wrap: true },
+          { type: 'separator', margin: 'md' },
+          {
+            type: 'box',
+            layout: 'baseline',
+            spacing: 'sm',
+            contents: [
+              { type: 'text', text: '彙整紀錄', flex: 5, size: 'sm', color: '#666666' },
+              { type: 'text', text: countLabel, flex: 2, size: 'sm', color: '#202124', weight: 'bold', align: 'end' },
+            ],
+          },
+          ...equipmentRows,
+        ],
+      },
+      footer: {
+        type: 'box',
+        layout: 'vertical',
+        spacing: 'sm',
+        contents: [
+          {
+            type: 'button',
+            style: 'primary',
+            color: '#5F6368',
+            action: {
+              type: 'uri',
+              label: '開啟確認 PDF',
+              uri: summary.fileUrl || 'https://drive.google.com/',
+            },
+          },
+        ],
+      },
+    },
+  };
+}
+
+function linePushToMonthlyPpeSummaryStaff_(messages) {
+  const cfg = (typeof getLineConfig_ === 'function') ? getLineConfig_() : null;
+  if (!cfg || !cfg.token) return { ok: false, reason: 'no_token', targetMode: 'monthly-ppe-summary-staff', targetCount: 0 };
+  if (!Array.isArray(messages)) messages = [messages];
+  const ids = monthlyPpeSummaryStaffRecipientIds_();
+  if (ids.length > 1) {
+    const res = lineMulticast_(ids, messages);
+    return Object.assign({ targetMode: 'monthly-ppe-summary-staff', targetCount: ids.length }, res);
+  }
+  if (ids.length === 1) {
+    const res = linePushTo_(ids[0], messages, 'push');
+    return Object.assign({ targetMode: 'monthly-ppe-summary-staff', targetCount: 1 }, res);
+  }
+  return { ok: false, reason: 'no_staff_target', targetMode: 'monthly-ppe-summary-staff', targetCount: 0 };
+}
+
+function monthlyPpeSummaryStaffRecipientIds_() {
+  const ids = [];
+  try {
+    const ss = SpreadsheetApp.openById(CONFIG.DB_SHEET_ID);
+    const sheet = getLineSubscriberSheet_(ss);
+    if (!sheet || sheet.getLastRow() < 2) return ids;
+    const data = sheet.getDataRange().getValues();
+    const headers = data[0].map(h => String(h || '').trim());
+    const idCol = headers.indexOf('LINE_USER_ID');
+    const subscribeCol = getLineSubscriberActiveColumnIndex_(headers);
+    const staffCol = headers.indexOf('是否為同仁');
+    const noticeCol = headers.indexOf(LINE_NOTIFICATION_COLUMNS.MACHINE_MONTHLY_REMINDER);
+    if (idCol < 0 || staffCol < 0) return ids;
+    data.slice(1).forEach(row => {
+      const id = String(row[idCol] || '').trim();
+      const subscribed = subscribeCol < 0 ? true : isActiveValue_(row[subscribeCol]);
+      const isStaff = isActiveValue_(row[staffCol]);
+      const notificationEnabled = isLineNotificationEnabled_(noticeCol >= 0 ? row[noticeCol] : '');
+      if (id && subscribed && isStaff && notificationEnabled) ids.push(id);
+    });
+  } catch (err) {
+    Logger.log('[MonthlyPpeSummary] 讀取月度防護具確認提醒收件者失敗: ' + err);
+  }
+  return Array.from(new Set(ids));
 }
 
 function monthlyPpeResolveMonth_(options) {
@@ -237,7 +413,7 @@ function monthlyPpeAppendHeader_(body, month, records) {
     .setAlignment(DocumentApp.HorizontalAlignment.CENTER);
   body.appendParagraph(`彙整月份：${month.label}　產生時間：${Utilities.formatDate(new Date(), tz_(), 'yyyy/MM/dd HH:mm')}`)
     .setAlignment(DocumentApp.HorizontalAlignment.CENTER);
-  body.appendParagraph(`本表依「每日場地防護具檢點」既有填報紀錄彙整；僅作月度確認留痕，不代表系統自動代填或代簽。紀錄總數：${records.length} 筆。`)
+  body.appendParagraph(`本表依當月場地防護具檢點紀錄彙整，供承辦人月度簽名確認留痕。紀錄總數：${records.length} 筆。`)
     .setSpacingAfter(12);
 }
 
@@ -284,10 +460,10 @@ function monthlyPpeAppendDetailTable_(body, equipment, records) {
 
 function monthlyPpeAppendConfirmArea_(body) {
   body.appendParagraph('三、月度確認').setHeading(DocumentApp.ParagraphHeading.HEADING2);
-  body.appendParagraph('確認說明：本月防護具檢點紀錄已由承辦彙整，主管得依本確認表與原始 PDF 抽查。');
+  body.appendParagraph('確認說明：本月防護具檢點紀錄已完成彙整，請承辦人於下方簽名確認。');
   const table = body.appendTable([
-    ['承辦確認', '主管確認', '確認日期'],
-    ['\n\n', '\n\n', '\n\n'],
+    ['承辦人簽名確認'],
+    ['\n\n簽名：____________________________　確認日期：________年____月____日\n\n'],
   ]);
   monthlyPpeStyleTable_(table, '#188038');
 }
