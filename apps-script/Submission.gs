@@ -397,21 +397,23 @@ function resendSupervisorApprovalRequest_(opts) {
   const tokenIdx = headers.indexOf('主管簽核Token');
   if (tokenIdx < 0) throw new Error('填報紀錄缺主管簽核Token欄位');
   const data = sheet.getRange(2, 1, sheet.getLastRow() - 1, headers.length).getValues();
+  const parsedRows = data.map((row, i) => approvalRecordFromRow_(sheet, headers, row, i + 2));
+  const archivedBatchMap = buildArchivedApprovalBatchMap_(parsedRows);
   const matches = [];
 
-  for (let i = data.length - 1; i >= 0; i--) {
-    const rowNo = i + 2;
+  for (let i = parsedRows.length - 1; i >= 0; i--) {
     const row = data[i];
-    const rec = approvalRecordFromRow_(sheet, headers, row, rowNo);
+    const rec = parsedRows[i];
     const token = String(row[tokenIdx] || '').trim();
     if (!token) continue;
-    if (String(rec.status || '').trim() !== '待主管簽核') continue;
+    if (!approvalStatusIsPending_(rec.status)) continue;
+    if (approvalHasArchivedSibling_(rec, archivedBatchMap)) continue;
     if (targetRecordId && rec.recordId !== targetRecordId) continue;
     if (targetEquipmentId && rec.equipmentId !== targetEquipmentId) continue;
     if (targetEquipmentName && rec.equipmentName.indexOf(targetEquipmentName) < 0) continue;
     if (targetInspector && rec.inspector !== targetInspector) continue;
     if (targetDate && rec.checkDate !== targetDate) continue;
-    matches.push({ rec, token, rowNo });
+    matches.push({ rec, token, rowNo: rec.rowNo });
   }
 
   if (!matches.length) {
@@ -486,13 +488,16 @@ function listPendingApprovalRecords_(opts) {
   if (tokenIdx < 0) throw new Error('填報紀錄缺主管簽核Token欄位');
 
   const data = sheet.getRange(2, 1, sheet.getLastRow() - 1, headers.length).getValues();
+  const parsedRows = data.map((row, i) => approvalRecordFromRow_(sheet, headers, row, i + 2));
+  const archivedBatchMap = buildArchivedApprovalBatchMap_(parsedRows);
   const records = [];
-  for (let i = 0; i < data.length; i++) {
+  for (let i = 0; i < parsedRows.length; i++) {
     const row = data[i];
-    const rec = approvalRecordFromRow_(sheet, headers, row, i + 2);
+    const rec = parsedRows[i];
     const token = String(row[tokenIdx] || '').trim();
     if (!token) continue;
-    if (String(rec.status || '').trim() !== '待主管簽核') continue;
+    if (!approvalStatusIsPending_(rec.status)) continue;
+    if (approvalHasArchivedSibling_(rec, archivedBatchMap)) continue;
     if (inspectorName && rec.inspector !== inspectorName) continue;
 
     const submittedRaw = submittedIdx >= 0 ? row[submittedIdx] : rec.submittedAt;
@@ -531,6 +536,112 @@ function listPendingApprovalRecords_(opts) {
     return String(a.equipmentName || '').localeCompare(String(b.equipmentName || ''), 'zh-Hant');
   });
   return records;
+}
+
+function approvalStatusIsPending_(status) {
+  return String(status || '').trim() === '待主管簽核';
+}
+
+function approvalStatusIsArchived_(status) {
+  return String(status || '').trim() === '已簽核歸檔';
+}
+
+function approvalBatchKey_(rec) {
+  if (!rec) return '';
+  return [
+    String(rec.checkDate || '').trim(),
+    String(rec.formType || rec.formTypeZh || '').trim(),
+    String(rec.equipmentId || rec.equipmentName || '').trim(),
+  ].join('|');
+}
+
+function buildArchivedApprovalBatchMap_(records) {
+  const map = {};
+  (records || []).forEach(rec => {
+    if (!approvalStatusIsArchived_(rec && rec.status)) return;
+    const key = approvalBatchKey_(rec);
+    if (key) map[key] = rec;
+  });
+  return map;
+}
+
+function approvalHasArchivedSibling_(rec, archivedBatchMap) {
+  const key = approvalBatchKey_(rec);
+  const archived = key && archivedBatchMap ? archivedBatchMap[key] : null;
+  return !!(archived && archived.recordId !== rec.recordId);
+}
+
+function findArchivedApprovalSibling_(rec) {
+  if (!rec) return null;
+  const ss = SpreadsheetApp.openById(CONFIG.DB_SHEET_ID);
+  const sheet = ss.getSheetByName('填報紀錄');
+  if (!sheet || sheet.getLastRow() < 2) return null;
+  const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  const data = sheet.getRange(2, 1, sheet.getLastRow() - 1, headers.length).getValues();
+  const key = approvalBatchKey_(rec);
+  if (!key) return null;
+  for (let i = data.length - 1; i >= 0; i--) {
+    const other = approvalRecordFromRow_(sheet, headers, data[i], i + 2);
+    if (other.recordId === rec.recordId) continue;
+    if (!approvalStatusIsArchived_(other.status)) continue;
+    if (approvalBatchKey_(other) === key) return other;
+  }
+  return null;
+}
+
+function diagnoseApprovalBatch_(opts) {
+  opts = opts || {};
+  const targetRecordId = sanitizeText_(opts.recordId, 80);
+  const targetEquipmentId = sanitizeText_(opts.equipmentId, 80);
+  const targetEquipmentName = sanitizeText_(opts.equipmentName, 200);
+  const targetDate = opts.date ? formatISODate_(parseISODate_(opts.date)) : '';
+
+  const ss = SpreadsheetApp.openById(CONFIG.DB_SHEET_ID);
+  const sheet = ss.getSheetByName('填報紀錄');
+  if (!sheet || sheet.getLastRow() < 2) {
+    return { found: false, reason: 'no_records', records: [] };
+  }
+  const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  const data = sheet.getRange(2, 1, sheet.getLastRow() - 1, headers.length).getValues();
+  const records = data.map((row, i) => approvalRecordFromRow_(sheet, headers, row, i + 2));
+  const anchor = targetRecordId
+    ? records.find(rec => rec.recordId === targetRecordId)
+    : records.find(rec => {
+        if (targetDate && rec.checkDate !== targetDate) return false;
+        if (targetEquipmentId && rec.equipmentId !== targetEquipmentId) return false;
+        if (targetEquipmentName && rec.equipmentName.indexOf(targetEquipmentName) < 0) return false;
+        return true;
+      });
+  const key = anchor ? approvalBatchKey_(anchor) : [
+    targetDate,
+    'monthly',
+    targetEquipmentId || targetEquipmentName,
+  ].join('|');
+  const batchRecords = records.filter(rec => approvalBatchKey_(rec) === key);
+  const archivedMap = buildArchivedApprovalBatchMap_(records);
+  return {
+    found: !!anchor,
+    batchKey: key,
+    anchor: anchor ? approvalDiagnosticSafeRecord_(anchor, archivedMap) : null,
+    records: batchRecords.map(rec => approvalDiagnosticSafeRecord_(rec, archivedMap)),
+  };
+}
+
+function approvalDiagnosticSafeRecord_(rec, archivedBatchMap) {
+  return {
+    recordId: rec.recordId,
+    rowNo: rec.rowNo,
+    checkDate: rec.checkDate,
+    formType: rec.formTypeZh,
+    equipmentId: rec.equipmentId,
+    equipmentName: rec.equipmentName,
+    inspector: rec.inspector,
+    status: rec.status,
+    incidentCount: rec.incidentCount,
+    hasFileUrl: !!rec.fileUrl,
+    hasDraftDoc: !!rec.draftDocId,
+    supersededBySignedBatch: approvalHasArchivedSibling_(rec, archivedBatchMap),
+  };
 }
 
 function approvalParseDateTime_(value) {
@@ -686,6 +797,18 @@ function handleApprovalSubmission_(payload) {
     if (rec.status === '已簽核歸檔') {
       return { ok: true, alreadyApproved: true, recordId, fileUrl: rec.fileUrl };
     }
+    if (approvalStatusIsPending_(rec.status)) {
+      const archivedSibling = findArchivedApprovalSibling_(rec);
+      if (archivedSibling) {
+        return {
+          ok: true,
+          alreadyApproved: true,
+          supersededByRecordId: archivedSibling.recordId,
+          recordId,
+          fileUrl: archivedSibling.fileUrl,
+        };
+      }
+    }
     if (rec.status && rec.status !== '待主管簽核') {
       throw new Error('此紀錄目前不可簽核：' + rec.status);
     }
@@ -806,11 +929,16 @@ function updateIncidentPdfLinks_(recordId, fileUrl) {
 
 function getApprovalSummary_(recordId, token) {
   const rec = getApprovalRecord_(recordId, token);
+  const archivedSibling = approvalStatusIsPending_(rec.status)
+    ? findArchivedApprovalSibling_(rec)
+    : null;
+  const displayStatus = archivedSibling ? '已簽核歸檔' : (rec.status || '待主管簽核');
+  const fileUrl = archivedSibling ? (archivedSibling.fileUrl || rec.fileUrl) : rec.fileUrl;
   return {
     ok: true,
     record: {
       recordId: rec.recordId,
-      status: rec.status || '待主管簽核',
+      status: displayStatus,
       submittedAt: rec.submittedAt,
       checkDate: rec.checkDate,
       formType: rec.formTypeZh,
@@ -819,7 +947,7 @@ function getApprovalSummary_(recordId, token) {
       category: rec.category,
       inspector: rec.inspector,
       incidentCount: rec.incidentCount,
-      fileUrl: rec.fileUrl,
+      fileUrl,
       items: approvalCheckItems_(rec),
     },
   };
