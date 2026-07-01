@@ -6,6 +6,7 @@
  * 支援指令（傳給 bot 的 text message）：
  *   - 狀態 / status         今日填表進度
  *   - 待發文 / dispatch     查詢自己今日公文待發文快照（非即時登入）
+ *   - 待簽核 / approvals    查詢設備/月檢送主管簽核待辦
  *   - 異常 / open           待處理異常事件清單
  *   - 通報 / incident       日常異常事件通報表
  *   - 待處理 / incidents    日常異常事件未結案清單
@@ -75,6 +76,7 @@ function dispatchLineEvent_(ev) {
   if (/^(狀態|status)$/i.test(cmd))    return cmdStatus_(replyToken, userId);
   if (/^(每日作業|作業|work|dailywork)$/i.test(cmd)) return cmdDailyWorkCheck_(replyToken);
   if (/^(待發文|公文待發文|dispatch|documents)$/i.test(cmd)) return cmdOfficialDocumentDispatch_(replyToken, userId);
+  if (/^(待簽核|待簽|簽核|approval|approvals)$/i.test(cmd)) return cmdPendingApprovals_(replyToken, userId);
   if (/^(異常|open)$/i.test(cmd))      return cmdOpenIncidents_(replyToken);
   if (/^(通報|incident)$/i.test(cmd))  return cmdDailyIncidentReport_(replyToken);
   if (/^(待處理|incidents)$/i.test(cmd)) return cmdDailyIncidentList_(replyToken, userId);
@@ -168,6 +170,7 @@ function cmdHelp_(replyToken) {
       '常用功能：',
       '狀態：今日填表進度、月檢應填 / 補填提醒',
       '待發文：查看 16:30 / 17:00 雲端檢核快照，不是即時登入公文系統',
+      '待簽核：查設備日檢、月檢、防護具彙整送主管簽核的待辦',
       '異常：查機具設備檢查產生的未完成異常',
       '通報：開啟日常異常事件通報表',
       '待處理：查未結案日常異常事件',
@@ -194,6 +197,7 @@ function cmdHelp_(replyToken) {
       '提醒與通知：',
       '日檢 / 月檢未填提醒由系統排程推播。',
       '三間教室、堆高機、固定式起重機月檢完成後，只通知「是否為主管=是」的人簽核。',
+      '主管待簽核超過 1 天時，系統每日彙總提醒一次；若沒有待簽核就不發。',
       '每日場地防護具不再逐日催填；每月第一個工作日會提醒承辦開啟月度彙整 PDF 簽名確認。',
       '一般推播由試算表「訂閱者清單」的「是否訂閱」控制；設為否就不收主動通知。',
       '設備異常、日檢未填、機具月檢未填、三間教室月檢可再用同名欄位分別控制。',
@@ -249,6 +253,20 @@ function cmdOfficialDocumentDispatch_(replyToken, userId) {
     return lineReply_(replyToken, { type: 'text', text: '✗ 公文待發文模組尚未部署完成' });
   }
   return lineReply_(replyToken, withQuickReply_(getOfficialDocumentQueueStatusForUser_(userId)));
+}
+
+function cmdPendingApprovals_(replyToken, userId) {
+  if (typeof getPendingApprovalRecordsForLineUser_ !== 'function') {
+    return lineReply_(replyToken, { type: 'text', text: '✗ 待簽核模組尚未部署完成' });
+  }
+  const status = getPendingApprovalRecordsForLineUser_(userId);
+  if (!status.ok) {
+    return lineReply_(replyToken, buildSubscriberRegistrationFlex_());
+  }
+  return lineReply_(replyToken, withQuickReply_(buildPendingApprovalsFlex_(status.records || [], {
+    isSupervisor: status.isSupervisor,
+    viewerName: status.viewerName,
+  })));
 }
 
 function cmdOpenIncidents_(replyToken) {

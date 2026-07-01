@@ -653,6 +653,7 @@ function defaultQuickReply_() {
     items: [
       { type: 'action', action: { type: 'message', label: '📊 填表狀態',   text: '狀態' } },
       { type: 'action', action: { type: 'message', label: '📨 待發文',     text: '待發文' } },
+      { type: 'action', action: { type: 'message', label: '🖊 待簽核',     text: '待簽核' } },
       { type: 'action', action: { type: 'message', label: '🚨 設備異常',   text: '異常' } },
       { type: 'action', action: { type: 'message', label: '📝 日常通報',   text: '通報' } },
       { type: 'action', action: { type: 'message', label: '📌 日常待處理', text: '待處理' } },
@@ -1078,6 +1079,7 @@ function visibleChecklistStatusResults_(results) {
 }
 
 function isNonActionableChecklistStatus_(result) {
+  if (result && result.type === 'pendingApprovalReminder') return true;
   const reason = String((result && result.reason) || '').trim();
   if (reason === '防護具類別不發 reminder') return true;
   if (reason === '無使用紀錄') return true;
@@ -1615,6 +1617,144 @@ function buildApprovalRequestFlex_(record) {
   };
 }
 
+function buildPendingApprovalBubble_(record, opts) {
+  opts = opts || {};
+  const showApprovalButton = opts.showApprovalButton !== false;
+  const formTypeZh = record.formTypeZh || (record.formType === 'daily' ? '每日' : '每月');
+  const title = showApprovalButton ? '🖊 待主管簽核' : '🖊 送審待簽核';
+  const approvalUrl = record.approvalUrl && /^https?:\/\//.test(record.approvalUrl)
+    ? record.approvalUrl
+    : '';
+  const ageText = record.ageHours == null
+    ? '—'
+    : record.ageHours < 24
+      ? `${record.ageHours} 小時`
+      : `${record.ageDays || Math.floor(record.ageHours / 24)} 天`;
+  const body = [
+    dailyIncidentFlexField_('設備', record.equipmentName || record.equipmentId, { weight: 'bold' }),
+    dailyIncidentFlexField_('表單', `${formTypeZh}檢查紀錄`),
+    dailyIncidentFlexField_('日期', record.checkDateLabel || record.checkDate),
+    dailyIncidentFlexField_('檢查人', record.inspector),
+    dailyIncidentFlexField_('待簽', ageText, { color: record.ageHours >= 24 ? '#B06000' : '#202124', weight: 'bold' }),
+    dailyIncidentFlexField_('異常', `${record.incidentCount || 0} 項`, {
+      color: record.incidentCount > 0 ? '#D32F2F' : '#137333',
+      weight: 'bold',
+    }),
+  ];
+  return {
+    type: 'bubble',
+    header: {
+      type: 'box',
+      layout: 'vertical',
+      backgroundColor: '#1a73e8',
+      paddingAll: 'md',
+      contents: [
+        { type: 'text', text: title, color: '#ffffff', weight: 'bold', size: 'lg' },
+        { type: 'text', text: record.recordId || '', color: '#e8f0fe', size: 'xs' },
+      ],
+    },
+    body: {
+      type: 'box',
+      layout: 'vertical',
+      spacing: 'sm',
+      contents: body,
+    },
+    footer: showApprovalButton && approvalUrl ? {
+      type: 'box',
+      layout: 'vertical',
+      spacing: 'sm',
+      contents: [{
+        type: 'button',
+        style: 'primary',
+        color: '#1a73e8',
+        action: { type: 'uri', label: '主管簽核', uri: approvalUrl },
+      }],
+    } : undefined,
+  };
+}
+
+function buildPendingApprovalsFlex_(records, opts) {
+  opts = opts || {};
+  const isSupervisor = !!opts.isSupervisor;
+  const hasMore = (records || []).length > 10;
+  const list = (records || []).slice(0, hasMore ? 9 : 10);
+  if (!list.length) {
+    return buildDailyIncidentNoticeFlex_(
+      '✅ 目前沒有待簽核',
+      isSupervisor
+        ? '目前沒有設備日檢、月檢或防護具彙整等待主管簽核。'
+        : '你目前沒有送審後尚未由主管簽核的紀錄。',
+      { color: '#137333' }
+    );
+  }
+  const more = records.length > 10
+    ? buildDailyIncidentNoticeFlex_(
+      `另有 ${records.length - list.length} 筆待簽核`,
+      'LINE 一次最多顯示 10 張圖卡；請先處理較早送審的紀錄。',
+      { color: '#5F6368' }
+    ).contents
+    : null;
+  const contents = list.map(r => buildPendingApprovalBubble_(r, { showApprovalButton: isSupervisor }));
+  if (more) contents.push(more);
+  return {
+    type: 'flex',
+    altText: `🖊 待簽核 ${records.length} 筆`,
+    contents: {
+      type: 'carousel',
+      contents,
+    },
+  };
+}
+
+function buildPendingApprovalReminderFlex_(records, opts) {
+  opts = opts || {};
+  const list = (records || []).slice(0, 8);
+  const minAgeHours = opts.minAgeHours || 24;
+  const rows = list.map((record, index) => ({
+    type: 'text',
+    text: `${index + 1}. ${trimLineText_(record.equipmentName || record.equipmentId || '未命名設備', 42)}｜${record.checkDateLabel || record.checkDate}｜${record.inspector || '未填檢查人'}`,
+    size: 'xs',
+    color: '#202124',
+    wrap: true,
+  }));
+  const more = records.length > list.length ? [{
+    type: 'text',
+    text: `... 還有 ${records.length - list.length} 筆`,
+    size: 'xs',
+    color: '#5F6368',
+    margin: 'sm',
+  }] : [];
+  return {
+    type: 'flex',
+    altText: `🖊 主管待簽核提醒 ${records.length} 筆`,
+    contents: {
+      type: 'bubble',
+      header: {
+        type: 'box',
+        layout: 'vertical',
+        backgroundColor: '#1a73e8',
+        paddingAll: 'md',
+        contents: [
+          { type: 'text', text: '🖊 主管待簽核提醒', color: '#ffffff', weight: 'bold', size: 'lg' },
+          { type: 'text', text: `已送審超過 ${Math.round(minAgeHours / 24)} 天`, color: '#e8f0fe', size: 'sm' },
+        ],
+      },
+      body: {
+        type: 'box',
+        layout: 'vertical',
+        spacing: 'sm',
+        contents: [
+          { type: 'text', text: `目前共有 ${records.length} 筆送審紀錄尚待主管簽核。`, size: 'sm', color: '#202124', weight: 'bold', wrap: true },
+          { type: 'separator', margin: 'md' },
+          ...rows,
+          ...more,
+          { type: 'text', text: '請輸入「待簽核」或點下方 Quick Reply 開啟簽核圖卡。', size: 'xs', color: '#5F6368', wrap: true, margin: 'md' },
+        ],
+      },
+    },
+  };
+}
+
 function dailyIncidentFlexField_(label, value, opts) {
   opts = opts || {};
   return {
@@ -2116,6 +2256,13 @@ function sendApprovalRequest_(record) {
   const flex = buildApprovalRequestFlex_(record);
   const messages = withQuickReply_(flex);
   return linePushToSupervisors_(messages);
+}
+
+function sendPendingApprovalReminder_(records, opts) {
+  records = records || [];
+  if (!records.length) return { ok: true, skipped: true, reason: 'no_pending_approvals' };
+  const flex = buildPendingApprovalReminderFlex_(records, opts || {});
+  return linePushToSupervisors_(withQuickReply_(flex));
 }
 
 function sendDailyIncidentCreated_(incident, opts) {

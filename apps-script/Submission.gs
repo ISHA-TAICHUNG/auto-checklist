@@ -469,6 +469,180 @@ function resendSupervisorApprovalRequest_(opts) {
   }, notice || {});
 }
 
+function listPendingApprovalRecords_(opts) {
+  opts = opts || {};
+  const includeApprovalUrl = opts.includeApprovalUrl !== false;
+  const inspectorName = sanitizeText_(opts.inspectorName, 80);
+  const minAgeHours = Math.max(0, Number(opts.minAgeHours || 0));
+  const now = opts.now instanceof Date ? opts.now : new Date();
+
+  const ss = SpreadsheetApp.openById(CONFIG.DB_SHEET_ID);
+  const sheet = ss.getSheetByName('填報紀錄');
+  if (!sheet || sheet.getLastRow() < 2) return [];
+
+  const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  const tokenIdx = headers.indexOf('主管簽核Token');
+  const submittedIdx = headers.indexOf('送出時間');
+  if (tokenIdx < 0) throw new Error('填報紀錄缺主管簽核Token欄位');
+
+  const data = sheet.getRange(2, 1, sheet.getLastRow() - 1, headers.length).getValues();
+  const records = [];
+  for (let i = 0; i < data.length; i++) {
+    const row = data[i];
+    const rec = approvalRecordFromRow_(sheet, headers, row, i + 2);
+    const token = String(row[tokenIdx] || '').trim();
+    if (!token) continue;
+    if (String(rec.status || '').trim() !== '待主管簽核') continue;
+    if (inspectorName && rec.inspector !== inspectorName) continue;
+
+    const submittedRaw = submittedIdx >= 0 ? row[submittedIdx] : rec.submittedAt;
+    const submittedAt = approvalParseDateTime_(submittedRaw || rec.submittedAt);
+    const ageHours = submittedAt
+      ? Math.max(0, Math.floor((now.getTime() - submittedAt.getTime()) / 3600000))
+      : null;
+    if (minAgeHours > 0 && (ageHours == null || ageHours < minAgeHours)) continue;
+
+    let checkDateLabel = rec.checkDate || '';
+    try { checkDateLabel = formatROCDate_(parseISODate_(rec.checkDate)); } catch (_) {}
+    records.push({
+      recordId: rec.recordId,
+      checkDate: rec.checkDate,
+      checkDateLabel,
+      formType: rec.formType,
+      formTypeZh: rec.formTypeZh,
+      equipmentId: rec.equipmentId,
+      equipmentName: rec.equipmentName,
+      category: rec.category,
+      inspector: rec.inspector,
+      incidentCount: rec.incidentCount,
+      status: rec.status,
+      submittedAt: rec.submittedAt,
+      submittedAtLabel: formatDisplayDateTime_(submittedRaw || rec.submittedAt),
+      submittedAtMs: submittedAt ? submittedAt.getTime() : 0,
+      ageHours,
+      ageDays: ageHours == null ? null : Math.floor(ageHours / 24),
+      approvalUrl: includeApprovalUrl ? buildApprovalUrl_(rec.recordId, token) : '',
+    });
+  }
+
+  records.sort((a, b) => {
+    const diff = (a.submittedAtMs || 0) - (b.submittedAtMs || 0);
+    if (diff !== 0) return diff;
+    return String(a.equipmentName || '').localeCompare(String(b.equipmentName || ''), 'zh-Hant');
+  });
+  return records;
+}
+
+function approvalParseDateTime_(value) {
+  if (!value) return null;
+  if (value instanceof Date && !isNaN(value.getTime())) return value;
+  const s = String(value || '').trim();
+  if (!s) return null;
+  const m = s.match(/^(\d{4})[-\/](\d{1,2})[-\/](\d{1,2})(?:[ T](\d{1,2}):(\d{2})(?::(\d{2}))?)?/);
+  if (m) {
+    const y = m[1];
+    const mo = String(m[2]).padStart(2, '0');
+    const d = String(m[3]).padStart(2, '0');
+    const hh = String(m[4] || '0').padStart(2, '0');
+    const mm = String(m[5] || '0').padStart(2, '0');
+    const ss = String(m[6] || '0').padStart(2, '0');
+    const parsed = new Date(`${y}-${mo}-${d}T${hh}:${mm}:${ss}+08:00`);
+    return isNaN(parsed.getTime()) ? null : parsed;
+  }
+  const parsed = new Date(s);
+  return isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function pendingApprovalSafeRecord_(rec) {
+  return {
+    recordId: rec.recordId,
+    checkDate: rec.checkDate,
+    formType: rec.formTypeZh,
+    equipmentId: rec.equipmentId,
+    equipmentName: rec.equipmentName,
+    inspector: rec.inspector,
+    incidentCount: rec.incidentCount,
+    submittedAt: rec.submittedAtLabel || rec.submittedAt,
+    ageHours: rec.ageHours,
+    ageDays: rec.ageDays,
+    status: rec.status,
+  };
+}
+
+function getPendingApprovalRecordsForLineUser_(userId) {
+  const profile = (typeof getLineSubscriberProfileByUserId_ === 'function')
+    ? getLineSubscriberProfileByUserId_(userId)
+    : null;
+  if (!profile) {
+    return { ok: false, reason: 'not_subscriber', records: [], isSupervisor: false, viewerName: '' };
+  }
+  const isSupervisor = !!profile.isSupervisor;
+  if (!isSupervisor && !profile.name) {
+    return { ok: true, records: [], isSupervisor: false, viewerName: '' };
+  }
+  const records = listPendingApprovalRecords_({
+    includeApprovalUrl: isSupervisor,
+    inspectorName: isSupervisor ? '' : profile.name,
+  });
+  return {
+    ok: true,
+    records,
+    isSupervisor,
+    viewerName: profile.name,
+  };
+}
+
+function pendingApprovalReminderJob_(opts) {
+  opts = opts || {};
+  const dryRun = !!opts.dryRun;
+  const force = !!opts.force;
+  const today = opts.today || todayStart_();
+  const minAgeHours = Math.max(1, Number(opts.minAgeHours || getSetting_('pendingApprovalReminderMinAgeHours', '24') || 24));
+  const todayIso = formatISODate_(today);
+  const records = listPendingApprovalRecords_({
+    includeApprovalUrl: false,
+    minAgeHours,
+    now: opts.now instanceof Date ? opts.now : new Date(),
+  });
+  const resultBase = {
+    ok: true,
+    type: 'pendingApprovalReminder',
+    category: '主管待簽核',
+    action: 'skip',
+    reason: records.length ? '待簽核提醒另行處理' : '目前沒有逾期待簽核',
+    pendingCount: records.length,
+    minAgeHours,
+  };
+  if (!records.length) return resultBase;
+
+  const props = PropertiesService.getScriptProperties();
+  const sentKey = `PENDING_APPROVAL_REMINDER_SENT_${todayIso}`;
+  if (!force && props.getProperty(sentKey) === 'YES') {
+    return Object.assign({}, resultBase, {
+      action: 'skip',
+      reason: '今日已提醒主管待簽核',
+    });
+  }
+  if (dryRun) {
+    const supervisorIds = (typeof getSupervisorUserIds_ === 'function') ? getSupervisorUserIds_() : [];
+    return Object.assign({}, resultBase, {
+      action: 'wouldPush',
+      targetMode: 'supervisors',
+      targetCount: Array.from(new Set(supervisorIds || [])).length,
+      records: records.slice(0, 10).map(pendingApprovalSafeRecord_),
+    });
+  }
+
+  const pushed = (typeof sendPendingApprovalReminder_ === 'function')
+    ? sendPendingApprovalReminder_(records, { minAgeHours })
+    : { ok: false, reason: 'missing_sendPendingApprovalReminder' };
+  if (pushed && pushed.ok) props.setProperty(sentKey, 'YES');
+  return Object.assign({}, resultBase, pushed || {}, {
+    action: pushed && pushed.ok ? 'pushed' : 'failed',
+    records: records.slice(0, 10).map(pendingApprovalSafeRecord_),
+  });
+}
+
 function approvalResendSafeRecord_(rec) {
   return {
     recordId: rec.recordId,

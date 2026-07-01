@@ -74,6 +74,10 @@ function dailyReminderJob(opts) {
     results.push(monthlyPpeSummaryReminderJob({ dryRun, today }));
   }
 
+  if (typeof pendingApprovalReminderJob_ === 'function') {
+    results.push(pendingApprovalReminderJob_({ dryRun, today }));
+  }
+
   Logger.log((dryRun ? 'dryRun ' : '') + 'dailyReminderJob 結果：' + JSON.stringify(results));
   return results;
 }

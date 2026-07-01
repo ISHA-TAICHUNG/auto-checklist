@@ -129,6 +129,7 @@ function doGet(e) {
                                'generateMonthlyPpeSummary', 'monthlyPpeSummaryReminder',
                                'monthlyPpeConfirmationPreview',
                                'resendApprovalRequest',
+                               'pendingApprovalStatus', 'pendingApprovalReminder',
                                'setupOfficialDocumentMonitor',
                                'processOfficialDocumentQueue',
                                'officialDocumentSnapshot',
@@ -658,6 +659,30 @@ function doGet(e) {
                 dryRun: String(e.parameter.dryRun || '').toLowerCase() === 'true' || e.parameter.dryRun === '1',
               }),
             };
+            break;
+          }
+          case 'pendingApprovalStatus': {
+            const minAgeHours = e.parameter.minAgeHours ? Number(e.parameter.minAgeHours) : 0;
+            const records = listPendingApprovalRecords_({
+              includeApprovalUrl: false,
+              minAgeHours,
+            });
+            result = {
+              ok: true,
+              action,
+              pendingCount: records.length,
+              minAgeHours,
+              records: records.slice(0, 50).map(pendingApprovalSafeRecord_),
+            };
+            break;
+          }
+          case 'pendingApprovalReminder': {
+            result = Object.assign({ action }, pendingApprovalReminderJob_({
+              dryRun: String(e.parameter.dryRun || '').toLowerCase() !== 'false',
+              force: String(e.parameter.force || '').toLowerCase() === 'true' || e.parameter.force === '1',
+              minAgeHours: e.parameter.minAgeHours ? Number(e.parameter.minAgeHours) : undefined,
+              today: e.parameter.date ? parseISODate_(e.parameter.date) : undefined,
+            }));
             break;
           }
           case 'cleanupOfficialDocumentMonitor': {
