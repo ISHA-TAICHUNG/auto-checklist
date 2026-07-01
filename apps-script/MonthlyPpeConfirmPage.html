@@ -267,11 +267,25 @@
         this.empty = true;
         this.resize();
         window.addEventListener('resize', () => this.resize());
-        canvas.addEventListener('pointerdown', ev => this.start(ev));
-        canvas.addEventListener('pointermove', ev => this.move(ev));
-        canvas.addEventListener('pointerup', ev => this.end(ev));
-        canvas.addEventListener('pointercancel', ev => this.end(ev));
-        canvas.addEventListener('pointerleave', ev => this.end(ev));
+        this.bindEvents();
+      }
+      bindEvents() {
+        if (window.PointerEvent) {
+          this.canvas.addEventListener('pointerdown', ev => this.start(ev));
+          this.canvas.addEventListener('pointermove', ev => this.move(ev));
+          this.canvas.addEventListener('pointerup', ev => this.end(ev));
+          this.canvas.addEventListener('pointercancel', ev => this.end(ev));
+          this.canvas.addEventListener('pointerleave', ev => this.end(ev));
+          return;
+        }
+        this.canvas.addEventListener('mousedown', ev => this.start(ev));
+        this.canvas.addEventListener('mousemove', ev => this.move(ev));
+        this.canvas.addEventListener('mouseup', ev => this.end(ev));
+        this.canvas.addEventListener('mouseleave', ev => this.end(ev));
+        this.canvas.addEventListener('touchstart', ev => this.start(ev), { passive: false });
+        this.canvas.addEventListener('touchmove', ev => this.move(ev), { passive: false });
+        this.canvas.addEventListener('touchend', ev => this.end(ev), { passive: false });
+        this.canvas.addEventListener('touchcancel', ev => this.end(ev), { passive: false });
       }
       resize() {
         const rect = this.canvas.getBoundingClientRect();
@@ -287,7 +301,8 @@
       }
       point(ev) {
         const rect = this.canvas.getBoundingClientRect();
-        return { x: ev.clientX - rect.left, y: ev.clientY - rect.top };
+        const src = (ev.touches && ev.touches[0]) || (ev.changedTouches && ev.changedTouches[0]) || ev;
+        return { x: src.clientX - rect.left, y: src.clientY - rect.top };
       }
       start(ev) {
         ev.preventDefault();
@@ -295,6 +310,9 @@
         const p = this.point(ev);
         this.ctx.beginPath();
         this.ctx.moveTo(p.x, p.y);
+        this.ctx.lineTo(p.x + 0.01, p.y + 0.01);
+        this.ctx.stroke();
+        this.empty = false;
       }
       move(ev) {
         if (!this.drawing) return;
