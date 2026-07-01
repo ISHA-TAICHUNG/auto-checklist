@@ -198,6 +198,7 @@ function sendMonthlyPpeSummaryReminder_(summary) {
 
 function buildMonthlyPpeSummaryReminderFlex_(summary) {
   summary = summary || {};
+  const monthLabel = monthlyPpeSummaryMonthLabel_(summary);
   const countLabel = `${summary.recordCount || 0} 筆`;
   const equipmentRows = (summary.equipments || []).map(item => ({
     type: 'box',
@@ -210,7 +211,7 @@ function buildMonthlyPpeSummaryReminderFlex_(summary) {
   }));
   return {
     type: 'flex',
-    altText: `🦺 ${summary.month || ''} 防護具彙整確認`,
+    altText: `🦺 ${monthLabel} 防護具彙整確認`,
     contents: {
       type: 'bubble',
       header: {
@@ -220,7 +221,7 @@ function buildMonthlyPpeSummaryReminderFlex_(summary) {
         paddingAll: 'md',
         contents: [
           { type: 'text', text: '🦺 月度防護具確認', color: '#ffffff', weight: 'bold', size: 'lg' },
-          { type: 'text', text: summary.month || '', color: '#F1F3F4', size: 'sm' },
+          { type: 'text', text: monthLabel, color: '#F1F3F4', size: 'sm' },
         ],
       },
       body: {
@@ -263,18 +264,45 @@ function buildMonthlyPpeSummaryReminderFlex_(summary) {
   };
 }
 
+function monthlyPpeSummaryMonthLabel_(summary) {
+  const month = summary && summary.month;
+  if (month && typeof month === 'object') {
+    const label = String(month.label || month.rocYm || '').trim();
+    if (label) return label;
+  }
+  const text = String((summary && (summary.month || summary.label)) || '').trim();
+  return text || '月份未指定';
+}
+
 function linePushToMonthlyPpeSummaryStaff_(messages) {
   const cfg = (typeof getLineConfig_ === 'function') ? getLineConfig_() : null;
   if (!cfg || !cfg.token) return { ok: false, reason: 'no_token', targetMode: 'monthly-ppe-summary-staff', targetCount: 0 };
   if (!Array.isArray(messages)) messages = [messages];
   const ids = monthlyPpeSummaryStaffRecipientIds_();
-  if (ids.length > 1) {
-    const res = lineMulticast_(ids, messages);
-    return Object.assign({ targetMode: 'monthly-ppe-summary-staff', targetCount: ids.length }, res);
-  }
-  if (ids.length === 1) {
-    const res = linePushTo_(ids[0], messages, 'push');
-    return Object.assign({ targetMode: 'monthly-ppe-summary-staff', targetCount: 1 }, res);
+  if (ids.length > 0) {
+    let pushedCount = 0;
+    let failedCount = 0;
+    const failureCodes = [];
+    let firstFailureBody = '';
+    ids.forEach(id => {
+      const res = linePushTo_(id, messages, 'push');
+      if (res && res.ok) {
+        pushedCount++;
+        return;
+      }
+      failedCount++;
+      if (res && res.code && failureCodes.indexOf(res.code) < 0) failureCodes.push(res.code);
+      if (!firstFailureBody && res && res.body) firstFailureBody = res.body;
+    });
+    return {
+      ok: pushedCount > 0,
+      targetMode: 'monthly-ppe-summary-staff',
+      targetCount: ids.length,
+      pushedCount,
+      failedCount,
+      failureCodes,
+      firstFailureBody,
+    };
   }
   return { ok: false, reason: 'no_staff_target', targetMode: 'monthly-ppe-summary-staff', targetCount: 0 };
 }

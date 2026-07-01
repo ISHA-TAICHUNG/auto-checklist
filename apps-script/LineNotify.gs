@@ -781,7 +781,7 @@ function lineMulticast_(userIds, messages) {
   const code = res.getResponseCode();
   if (code !== 200) {
     Logger.log(`[LINE] multicast 失敗 code=${code} body=${res.getContentText()}`);
-    return { ok: false, code };
+    return { ok: false, code, body: res.getContentText() };
   }
   return { ok: true };
 }
