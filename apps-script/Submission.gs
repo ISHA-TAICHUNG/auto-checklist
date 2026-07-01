@@ -376,6 +376,123 @@ function notifySupervisorApprovalRequest_(record) {
   return sendApprovalRequest_(record);
 }
 
+function resendSupervisorApprovalRequest_(opts) {
+  opts = opts || {};
+  const dryRun = !!opts.dryRun;
+  const targetRecordId = sanitizeText_(opts.recordId, 80);
+  const targetEquipmentId = sanitizeText_(opts.equipmentId, 80);
+  const targetEquipmentName = sanitizeText_(opts.equipmentName, 200);
+  const targetInspector = sanitizeText_(opts.inspector, 80);
+  let targetDate = '';
+  if (opts.date) {
+    targetDate = formatISODate_(parseISODate_(opts.date));
+  }
+
+  const ss = SpreadsheetApp.openById(CONFIG.DB_SHEET_ID);
+  const sheet = ss.getSheetByName('填報紀錄');
+  if (!sheet || sheet.getLastRow() < 2) {
+    return { ok: false, reason: 'no_records' };
+  }
+  const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  const tokenIdx = headers.indexOf('主管簽核Token');
+  if (tokenIdx < 0) throw new Error('填報紀錄缺主管簽核Token欄位');
+  const data = sheet.getRange(2, 1, sheet.getLastRow() - 1, headers.length).getValues();
+  const matches = [];
+
+  for (let i = data.length - 1; i >= 0; i--) {
+    const rowNo = i + 2;
+    const row = data[i];
+    const rec = approvalRecordFromRow_(sheet, headers, row, rowNo);
+    const token = String(row[tokenIdx] || '').trim();
+    if (!token) continue;
+    if (String(rec.status || '').trim() !== '待主管簽核') continue;
+    if (targetRecordId && rec.recordId !== targetRecordId) continue;
+    if (targetEquipmentId && rec.equipmentId !== targetEquipmentId) continue;
+    if (targetEquipmentName && rec.equipmentName.indexOf(targetEquipmentName) < 0) continue;
+    if (targetInspector && rec.inspector !== targetInspector) continue;
+    if (targetDate && rec.checkDate !== targetDate) continue;
+    matches.push({ rec, token, rowNo });
+  }
+
+  if (!matches.length) {
+    return {
+      ok: false,
+      reason: 'no_matching_pending_approval',
+      filters: approvalResendSafeFilters_(opts),
+    };
+  }
+  if (matches.length > 1 && !opts.latest && !targetRecordId) {
+    return {
+      ok: false,
+      reason: 'ambiguous_pending_approval',
+      matchCount: matches.length,
+      matches: matches.slice(0, 10).map(m => approvalResendSafeRecord_(m.rec)),
+    };
+  }
+
+  const match = matches[0];
+  const rec = match.rec;
+  const equipment = getEquipmentById_(rec.equipmentId) || {
+    equipmentId: rec.equipmentId,
+    equipmentName: rec.equipmentName,
+    category: rec.category,
+  };
+  const approvalUrl = buildApprovalUrl_(rec.recordId, match.token);
+  const noticeRecord = {
+    recordId: rec.recordId,
+    submittedAt: rec.submittedAt,
+    checkDate: parseISODate_(rec.checkDate),
+    formType: rec.formType,
+    equipment,
+    inspector: rec.inspector,
+    incidentCount: rec.incidentCount,
+    approvalUrl,
+  };
+  const supervisorIds = (typeof getSupervisorUserIds_ === 'function') ? getSupervisorUserIds_() : [];
+  if (dryRun) {
+    return {
+      ok: true,
+      action: 'wouldResendApprovalRequest',
+      record: approvalResendSafeRecord_(rec),
+      targetMode: 'supervisors',
+      targetCount: Array.from(new Set(supervisorIds || [])).length,
+      hasApprovalUrl: Boolean(approvalUrl),
+    };
+  }
+
+  const notice = notifySupervisorApprovalRequest_(noticeRecord);
+  return Object.assign({
+    ok: !!(notice && notice.ok),
+    action: 'resentApprovalRequest',
+    record: approvalResendSafeRecord_(rec),
+    hasApprovalUrl: Boolean(approvalUrl),
+  }, notice || {});
+}
+
+function approvalResendSafeRecord_(rec) {
+  return {
+    recordId: rec.recordId,
+    checkDate: rec.checkDate,
+    formType: rec.formTypeZh,
+    equipmentId: rec.equipmentId,
+    equipmentName: rec.equipmentName,
+    inspector: rec.inspector,
+    incidentCount: rec.incidentCount,
+    status: rec.status,
+  };
+}
+
+function approvalResendSafeFilters_(opts) {
+  opts = opts || {};
+  return {
+    recordId: sanitizeText_(opts.recordId, 80),
+    date: sanitizeText_(opts.date, 30),
+    equipmentId: sanitizeText_(opts.equipmentId, 80),
+    equipmentName: sanitizeText_(opts.equipmentName, 200),
+    inspector: sanitizeText_(opts.inspector, 80),
+  };
+}
+
 function handleApprovalSubmission_(payload) {
   if (!payload) throw new Error('缺少 approval payload');
   const recordId = sanitizeText_(payload.recordId, 80);

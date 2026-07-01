@@ -128,6 +128,7 @@ function doGet(e) {
                                'sheetInventory',
                                'generateMonthlyPpeSummary', 'monthlyPpeSummaryReminder',
                                'monthlyPpeConfirmationPreview',
+                               'resendApprovalRequest',
                                'setupOfficialDocumentMonitor',
                                'processOfficialDocumentQueue',
                                'officialDocumentSnapshot',
@@ -639,6 +640,22 @@ function doGet(e) {
                 toUserId: e.parameter.toUserId,
                 lineUserId: e.parameter.lineUserId,
                 userId: e.parameter.userId,
+              }),
+            };
+            break;
+          }
+          case 'resendApprovalRequest': {
+            result = {
+              ok: true,
+              action,
+              ...resendSupervisorApprovalRequest_({
+                recordId: e.parameter.recordId,
+                date: e.parameter.date || e.parameter.checkDate,
+                equipmentId: e.parameter.equipmentId,
+                equipmentName: e.parameter.equipmentName,
+                inspector: e.parameter.inspector,
+                latest: String(e.parameter.latest || '').toLowerCase() === 'true' || e.parameter.latest === '1',
+                dryRun: String(e.parameter.dryRun || '').toLowerCase() === 'true' || e.parameter.dryRun === '1',
               }),
             };
             break;
