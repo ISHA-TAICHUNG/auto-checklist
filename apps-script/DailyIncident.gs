@@ -644,6 +644,9 @@ function dailyIncidentLineAccessContext_(userId) {
 function dailyIncidentLineUserCanAccess_(incident, ctx) {
   ctx = ctx || {};
   const userId = String(ctx.userId || '').trim();
+  const supervisorName = String(incident.supervisor || '').trim();
+  const supervisorKey = String(incident.supervisorKey || '').trim();
+  if (ctx.isSupervisor && !supervisorName && !supervisorKey) return true;
   const keys = [incident.ownerKey, incident.reporterKey, incident.supervisorKey]
     .map(v => String(v || '').trim())
     .filter(Boolean);

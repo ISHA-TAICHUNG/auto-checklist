@@ -430,13 +430,15 @@ function getOfficialDocumentRegistryDeskTargets_() {
   const headers = data[0].map(h => String(h || '').trim());
   const nameCol = headers.indexOf('姓名');
   const idCol = headers.indexOf('LINE_USER_ID');
+  const subscribeCol = getLineSubscriberActiveColumnIndex_(headers);
   const deskCol = headers.indexOf('公文登記桌');
   if (idCol < 0 || deskCol < 0) return [];  // 欄位不存在 → 視為無登記桌(安全,不推播)
   const seen = {};
   const targets = [];
   data.slice(1).forEach(row => {
     const userId = String(row[idCol] || '').trim();
-    if (!userId || !isActiveValue_(row[deskCol])) return;
+    const subscribed = subscribeCol < 0 ? true : isActiveValue_(row[subscribeCol]);
+    if (!userId || !subscribed || !isActiveValue_(row[deskCol])) return;
     if (seen[userId]) return;
     seen[userId] = true;
     targets.push({ name: nameCol >= 0 ? String(row[nameCol] || '').trim() : '', userId: userId });
@@ -455,6 +457,7 @@ function findOfficialDocumentStaffLineTarget_(handlerName, unit) {
   const headers = data[0].map(h => String(h || '').trim());
   const nameCol = headers.indexOf('姓名');
   const idCol = headers.indexOf('LINE_USER_ID');
+  const subscribeCol = getLineSubscriberActiveColumnIndex_(headers);
   const staffCol = headers.indexOf('是否為同仁');
   const noteCol = headers.indexOf('備註');
   if (nameCol < 0 || idCol < 0 || staffCol < 0) return null;
@@ -463,8 +466,9 @@ function findOfficialDocumentStaffLineTarget_(handlerName, unit) {
   data.slice(1).forEach(row => {
     const name = String(row[nameCol] || '').trim();
     const userId = String(row[idCol] || '').trim();
+    const subscribed = subscribeCol < 0 ? true : isActiveValue_(row[subscribeCol]);
     const isStaff = isActiveValue_(row[staffCol]);
-    if (!name || !userId || !isStaff) return;
+    if (!name || !userId || !subscribed || !isStaff) return;
     if (name === targetName) {
       matches.push({ name, userId, unit: noteCol >= 0 ? String(row[noteCol] || '').trim() : '' });
     }

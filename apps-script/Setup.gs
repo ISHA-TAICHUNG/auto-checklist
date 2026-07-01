@@ -567,7 +567,8 @@ function ensureSubscriberSheetHeaders_(sheet) {
   });
 
   const idCol = headers.indexOf('LINE_USER_ID');
-  const defaultYesCols = ['是否訂閱'].concat(getSubscriberNotificationColumns_())
+  // 只自動啟用「是否訂閱」總開關；細分通知欄必須由管理者明確填「是」才推播。
+  const defaultYesCols = ['是否訂閱']
     .map(name => headers.indexOf(name))
     .filter(i => i >= 0);
   if (idCol >= 0 && defaultYesCols.length && sheet.getLastRow() >= 2) {
