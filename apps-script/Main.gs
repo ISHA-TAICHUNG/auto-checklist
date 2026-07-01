@@ -122,6 +122,7 @@ function doGet(e) {
                                'syncLineWebhookEndpoint',
                                'openIssues', 'reminderStatus',
                                'systemStatus', 'archiveWriteHealth', 'lastPostError',
+                               'driveFolderDiagnostics',
                                'dailyReminderTriggerStatus',
                                'installDailyReminderTrigger',
                                'installDailyWorkCheckTriggers',
@@ -495,6 +496,16 @@ function doGet(e) {
             } catch (innerErr) {
               result = { ok: false, action, error: String(innerErr.message || innerErr) };
             }
+            break;
+          }
+          case 'driveFolderDiagnostics': {
+            result = {
+              ok: true,
+              action,
+              ...diagnoseDriveFolder_({
+                folderId: e.parameter.folderId || e.parameter.id,
+              }),
+            };
             break;
           }
           case 'lastPostError': {

@@ -119,3 +119,75 @@ function isUnderArchiveRoot_(fileId) {
   }
   return false;
 }
+
+function isFolderUnderArchiveRoot_(folderId) {
+  const rootId = CONFIG.ARCHIVE_ROOT_FOLDER_ID;
+  if (!rootId || rootId.startsWith('REPLACE_')) return false;
+  let folder;
+  try { folder = DriveApp.getFolderById(folderId); } catch (_) { return false; }
+  if (folder.getId() === rootId) return true;
+
+  const seen = new Set();
+  let parents = folder.getParents();
+  for (let depth = 0; depth < 10; depth++) {
+    if (!parents.hasNext()) return false;
+    const p = parents.next();
+    if (p.getId() === rootId) return true;
+    if (seen.has(p.getId())) return false;
+    seen.add(p.getId());
+    parents = p.getParents();
+  }
+  return false;
+}
+
+function diagnoseDriveFolder_(opts) {
+  opts = opts || {};
+  const folderId = sanitizeText_(opts.folderId || opts.id, 120);
+  if (!folderId) throw new Error('需提供 folderId');
+  if (!isFolderUnderArchiveRoot_(folderId)) {
+    throw new Error('該資料夾非系統歸檔範圍');
+  }
+
+  const folder = DriveApp.getFolderById(folderId);
+  const files = [];
+  const fileIt = folder.getFiles();
+  while (fileIt.hasNext() && files.length < 200) {
+    const file = fileIt.next();
+    files.push({
+      id: file.getId(),
+      name: file.getName(),
+      mimeType: file.getMimeType(),
+      size: file.getSize(),
+      createdAt: Utilities.formatDate(file.getDateCreated(), tz_(), 'yyyy-MM-dd HH:mm:ss'),
+      updatedAt: Utilities.formatDate(file.getLastUpdated(), tz_(), 'yyyy-MM-dd HH:mm:ss'),
+      url: file.getUrl(),
+    });
+  }
+
+  const folders = [];
+  const folderIt = folder.getFolders();
+  while (folderIt.hasNext() && folders.length < 100) {
+    const child = folderIt.next();
+    folders.push({
+      id: child.getId(),
+      name: child.getName(),
+      createdAt: Utilities.formatDate(child.getDateCreated(), tz_(), 'yyyy-MM-dd HH:mm:ss'),
+      updatedAt: Utilities.formatDate(child.getLastUpdated(), tz_(), 'yyyy-MM-dd HH:mm:ss'),
+      url: child.getUrl(),
+    });
+  }
+
+  return {
+    folder: {
+      id: folder.getId(),
+      name: folder.getName(),
+      createdAt: Utilities.formatDate(folder.getDateCreated(), tz_(), 'yyyy-MM-dd HH:mm:ss'),
+      updatedAt: Utilities.formatDate(folder.getLastUpdated(), tz_(), 'yyyy-MM-dd HH:mm:ss'),
+      url: folder.getUrl(),
+    },
+    fileCount: files.length,
+    folderCount: folders.length,
+    files,
+    folders,
+  };
+}
