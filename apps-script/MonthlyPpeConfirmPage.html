@@ -288,6 +288,9 @@
         this.canvas.addEventListener('touchcancel', ev => this.end(ev), { passive: false });
       }
       resize() {
+        const previousSignature = !this.empty && this.canvas.width && this.canvas.height
+          ? this.canvas.toDataURL('image/png')
+          : '';
         const rect = this.canvas.getBoundingClientRect();
         const ratio = window.devicePixelRatio || 1;
         this.canvas.width = Math.max(1, Math.floor(rect.width * ratio));
@@ -298,6 +301,14 @@
         this.ctx.lineJoin = 'round';
         this.ctx.strokeStyle = '#111827';
         this.empty = true;
+        if (previousSignature) {
+          const img = new Image();
+          img.onload = () => {
+            this.ctx.drawImage(img, 0, 0, rect.width, rect.height);
+            this.empty = false;
+          };
+          img.src = previousSignature;
+        }
       }
       point(ev) {
         const rect = this.canvas.getBoundingClientRect();
