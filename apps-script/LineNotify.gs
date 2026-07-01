@@ -2206,8 +2206,17 @@ function installDefaultLineRichMenu() {
   if (!cfg.token) throw new Error('LINE_CHANNEL_ACCESS_TOKEN 未設定，無法建立圖文選單');
   const props = PropertiesService.getScriptProperties();
   const oldId = props.getProperty('LINE_DEFAULT_RICH_MENU_ID') || '';
-  if (oldId) {
-    try { lineRichMenuDelete_(oldId); } catch (err) { Logger.log('[LINE richmenu] 刪除舊選單失敗，繼續建立新版：' + err); }
+  const obsoleteIds = new Set();
+  if (oldId) obsoleteIds.add(oldId);
+  try {
+    lineRichMenuList_().forEach(menu => {
+      const name = String(menu && menu.name || '').trim();
+      if (name === 'ISHA main menu v1' || name === 'ISHA 檢查與通報工作台') {
+        obsoleteIds.add(menu.richMenuId);
+      }
+    });
+  } catch (err) {
+    Logger.log('[LINE richmenu] 讀取既有選單失敗，略過舊選單清理：' + err);
   }
 
   const spec = buildDefaultLineRichMenu_();
@@ -2225,6 +2234,11 @@ function installDefaultLineRichMenu() {
   lineRichMenuSetDefault_(richMenuId);
   props.setProperty('LINE_DEFAULT_RICH_MENU_ID', richMenuId);
   props.setProperty('LINE_DEFAULT_RICH_MENU_IMAGE_URL', imageUrl);
+  obsoleteIds.forEach(id => {
+    if (id && id !== richMenuId) {
+      try { lineRichMenuDelete_(id); } catch (err) { Logger.log('[LINE richmenu] 刪除舊選單失敗：' + err); }
+    }
+  });
   return { ok: true, richMenuId, imageUrl, areas: spec.areas.length };
 }
 
