@@ -1112,10 +1112,17 @@ function checklistStatusGroupWeight_(category) {
   return 10;
 }
 
+function checklistStatusDisplayCategory_(result) {
+  const category = String((result && result.category) || '?').trim() || '?';
+  if (category === '月度防護具檢點彙整確認') return category;
+  const formType = String((result && result.formType) || '').trim();
+  return formType === '每月' ? `${category}月檢` : `${category}日檢`;
+}
+
 function checklistStatusCategorySummary_(results) {
   const byCat = {};
   visibleChecklistStatusResults_(results).forEach(r => {
-    const cat = r.category || '?';
+    const cat = checklistStatusDisplayCategory_(r);
     byCat[cat] = byCat[cat] || [];
     byCat[cat].push(r);
   });
