@@ -377,7 +377,7 @@ function processOfficialDocumentQueue_(payload) {
         markOfficialDocumentQueueRows_(sheet, headers, group.rows, OFFICIAL_DOC_QUEUE_NOTIFIED, '已推播給 ' + group.handlerName);
         notifiedPeople++;
       } else {
-        markOfficialDocumentQueueRows_(sheet, headers, group.rows, OFFICIAL_DOC_QUEUE_FAILED, 'LINE 推播失敗');
+        markOfficialDocumentQueueRows_(sheet, headers, group.rows, OFFICIAL_DOC_QUEUE_FAILED, officialDocumentLineFailureText_(result));
         failedPeople++;
       }
     });
@@ -492,6 +492,15 @@ function markOfficialDocumentQueueRows_(sheet, headers, entries, status, resultT
     setOfficialDocumentCell_(row, headers, '更新時間', now);
     sheet.getRange(entry.rowNo, 1, 1, headers.length).setValues([row]);
   });
+}
+
+function officialDocumentLineFailureText_(result) {
+  const parts = ['LINE 推播失敗'];
+  const code = result && result.code ? String(result.code).trim() : '';
+  const reason = result && result.reason ? String(result.reason).trim() : '';
+  if (code) parts.push('code=' + code);
+  if (reason) parts.push('reason=' + reason);
+  return sanitizeText_(parts.join(' '), 120);
 }
 
 function buildOfficialDocumentDispatchReminderFlex_(group) {
