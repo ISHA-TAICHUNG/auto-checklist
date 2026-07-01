@@ -18,13 +18,15 @@ async function fillFirstVisible(page, selectors, value) {
 
 async function clickFirstVisible(page, selectors) {
   for (const selector of selectors) {
-    const locator = page.locator(selector).first();
-    if (await locator.count()) {
+    const locator = page.locator(selector);
+    const count = await locator.count();
+    for (let i = 0; i < Math.min(count, 12); i += 1) {
+      const candidate = locator.nth(i);
       try {
-        await locator.click({ timeout: 3000 });
+        await candidate.click({ timeout: 3000 });
         return true;
       } catch (_) {
-        // Try next selector.
+        // Try next matching element/selector.
       }
     }
   }
@@ -411,24 +413,77 @@ async function openWaitForPublish(page, config) {
     await page.waitForLoadState('networkidle', { timeout: 30000 }).catch(() => {});
   }
 
+  const waitForGrid = async (timeout = 20000) => {
+    await page.waitForLoadState('networkidle', { timeout: 30000 }).catch(() => {});
+    await page.waitForFunction(() => {
+      const $ = window.jQuery;
+      const grid = $ && $('[data-role="grid"]').first().data('kendoGrid');
+      return Boolean(grid && grid.dataSource);
+    }, { timeout }).catch(() => {});
+  };
+
+  const waitForPublishLinks = await page.evaluate(() => {
+    const clean = (value) => String(value || '').replace(/\s+/g, ' ').trim();
+    const seen = new Set();
+    return Array.from(document.querySelectorAll('a'))
+      .map(anchor => ({
+        text: clean(anchor.innerText || anchor.textContent),
+        href: anchor.href || '',
+      }))
+      .filter(link => link.href && (
+        link.text.includes('待發文')
+        || link.href.includes('/Outbound/WaitForPublish/OutboundOfWaitForPublish/')
+      ))
+      .filter(link => {
+        if (seen.has(link.href)) return false;
+        seen.add(link.href);
+        return true;
+      })
+      .sort((a, b) => {
+        const score = link => {
+          if (/^待發文\d*$/.test(link.text)) return 0;
+          if (link.text.includes('待發文')) return 1;
+          return 2;
+        };
+        return score(a) - score(b);
+      })
+      .slice(0, 6);
+  }).catch(() => []);
+
+  for (const link of waitForPublishLinks) {
+    try {
+      logger.info('opening dynamic wait-for-publish link', {
+        text: link.text,
+        url: safeUrlForLog(link.href),
+      });
+      await page.goto(link.href, { waitUntil: 'domcontentloaded', timeout: 45000 });
+      await waitForGrid();
+      return;
+    } catch (err) {
+      logger.warn('dynamic wait-for-publish link failed; trying next candidate', {
+        text: link.text,
+        url: safeUrlForLog(link.href),
+        error: String(err && err.message ? err.message : err).slice(0, 300),
+      });
+      await page.goto(config.targetUrl, { waitUntil: 'domcontentloaded', timeout: 45000 }).catch(() => {});
+      await page.waitForLoadState('networkidle', { timeout: 30000 }).catch(() => {});
+    }
+  }
+
   if (config.waitForPublishUrl) {
-    const path = new URL(config.waitForPublishUrl).pathname;
+    logger.warn('falling back to configured wait-for-publish URL; dynamic link not found', {
+      url: safeUrlForLog(config.waitForPublishUrl),
+    });
     const clicked = await clickFirstVisible(page, [
-      `a[href*="${path}"]`,
       'a:has-text("待發文")',
       'text=待發文',
     ]);
     if (clicked) {
-      await page.waitForLoadState('networkidle', { timeout: 30000 }).catch(() => {});
-      await page.waitForFunction(() => {
-        const $ = window.jQuery;
-        const grid = $ && $('[data-role="grid"]').first().data('kendoGrid');
-        return Boolean(grid && grid.dataSource);
-      }, { timeout: 20000 }).catch(() => {});
+      await waitForGrid();
       return;
     }
     await page.goto(config.waitForPublishUrl, { waitUntil: 'domcontentloaded', timeout: 45000 });
-    await page.waitForLoadState('networkidle', { timeout: 30000 }).catch(() => {});
+    await waitForGrid();
     return;
   }
 
@@ -437,7 +492,7 @@ async function openWaitForPublish(page, config) {
     'text=待發文',
   ]);
   if (clicked) {
-    await page.waitForLoadState('networkidle', { timeout: 20000 }).catch(() => {});
+    await waitForGrid();
     return;
   }
   logger.warn('wait-for-publish link not found; parsing current page');
