@@ -690,35 +690,55 @@ function getSupervisorStatus_() {
   const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0].map(h => String(h || '').trim());
   const nameCol = headers.indexOf('姓名');
   const idCol = headers.indexOf('LINE_USER_ID');
-  const activeCol = getLineSupervisorFlagColumnIndex_(headers);
+  const subscribeCol = getLineSubscriberActiveColumnIndex_(headers);
+  const supervisorCol = getLineSupervisorFlagColumnIndex_(headers);
+  const staffCol = headers.indexOf('是否為同仁');
   const noteCol = headers.indexOf('備註');
-  if (idCol < 0 || activeCol < 0) throw new Error('訂閱者清單缺必要欄位');
+  const notificationColumns = (typeof LINE_NOTIFICATION_COLUMNS !== 'undefined')
+    ? Object.keys(LINE_NOTIFICATION_COLUMNS).map(k => LINE_NOTIFICATION_COLUMNS[k])
+    : [];
+  if (idCol < 0) throw new Error('訂閱者清單缺 LINE_USER_ID 欄位');
 
   const data = sheet.getLastRow() >= 2
     ? sheet.getRange(2, 1, sheet.getLastRow() - 1, headers.length).getValues()
     : [];
   const subscribers = data.map((row, i) => {
     const id = String(row[idCol] || '').trim();
-    const isSupervisor = isActiveValue_(row[activeCol]);
+    const subscribed = subscribeCol < 0 ? true : isActiveValue_(row[subscribeCol]);
+    const isSupervisor = supervisorCol >= 0 ? isActiveValue_(row[supervisorCol]) : false;
+    const isStaff = staffCol >= 0 ? isActiveValue_(row[staffCol]) : false;
+    const notificationFlags = {};
+    notificationColumns.forEach(colName => {
+      const col = headers.indexOf(colName);
+      notificationFlags[colName] = col >= 0 ? isLineNotificationEnabled_(row[col]) : false;
+    });
     return {
       rowNo: i + 2,
       name: nameCol >= 0 ? String(row[nameCol] || '').trim() : '',
       userIdMasked: maskLineUserId_(id),
-      active: isSupervisor,
+      active: subscribed,
+      subscribed,
       isSupervisor,
+      isStaff,
+      notificationFlags,
       inGeneralTarget: id ? targetIds.has(id) : false,
       note: noteCol >= 0 ? String(row[noteCol] || '').trim() : '',
     };
   });
+  const subscribedRows = subscribers.filter(s => s.subscribed);
   const supervisors = subscribers.filter(s => s.isSupervisor);
 
   return {
     sheetName: '訂閱者清單',
+    legacyTargetUserCount: targetIds.size,
     targetUserCount: targetIds.size,
     subscriberCount: subscribers.length,
+    subscribedCount: subscribedRows.length,
     supervisorCount: supervisors.length,
-    activeCount: supervisors.length,
-    activeNotInGeneralTargetCount: supervisors.filter(s => !s.inGeneralTarget).length,
+    staffCount: subscribers.filter(s => s.isStaff).length,
+    activeCount: subscribedRows.length,
+    subscribedNotInLegacyTargetCount: subscribedRows.filter(s => !s.inGeneralTarget).length,
+    activeNotInGeneralTargetCount: subscribedRows.filter(s => !s.inGeneralTarget).length,
     subscribers,
     supervisors,
   };
