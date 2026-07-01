@@ -2115,9 +2115,7 @@ function sendApprovalRequest_(record) {
   }
   const flex = buildApprovalRequestFlex_(record);
   const messages = withQuickReply_(flex);
-  return linePushToSupervisors_(messages, {
-    notificationColumn: lineMonthlyNotificationColumnForRecord_(record),
-  });
+  return linePushToSupervisors_(messages);
 }
 
 function sendDailyIncidentCreated_(incident, opts) {
