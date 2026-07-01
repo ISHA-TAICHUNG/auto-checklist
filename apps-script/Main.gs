@@ -318,6 +318,28 @@ function doGet(e) {
             };
             break;
           }
+          case 'lineNotificationTargetStatus': {
+            const columns = (typeof LINE_NOTIFICATION_COLUMNS !== 'undefined') ? LINE_NOTIFICATION_COLUMNS : {};
+            const targets = {};
+            Object.keys(columns).forEach(key => {
+              const col = columns[key];
+              const ids = (typeof getLineSubscriberUserIds_ === 'function')
+                ? getLineSubscriberUserIds_({ notificationColumn: col, forceRefresh: true })
+                : [];
+              targets[col] = Array.from(new Set(ids || [])).length;
+            });
+            const allIds = (typeof getLineSubscriberUserIds_ === 'function')
+              ? getLineSubscriberUserIds_({ forceRefresh: true })
+              : [];
+            result = {
+              ok: true,
+              action,
+              notifyMode: 'subscriber-list-explicit-opt-in',
+              subscriberTargetCount: Array.from(new Set(allIds || [])).length,
+              notificationTargetCounts: targets,
+            };
+            break;
+          }
           case 'lineQuotaStatus': {
             result = {
               ok: true,

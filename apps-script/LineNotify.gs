@@ -71,7 +71,7 @@ function resolveLineNotificationColumn_(opts) {
 
 function isLineNotificationEnabled_(value) {
   const raw = String(value || '').trim();
-  if (!raw) return true;
+  if (!raw) return false;
   return isActiveValue_(raw);
 }
 
@@ -103,7 +103,7 @@ function lineMonthlyNotificationColumnForRecord_(record) {
 function getLineSubscriberUserIds_(opts) {
   opts = opts || {};
   const notificationColumn = resolveLineNotificationColumn_(opts);
-  const cacheKey = 'lineSubscriberSheetUserIds:v3:' + (notificationColumn || 'all');
+  const cacheKey = 'lineSubscriberSheetUserIds:v4:' + (notificationColumn || 'all');
   if (!opts.forceRefresh) {
     try {
       const cached = CacheService.getScriptCache().get(cacheKey);
