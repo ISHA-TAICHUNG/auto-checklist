@@ -724,34 +724,73 @@ function pendingApprovalReminderJob_(opts) {
     pendingCount: records.length,
     minAgeHours,
   };
-  if (!records.length) return resultBase;
+  if (!records.length) return rememberPendingApprovalReminderRun_(resultBase, { dryRun, force });
 
   const props = PropertiesService.getScriptProperties();
   const sentKey = `PENDING_APPROVAL_REMINDER_SENT_${todayIso}`;
   if (!force && props.getProperty(sentKey) === 'YES') {
-    return Object.assign({}, resultBase, {
+    return rememberPendingApprovalReminderRun_(Object.assign({}, resultBase, {
       action: 'skip',
       reason: '今日已提醒主管待簽核',
-    });
+    }), { dryRun, force });
   }
   if (dryRun) {
     const supervisorIds = (typeof getSupervisorUserIds_ === 'function') ? getSupervisorUserIds_() : [];
-    return Object.assign({}, resultBase, {
+    return rememberPendingApprovalReminderRun_(Object.assign({}, resultBase, {
       action: 'wouldPush',
       targetMode: 'supervisors',
       targetCount: Array.from(new Set(supervisorIds || [])).length,
       records: records.slice(0, 10).map(pendingApprovalSafeRecord_),
-    });
+    }), { dryRun, force });
   }
 
   const pushed = (typeof sendPendingApprovalReminder_ === 'function')
     ? sendPendingApprovalReminder_(records, { minAgeHours })
     : { ok: false, reason: 'missing_sendPendingApprovalReminder' };
   if (pushed && pushed.ok) props.setProperty(sentKey, 'YES');
-  return Object.assign({}, resultBase, pushed || {}, {
+  return rememberPendingApprovalReminderRun_(Object.assign({}, resultBase, pushed || {}, {
     action: pushed && pushed.ok ? 'pushed' : 'failed',
     records: records.slice(0, 10).map(pendingApprovalSafeRecord_),
-  });
+  }), { dryRun, force });
+}
+
+function rememberPendingApprovalReminderRun_(result, opts) {
+  opts = opts || {};
+  const key = opts.dryRun ? 'PENDING_APPROVAL_REMINDER_LAST_DRY_RUN' : 'PENDING_APPROVAL_REMINDER_LAST_RUN';
+  const payload = {
+    recordedAt: Utilities.formatDate(new Date(), tz_(), 'yyyy-MM-dd HH:mm:ss'),
+    dryRun: !!opts.dryRun,
+    force: !!opts.force,
+    ok: result && result.ok !== false,
+    action: result ? result.action : '',
+    reason: result ? result.reason : '',
+    pendingCount: result ? Number(result.pendingCount || 0) : 0,
+    minAgeHours: result ? Number(result.minAgeHours || 0) : 0,
+    targetMode: result ? (result.targetMode || '') : '',
+    targetCount: result ? Number(result.targetCount || 0) : 0,
+    pushedCount: result ? Number(result.pushedCount || result.successCount || 0) : 0,
+    failedCount: result ? Number(result.failedCount || 0) : 0,
+    records: result && result.records ? result.records.slice(0, 10) : [],
+  };
+  PropertiesService.getScriptProperties().setProperty(key, JSON.stringify(payload));
+  return result;
+}
+
+function getPendingApprovalReminderRunStatus_() {
+  const props = PropertiesService.getScriptProperties();
+  return {
+    lastRun: parsePendingApprovalReminderRun_(props.getProperty('PENDING_APPROVAL_REMINDER_LAST_RUN')),
+    lastDryRun: parsePendingApprovalReminderRun_(props.getProperty('PENDING_APPROVAL_REMINDER_LAST_DRY_RUN')),
+  };
+}
+
+function parsePendingApprovalReminderRun_(raw) {
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw);
+  } catch (err) {
+    return { parseError: String(err && err.message || err), raw: String(raw).slice(0, 500) };
+  }
 }
 
 function approvalResendSafeRecord_(rec) {

@@ -131,6 +131,7 @@ function doGet(e) {
                                'monthlyPpeConfirmationPreview',
                                'resendApprovalRequest',
                                'pendingApprovalStatus', 'pendingApprovalReminder',
+                               'pendingApprovalReminderLastRun',
                                'approvalBatchDiagnostics',
                                'setupOfficialDocumentMonitor',
                                'processOfficialDocumentQueue',
@@ -695,6 +696,14 @@ function doGet(e) {
               minAgeHours: e.parameter.minAgeHours ? Number(e.parameter.minAgeHours) : undefined,
               today: e.parameter.date ? parseISODate_(e.parameter.date) : undefined,
             }));
+            break;
+          }
+          case 'pendingApprovalReminderLastRun': {
+            result = {
+              ok: true,
+              action,
+              ...getPendingApprovalReminderRunStatus_(),
+            };
             break;
           }
           case 'approvalBatchDiagnostics': {
