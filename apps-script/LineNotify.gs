@@ -1227,7 +1227,11 @@ function buildChecklistStatusFlex_(results, opts) {
 
 function buildDailyPpeAssignmentStatusFlex_(summary) {
   summary = summary || {};
-  const items = (summary.items || []).slice(0, 6);
+  const renderLimit = 6;
+  const allItems = summary.items || [];
+  const totalCount = summary.count || allItems.length || 0;
+  const items = allItems.slice(0, renderLimit);
+  const hiddenCount = Math.max(0, totalCount - items.length);
   const color = '#F29900';
   const rows = items.length ? items.map(assignment => {
     const itemNames = (assignment.items || [])
@@ -1298,9 +1302,9 @@ function buildDailyPpeAssignmentStatusFlex_(summary) {
         { type: 'text', text: `尚有 ${summary.count || items.length || 0} 筆待確認`, size: 'md', color, weight: 'bold', wrap: true },
         { type: 'separator', margin: 'md' },
         ...rows,
-        ...((summary.truncatedCount || 0) > 0 ? [{
+        ...(hiddenCount > 0 ? [{
           type: 'text',
-          text: `... 還有 ${summary.truncatedCount} 筆`,
+          text: `... 還有 ${hiddenCount} 筆`,
           size: 'xs',
           color: '#8a4b00',
           margin: 'sm',

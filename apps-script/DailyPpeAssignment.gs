@@ -97,6 +97,7 @@ function dailyPpeListRecentUnconfirmedForLine_(opts) {
   const startDate = new Date(targetDate.getTime());
   startDate.setDate(startDate.getDate() - lookbackDays + 1);
   const limit = Math.max(1, Math.min(10, Math.floor(Number(opts.limit || 8) || 8)));
+  const dailyRecordIndex = dailyPpeDailyRecordIndex_(startDate, targetDate);
   const assignments = dailyPpeListAssignments_({
     statuses: [DAILY_PPE_ASSIGNMENT_STATUS_PENDING, DAILY_PPE_ASSIGNMENT_STATUS_NOTICE_FAILED],
   });
@@ -113,11 +114,7 @@ function dailyPpeListRecentUnconfirmedForLine_(opts) {
     if (assignmentDate < startDate || assignmentDate > targetDate) return;
 
     const pendingItems = (assignment.items || []).filter(item => {
-      try {
-        return !dailyPpeHasDailyRecordForEquipment_(item.equipmentId, assignmentDate);
-      } catch (_) {
-        return true;
-      }
+      return !dailyRecordIndex.has(`${assignment.date}|${String(item.equipmentId || '').trim()}`);
     });
     if (!pendingItems.length) return;
 
@@ -144,6 +141,32 @@ function dailyPpeListRecentUnconfirmedForLine_(opts) {
     items: items.slice(0, limit),
     truncatedCount: Math.max(0, items.length - limit),
   };
+}
+
+function dailyPpeDailyRecordIndex_(startDate, endDate) {
+  const index = new Set();
+  const ss = SpreadsheetApp.openById(CONFIG.DB_SHEET_ID);
+  const sheet = ss.getSheetByName('填報紀錄');
+  if (!sheet || sheet.getLastRow() < 2) return index;
+  const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0].map(h => String(h || '').trim());
+  const dateCol = headers.indexOf('檢查日期');
+  const typeCol = headers.indexOf('表單類型');
+  const eqpCol = headers.indexOf('設備代號');
+  if (dateCol < 0 || typeCol < 0 || eqpCol < 0) return index;
+
+  const startKey = formatISODate_(startDate);
+  const endKey = formatISODate_(endDate);
+  const values = sheet.getRange(2, 1, sheet.getLastRow() - 1, headers.length).getValues();
+  values.forEach(row => {
+    let rowDate = row[dateCol];
+    rowDate = rowDate instanceof Date ? formatISODate_(rowDate) : String(rowDate || '').trim();
+    if (!rowDate || rowDate < startKey || rowDate > endKey) return;
+    if (String(row[typeCol] || '').trim() !== '每日') return;
+    const equipmentId = String(row[eqpCol] || '').trim();
+    if (!equipmentId) return;
+    index.add(`${rowDate}|${equipmentId}`);
+  });
+  return index;
 }
 
 function dailyPpeAssignmentJob(opts) {
