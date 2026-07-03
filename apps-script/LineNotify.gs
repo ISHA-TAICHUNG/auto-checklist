@@ -1233,6 +1233,10 @@ function buildDailyPpeAssignmentStatusFlex_(summary) {
   const items = allItems.slice(0, renderLimit);
   const hiddenCount = Math.max(0, totalCount - items.length);
   const color = '#F29900';
+  const mineCount = allItems.filter(assignment => assignment && assignment.isMine).length;
+  const statusTitle = mineCount > 0
+    ? `你有 ${mineCount} 筆待補確認`
+    : `其他同仁尚有 ${totalCount} 筆待確認`;
   const rows = items.length ? items.map(assignment => {
     const itemNames = (assignment.items || [])
       .map(item => item.label || item.equipmentName || item.equipmentId)
@@ -1299,7 +1303,7 @@ function buildDailyPpeAssignmentStatusFlex_(summary) {
       layout: 'vertical',
       spacing: 'sm',
       contents: [
-        { type: 'text', text: `尚有 ${summary.count || items.length || 0} 筆待確認`, size: 'md', color, weight: 'bold', wrap: true },
+        { type: 'text', text: statusTitle, size: 'md', color, weight: 'bold', wrap: true },
         { type: 'separator', margin: 'md' },
         ...rows,
         ...(hiddenCount > 0 ? [{

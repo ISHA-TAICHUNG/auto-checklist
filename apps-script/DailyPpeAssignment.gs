@@ -129,6 +129,7 @@ function dailyPpeListRecentUnconfirmedForLine_(opts) {
   });
 
   items.sort((a, b) => {
+    if (a.isMine !== b.isMine) return a.isMine ? -1 : 1;
     const dateCompare = String(b.date || '').localeCompare(String(a.date || ''));
     if (dateCompare !== 0) return dateCompare;
     return String(b.createdAt || '').localeCompare(String(a.createdAt || ''));
