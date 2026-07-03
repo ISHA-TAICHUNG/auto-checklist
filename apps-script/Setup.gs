@@ -99,6 +99,10 @@ function initializeDatabase() {
     ['monthlyCheckWindowEnd', '5', '月檢應檢期結束日（教室/堆高機/固定式起重機狀態顯示用）'],
     ['monthlyReminderStartDay', '25', '月檢補填提醒起始日（教室/堆高機/固定式起重機）'],
     ['dailyWorkCheckEnabled', '否', '是否啟用舊版每日作業檢核；目前改由公文待發文雲端檢核試行，預設停用'],
+    ['dailyPpeAssignmentEnabled', '是', '是否啟用每日場地防護具隨機指派確認；場地有使用且尚未填防護具日檢時，指派同仁確認後產生 PDF'],
+    ['dailyPpeAssignmentTriggerHour', '17', '每日場地防護具指派觸發時段（24 小時制）；預設 17 點'],
+    ['dailyPpeAssignmentNearMinute', '15', '每日場地防護具指派約略分鐘；Apps Script 會在此分鐘前後約 15 分鐘內觸發，15 約等於 17:00-17:30'],
+    ['dailyPpeAssignmentCandidateNames', '卓小媛,林耿暉,葉邵諭,林幸音', '每日場地防護具隨機指派候選同仁；需在訂閱者清單內且是否訂閱=是、是否為同仁=是、是否為主管=否；以逗號、頓號或換行分隔，空白則改用所有符合條件的非主管同仁'],
     ['lineRichMenuImageUrl', 'https://isha-taichung.github.io/auto-checklist/assets/line-rich-menu-main.png', 'LINE 圖文選單圖片網址（2500x1686 PNG）'],
     ['venueUsageRequiredKeywords', '堆高機=堆;高空工作車=高', '共用場地分頁的使用判定必要關鍵字；格式：設備類別=關鍵字1,關鍵字2；例：高空工作車內容需含「高」才算高空工作車有使用'],
   ]);
@@ -112,6 +116,9 @@ function initializeDatabase() {
   }
   if (typeof setupOfficialDocumentMonitorSheets_ === 'function') {
     setupOfficialDocumentMonitorSheets_(ss);
+  }
+  if (typeof setupDailyPpeAssignmentSheet_ === 'function') {
+    setupDailyPpeAssignmentSheet_(ss);
   }
 
   setupSheet_(ss, '節假日關鍵字', ['關鍵字', '備註'],

@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <base target="_top">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>每日防護具確認</title>
+  <style>
+    :root {
+      --blue: #1a73e8;
+      --green: #137333;
+      --gray-50: #f8fafd;
+      --gray-100: #eef2f7;
+      --gray-300: #d8dee8;
+      --gray-700: #3c4043;
+      --gray-900: #202124;
+      --red: #b3261e;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Noto Sans TC", "Microsoft JhengHei", sans-serif;
+      background: var(--gray-50);
+      color: var(--gray-900);
+      line-height: 1.55;
+    }
+    header {
+      padding: 24px 18px;
+      background: linear-gradient(135deg, #166534, #137333);
+      color: #fff;
+      text-align: center;
+    }
+    header h1 { margin: 0 0 4px; font-size: 24px; letter-spacing: 0; }
+    header p { margin: 0; font-size: 14px; opacity: .92; }
+    main { width: min(760px, 100%); margin: 0 auto; padding: 18px; }
+    .notice {
+      margin-bottom: 14px;
+      padding: 12px 14px;
+      border: 1px solid #bbf7d0;
+      border-radius: 8px;
+      background: #f0fdf4;
+      color: #14532d;
+      font-weight: 700;
+    }
+    .panel {
+      margin: 14px 0;
+      padding: 16px;
+      border: 1px solid var(--gray-300);
+      border-radius: 8px;
+      background: #fff;
+      box-shadow: 0 1px 3px rgba(15, 23, 42, .08);
+    }
+    h2 { margin: 0 0 12px; font-size: 18px; }
+    .summary-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+    }
+    .metric { padding: 10px; border-radius: 8px; background: #f1f5f9; }
+    .metric span { display: block; color: #64748b; font-size: 12px; }
+    .metric strong { display: block; margin-top: 2px; font-size: 18px; word-break: break-word; }
+    .items { display: grid; gap: 10px; }
+    .item {
+      padding: 12px;
+      border: 1px solid var(--gray-300);
+      border-radius: 8px;
+      background: #fff;
+    }
+    .item strong { display: block; font-size: 16px; }
+    .item small { display: block; color: #64748b; margin-top: 4px; }
+    label { display: block; margin: 12px 0 6px; font-weight: 800; color: var(--gray-700); }
+    textarea {
+      width: 100%;
+      min-height: 88px;
+      padding: 10px 12px;
+      border: 1px solid var(--gray-300);
+      border-radius: 6px;
+      font: inherit;
+      resize: vertical;
+    }
+    button, .button-link {
+      width: 100%;
+      border: 0;
+      border-radius: 8px;
+      padding: 13px 16px;
+      font: inherit;
+      font-weight: 800;
+      text-align: center;
+      text-decoration: none;
+      cursor: pointer;
+    }
+    .primary { background: var(--green); color: #fff; }
+    .secondary { display: block; margin-top: 10px; background: #e8f0fe; color: #174ea6; }
+    button:disabled { cursor: not-allowed; opacity: .6; }
+    .error { color: var(--red); font-weight: 800; }
+    .success { color: var(--green); font-weight: 800; }
+    .links { display: grid; gap: 8px; }
+    @media (max-width: 560px) {
+      .summary-grid { grid-template-columns: 1fr; }
+      header h1 { font-size: 22px; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>每日防護具確認</h1>
+    <p id="subtitle">讀取中...</p>
+  </header>
+  <main>
+    <div class="notice">
+      本頁由系統依場地使用紀錄隨機指派同仁確認。按下確認後，才會產生該日期的正式日檢 PDF；若隔天才確認，檢查日期仍以指派日期為準。
+    </div>
+
+    <section class="panel" id="loadingPanel">
+      <h2>讀取中</h2>
+      <p>正在載入待確認資料...</p>
+    </section>
+
+    <section class="panel" id="contentPanel" hidden>
+      <h2>待確認摘要</h2>
+      <div class="summary-grid">
+        <div class="metric"><span>指派日期</span><strong id="dateText"></strong></div>
+        <div class="metric"><span>指定同仁</span><strong id="assigneeText"></strong></div>
+        <div class="metric"><span>目前狀態</span><strong id="statusText"></strong></div>
+        <div class="metric"><span>指派編號</span><strong id="assignmentText"></strong></div>
+      </div>
+    </section>
+
+    <section class="panel" id="itemsPanel" hidden>
+      <h2>確認項目</h2>
+      <div class="items" id="items"></div>
+    </section>
+
+    <section class="panel" id="actionPanel" hidden>
+      <h2>確認送出</h2>
+      <label for="remark">備註（沒有補充可留空）</label>
+      <textarea id="remark" placeholder="例如：現場未接獲防護具異常反映"></textarea>
+      <button id="confirmBtn" class="primary" type="button">確認正常並產生 PDF</button>
+      <p id="message"></p>
+    </section>
+
+    <section class="panel" id="donePanel" hidden>
+      <h2>已確認</h2>
+      <p class="success" id="doneText"></p>
+      <div class="links" id="pdfLinks"></div>
+    </section>
+
+    <section class="panel" id="errorPanel" hidden>
+      <h2>無法載入</h2>
+      <p class="error" id="errorText"></p>
+    </section>
+  </main>
+
+  <script>
+    const INITIAL_PARAMS = <?!= initialParamsJson ?>;
+    let currentAssignment = null;
+
+    function setMessage(text, cls) {
+      const el = document.getElementById('message');
+      el.textContent = text || '';
+      el.className = cls || '';
+    }
+
+    function show(id, visible) {
+      document.getElementById(id).hidden = !visible;
+    }
+
+    function render(data) {
+      currentAssignment = data.assignment;
+      document.getElementById('subtitle').textContent = currentAssignment.rocDate || currentAssignment.date || '';
+      document.getElementById('dateText').textContent = currentAssignment.rocDate || currentAssignment.date || '';
+      document.getElementById('assigneeText').textContent = currentAssignment.assigneeName || '';
+      document.getElementById('statusText').textContent = currentAssignment.status || '';
+      document.getElementById('assignmentText').textContent = currentAssignment.assignmentId || '';
+
+      const items = document.getElementById('items');
+      items.innerHTML = '';
+      (currentAssignment.items || []).forEach(item => {
+        const div = document.createElement('div');
+        div.className = 'item';
+        div.innerHTML = `
+          <strong>${escapeHtml(item.label || item.equipmentName || item.equipmentId)}</strong>
+          <small>${escapeHtml(item.equipmentName || '')}</small>
+          <small>場地使用內容：${escapeHtml(item.usageContent || '有使用')}</small>
+        `;
+        items.appendChild(div);
+      });
+
+      show('loadingPanel', false);
+      show('contentPanel', true);
+      show('itemsPanel', true);
+      if (currentAssignment.status === '已確認') {
+        renderDone(currentAssignment, true);
+      } else {
+        show('actionPanel', true);
+      }
+    }
+
+    function renderDone(assignment, already) {
+      show('actionPanel', false);
+      show('donePanel', true);
+      document.getElementById('doneText').textContent = already
+        ? '這筆防護具確認已完成。'
+        : '確認完成，已產生正式 PDF。';
+      const links = document.getElementById('pdfLinks');
+      links.innerHTML = '';
+      (assignment.pdfUrls || []).forEach((url, index) => {
+        const a = document.createElement('a');
+        a.href = url;
+        a.target = '_blank';
+        a.rel = 'noopener';
+        a.className = 'button-link secondary';
+        a.textContent = `開啟 PDF ${index + 1}`;
+        links.appendChild(a);
+      });
+    }
+
+    function load() {
+      google.script.run
+        .withSuccessHandler(data => {
+          if (!data || !data.ok) {
+            show('loadingPanel', false);
+            show('errorPanel', true);
+            document.getElementById('errorText').textContent = (data && data.error) || '讀取失敗';
+            return;
+          }
+          render(data);
+        })
+        .withFailureHandler(err => {
+          show('loadingPanel', false);
+          show('errorPanel', true);
+          document.getElementById('errorText').textContent = String((err && err.message) || err || '讀取失敗');
+        })
+        .getDailyPpeAssignmentPageData({
+          assignmentId: INITIAL_PARAMS.assignmentId,
+          token: INITIAL_PARAMS.token,
+        });
+    }
+
+    document.getElementById('confirmBtn').addEventListener('click', () => {
+      const btn = document.getElementById('confirmBtn');
+      btn.disabled = true;
+      setMessage('確認中，請稍候...', '');
+      google.script.run
+        .withSuccessHandler(data => {
+          btn.disabled = false;
+          if (!data || !data.ok) {
+            setMessage((data && data.error) || '確認失敗', 'error');
+            return;
+          }
+          currentAssignment = data.assignment;
+          document.getElementById('statusText').textContent = currentAssignment.status || '';
+          renderDone(currentAssignment, !!data.alreadyConfirmed);
+          setMessage('', '');
+        })
+        .withFailureHandler(err => {
+          btn.disabled = false;
+          setMessage(String((err && err.message) || err || '確認失敗'), 'error');
+        })
+        .confirmDailyPpeAssignmentFromPage({
+          assignmentId: INITIAL_PARAMS.assignmentId,
+          token: INITIAL_PARAMS.token,
+          remark: document.getElementById('remark').value || '',
+        });
+    });
+
+    function escapeHtml(value) {
+      return String(value == null ? '' : value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+
+    load();
+  </script>
+</body>
+</html>

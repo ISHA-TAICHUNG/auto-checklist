@@ -170,7 +170,18 @@ function createChecklistDoc_(formType, ctx) {
       }
       signatureInserted = true;
     }
-    if (!signatureInserted) {
+    if (!signatureInserted && ctx.payload.digitalConfirmation) {
+      const confirmP = body.appendParagraph('數位確認：已由系統指派同仁確認，不需手寫簽名');
+      confirmP.editAsText().setFontSize(10).setForegroundColor('#188038');
+      if (ctx.payload.confirmedAt) {
+        const timeP = body.appendParagraph('確認時間：' + formatDisplayDateTime_(ctx.payload.confirmedAt));
+        timeP.editAsText().setFontSize(10).setForegroundColor('#555555');
+      }
+      if (ctx.payload.confirmationAssignmentId) {
+        const idP = body.appendParagraph('確認編號：' + ctx.payload.confirmationAssignmentId);
+        idP.editAsText().setFontSize(9).setForegroundColor('#777777');
+      }
+    } else if (!signatureInserted) {
       const noSig = body.appendParagraph('（無簽名）');
       noSig.editAsText().setFontSize(10).setForegroundColor('#c5221f');
     }

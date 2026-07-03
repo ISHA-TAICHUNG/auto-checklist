@@ -37,6 +37,8 @@ function doGet(e) {
           return dailyIncidentApprovalPageResponse_(e);
         case 'monthly-ppe-confirm':
           return monthlyPpeConfirmPageResponse_(e);
+        case 'daily-ppe-confirm':
+          return dailyPpeConfirmPageResponse_(e);
       }
     }
 
@@ -129,6 +131,9 @@ function doGet(e) {
                                'sheetInventory',
                                'generateMonthlyPpeSummary', 'monthlyPpeSummaryReminder',
                                'monthlyPpeConfirmationPreview',
+                               'dailyPpeAssignmentStatus',
+                               'dailyPpeAssignmentJob',
+                               'installDailyPpeAssignmentTrigger',
                                'resendApprovalRequest',
                                'pendingApprovalStatus', 'pendingApprovalReminder',
                                'pendingApprovalReminderLastRun',
@@ -605,6 +610,34 @@ function doGet(e) {
             };
             break;
           }
+          case 'dailyPpeAssignmentStatus': {
+            result = {
+              ok: true,
+              action,
+              ...dailyPpeAssignmentStatus({
+                date: e.parameter.date,
+              }),
+            };
+            break;
+          }
+          case 'dailyPpeAssignmentJob': {
+            result = {
+              action,
+              ...dailyPpeAssignmentJob({
+                date: e.parameter.date,
+                dryRun: String(e.parameter.dryRun || '').toLowerCase() === 'true' || e.parameter.dryRun === '1',
+              }),
+            };
+            break;
+          }
+          case 'installDailyPpeAssignmentTrigger': {
+            result = {
+              ok: true,
+              action,
+              ...installDailyPpeAssignmentTrigger(),
+            };
+            break;
+          }
           case 'setupOfficialDocumentMonitor': {
             const ss = SpreadsheetApp.openById(CONFIG.DB_SHEET_ID);
             setupOfficialDocumentMonitorSheets_(ss);
@@ -875,6 +908,7 @@ function friendlyError_(err) {
     '處理完成後才能陳核', '缺少陳核主管', '請填寫陳核主管', '審核決定不合法',
     '主管處理意見', '只有處理中事件', '已送主管正式審核',
     '每日作業檢核', '同仁姓名',
+    '每日防護具確認', '每日場地防護具', '防護具確認連結',
     '公文待發文', '待發文佇列',
     'cleanupAll dryRun 需帶', 'cleanupDate dryRun 需帶', 'cleanupDate 實刪需帶',
     // admin 用錯誤訊息
