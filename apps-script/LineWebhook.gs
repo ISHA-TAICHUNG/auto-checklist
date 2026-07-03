@@ -228,6 +228,13 @@ function cmdStatus_(replyToken, userId) {
   // 月檢設備：非應檢期(1-5)且非補填提醒期(25+)時，monthlyReminderJob_ 已完全不 push，狀態不會列
   const results = dailyReminderJob({ dryRun: true });
   const messages = [buildChecklistStatusFlex_(results)];
+  if (typeof dailyPpeListRecentUnconfirmedForLine_ === 'function' &&
+      typeof buildDailyPpeAssignmentStatusFlex_ === 'function') {
+    const ppeStatus = dailyPpeListRecentUnconfirmedForLine_({ viewerId: userId });
+    if (ppeStatus && ppeStatus.count > 0) {
+      messages.push(buildDailyPpeAssignmentStatusFlex_(ppeStatus));
+    }
+  }
   if (typeof isDailyWorkCheckEnabled_ === 'function' && isDailyWorkCheckEnabled_() &&
       typeof getDailyWorkCheckStatus_ === 'function' && typeof buildDailyWorkStatusFlex_ === 'function') {
     messages.push(buildDailyWorkStatusFlex_(getDailyWorkCheckStatus_({ userId })));

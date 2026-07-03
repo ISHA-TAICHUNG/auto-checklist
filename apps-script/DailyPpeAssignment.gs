@@ -83,6 +83,69 @@ function dailyPpeAssignmentStatus(opts) {
   };
 }
 
+function dailyPpeStatusLookbackDays_() {
+  const raw = Number(getSetting_('dailyPpeStatusLookbackDays', '14'));
+  if (!raw || raw < 1) return 14;
+  return Math.max(1, Math.min(31, Math.floor(raw)));
+}
+
+function dailyPpeListRecentUnconfirmedForLine_(opts) {
+  opts = opts || {};
+  const viewerId = String(opts.viewerId || '').trim();
+  const lookbackDays = Math.max(1, Math.min(31, Math.floor(Number(opts.days || dailyPpeStatusLookbackDays_()) || 14)));
+  const targetDate = dailyPpeAssignmentResolveDate_(opts.today || opts.date || null);
+  const startDate = new Date(targetDate.getTime());
+  startDate.setDate(startDate.getDate() - lookbackDays + 1);
+  const limit = Math.max(1, Math.min(10, Math.floor(Number(opts.limit || 8) || 8)));
+  const assignments = dailyPpeListAssignments_({
+    statuses: [DAILY_PPE_ASSIGNMENT_STATUS_PENDING, DAILY_PPE_ASSIGNMENT_STATUS_NOTICE_FAILED],
+  });
+  const items = [];
+
+  assignments.forEach(assignment => {
+    if (!assignment || !assignment.date) return;
+    let assignmentDate;
+    try {
+      assignmentDate = parseISODate_(assignment.date);
+    } catch (_) {
+      return;
+    }
+    if (assignmentDate < startDate || assignmentDate > targetDate) return;
+
+    const pendingItems = (assignment.items || []).filter(item => {
+      try {
+        return !dailyPpeHasDailyRecordForEquipment_(item.equipmentId, assignmentDate);
+      } catch (_) {
+        return true;
+      }
+    });
+    if (!pendingItems.length) return;
+
+    const isMine = !!viewerId && String(assignment.userId || '') === viewerId;
+    const safe = dailyPpeSafeAssignment_(
+      Object.assign({}, assignment, { items: pendingItems }),
+      { includeUrl: isMine }
+    );
+    safe.isMine = isMine;
+    safe.itemCount = pendingItems.length;
+    items.push(safe);
+  });
+
+  items.sort((a, b) => {
+    const dateCompare = String(b.date || '').localeCompare(String(a.date || ''));
+    if (dateCompare !== 0) return dateCompare;
+    return String(b.createdAt || '').localeCompare(String(a.createdAt || ''));
+  });
+
+  return {
+    ok: true,
+    lookbackDays,
+    count: items.length,
+    items: items.slice(0, limit),
+    truncatedCount: Math.max(0, items.length - limit),
+  };
+}
+
 function dailyPpeAssignmentJob(opts) {
   opts = opts || {};
   const dryRun = opts.dryRun === true || String(opts.dryRun || '').toLowerCase() === 'true' || opts.dryRun === '1';

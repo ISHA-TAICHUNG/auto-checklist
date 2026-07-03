@@ -1225,6 +1225,106 @@ function buildChecklistStatusFlex_(results, opts) {
   };
 }
 
+function buildDailyPpeAssignmentStatusFlex_(summary) {
+  summary = summary || {};
+  const items = (summary.items || []).slice(0, 6);
+  const color = '#F29900';
+  const rows = items.length ? items.map(assignment => {
+    const itemNames = (assignment.items || [])
+      .map(item => item.label || item.equipmentName || item.equipmentId)
+      .filter(Boolean)
+      .join('、') || '防護具';
+    const owner = assignment.isMine ? '你' : (assignment.assigneeName || '未指定');
+    const statusText = assignment.status === '通知失敗' ? '通知失敗' : '待確認';
+    return {
+      type: 'box',
+      layout: 'vertical',
+      spacing: 'xs',
+      margin: 'md',
+      contents: [
+        {
+          type: 'box',
+          layout: 'baseline',
+          spacing: 'sm',
+          contents: [
+            { type: 'text', text: assignment.rocDate || assignment.date || '未定日期', flex: 4, size: 'sm', color: '#202124', weight: 'bold' },
+            { type: 'text', text: owner, flex: 4, size: 'sm', color: assignment.isMine ? '#137333' : '#5f6368', weight: 'bold', align: 'end', wrap: true },
+          ],
+        },
+        { type: 'text', text: trimLineText_(itemNames, 70), size: 'xs', color: '#5f6368', wrap: true },
+        { type: 'text', text: assignment.isMine ? `${statusText}，可點下方按鈕補確認` : `${statusText}，需由指定同仁確認`, size: 'xs', color: '#B06000', wrap: true },
+      ],
+    };
+  }) : [{
+    type: 'text',
+    text: '近期限防護具待確認項目目前已完成。',
+    size: 'sm',
+    color: '#5f6368',
+    wrap: true,
+  }];
+
+  const ownActions = (summary.items || [])
+    .filter(assignment => assignment.isMine && assignment.confirmUrl)
+    .slice(0, 3)
+    .map(assignment => ({
+      type: 'button',
+      style: 'primary',
+      height: 'sm',
+      color: '#137333',
+      action: {
+        type: 'uri',
+        label: `確認 ${assignment.rocDate || assignment.date || ''}`.trim().slice(0, 20),
+        uri: assignment.confirmUrl,
+      },
+    }));
+
+  const contents = {
+    type: 'bubble',
+    header: {
+      type: 'box',
+      layout: 'vertical',
+      backgroundColor: color,
+      paddingAll: 'md',
+      contents: [
+        { type: 'text', text: '🦺 防護具待確認', color: '#ffffff', weight: 'bold', size: 'lg' },
+        { type: 'text', text: `近 ${summary.lookbackDays || 14} 天`, color: '#FFF3E0', size: 'sm' },
+      ],
+    },
+    body: {
+      type: 'box',
+      layout: 'vertical',
+      spacing: 'sm',
+      contents: [
+        { type: 'text', text: `尚有 ${summary.count || items.length || 0} 筆待確認`, size: 'md', color, weight: 'bold', wrap: true },
+        { type: 'separator', margin: 'md' },
+        ...rows,
+        ...((summary.truncatedCount || 0) > 0 ? [{
+          type: 'text',
+          text: `... 還有 ${summary.truncatedCount} 筆`,
+          size: 'xs',
+          color: '#8a4b00',
+          margin: 'sm',
+        }] : []),
+      ],
+    },
+  };
+
+  if (ownActions.length) {
+    contents.footer = {
+      type: 'box',
+      layout: 'vertical',
+      spacing: 'sm',
+      contents: ownActions,
+    };
+  }
+
+  return {
+    type: 'flex',
+    altText: `🦺 防護具待確認 ${summary.count || items.length || 0} 筆`,
+    contents,
+  };
+}
+
 function buildDailyWorkStatusFlex_(status) {
   status = status || {};
   const allDone = status.isBusinessDay && status.total > 0 && status.pendingCount === 0;
