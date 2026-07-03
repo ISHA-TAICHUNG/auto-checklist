@@ -70,10 +70,6 @@ function dailyReminderJob(opts) {
     monthlyResults.forEach(r => results.push(r));
   }
 
-  if (typeof monthlyPpeSummaryReminderJob === 'function') {
-    results.push(monthlyPpeSummaryReminderJob({ dryRun, today }));
-  }
-
   if (typeof pendingApprovalReminderJob_ === 'function') {
     results.push(pendingApprovalReminderJob_({ dryRun, today }));
   }
