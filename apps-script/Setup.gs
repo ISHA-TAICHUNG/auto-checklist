@@ -104,6 +104,7 @@ function initializeDatabase() {
     ['dailyPpeAssignmentNearMinute', '15', '每日場地防護具指派約略分鐘；Apps Script 會在此分鐘前後約 15 分鐘內觸發，15 約等於 17:00-17:30'],
     ['dailyPpeAssignmentCandidateNames', '卓小媛,林耿暉,葉邵諭,林幸音', '每日場地防護具隨機指派候選同仁；需在訂閱者清單內且是否訂閱=是、是否為同仁=是、是否為主管=否；以逗號、頓號或換行分隔，空白則改用所有符合條件的非主管同仁'],
     ['dailyPpeStatusLookbackDays', '14', 'LINE「狀態」顯示最近幾天每日防護具待確認；僅被指派本人顯示確認連結，預設 14 天，上限 31 天'],
+    ['dailyPpeResendMinAgeDays', '1', '主管一鍵補發每日防護具待確認時，至少超過幾天才納入；預設 1 天，避免同日重複提醒'],
     ['lineRichMenuImageUrl', 'https://isha-taichung.github.io/auto-checklist/assets/line-rich-menu-main.png', 'LINE 圖文選單圖片網址（2500x1686 PNG）'],
     ['venueUsageRequiredKeywords', '堆高機=堆;高空工作車=高', '共用場地分頁的使用判定必要關鍵字；格式：設備類別=關鍵字1,關鍵字2；例：高空工作車內容需含「高」才算高空工作車有使用'],
   ]);

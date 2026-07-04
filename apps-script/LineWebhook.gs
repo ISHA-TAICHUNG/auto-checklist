@@ -50,6 +50,10 @@ function dispatchLineEvent_(ev) {
     return lineReply_(ev.replyToken, buildLineFriendWelcomeFlex_());
   }
 
+  if (ev.type === 'postback') {
+    return dispatchLinePostback_(ev);
+  }
+
   // 只處理 message + text 類型
   if (ev.type !== 'message' || !ev.message || ev.message.type !== 'text') return;
   const text = String(ev.message.text || '').trim();
@@ -124,6 +128,43 @@ function dispatchLineEvent_(ev) {
       text: '看不懂這個操作。請輸入「幫助」查看可用清單，或點下方按鈕操作。',
     });
   }
+}
+
+function dispatchLinePostback_(ev) {
+  const replyToken = ev.replyToken;
+  const source = ev.source || {};
+  const userId = source.userId || '';
+  const params = parseLinePostbackData_(ev.postback && ev.postback.data);
+  const action = String(params.action || '').trim();
+
+  if (source.type === 'user' && typeof startLoadingAnimation_ === 'function') {
+    startLoadingAnimation_(userId, 10);
+  }
+
+  if (action === 'dailyPpeResendAll') {
+    if (!isLineSubscriberUser_(userId)) {
+      return lineReply_(replyToken, buildSubscriberRegistrationFlex_());
+    }
+    if (typeof dailyPpeResendAllForSupervisor_ !== 'function') {
+      return lineReply_(replyToken, withQuickReply_({
+        type: 'text',
+        text: '每日防護具補發功能尚未部署完成。',
+      }));
+    }
+    return lineReply_(replyToken, withQuickReply_(dailyPpeResendAllForSupervisor_(userId)));
+  }
+}
+
+function parseLinePostbackData_(data) {
+  const out = {};
+  String(data || '').split('&').forEach(part => {
+    if (!part) return;
+    const pieces = part.split('=');
+    const key = decodeURIComponent(String(pieces.shift() || '').replace(/\+/g, ' ')).trim();
+    const value = decodeURIComponent(String(pieces.join('=') || '').replace(/\+/g, ' ')).trim();
+    if (key) out[key] = value;
+  });
+  return out;
 }
 
 function requiresLineSubscriberAuth_(cmd) {
@@ -230,7 +271,13 @@ function cmdStatus_(replyToken, userId) {
   const messages = [buildChecklistStatusFlex_(results)];
   if (typeof dailyPpeListRecentUnconfirmedForLine_ === 'function' &&
       typeof buildDailyPpeAssignmentStatusFlex_ === 'function') {
-    const ppeStatus = dailyPpeListRecentUnconfirmedForLine_({ viewerId: userId });
+    const profile = (typeof getLineSubscriberProfileByUserId_ === 'function')
+      ? getLineSubscriberProfileByUserId_(userId)
+      : null;
+    const ppeStatus = dailyPpeListRecentUnconfirmedForLine_({
+      viewerId: userId,
+      viewerIsSupervisor: !!(profile && profile.isSupervisor),
+    });
     if (ppeStatus && ppeStatus.count > 0) {
       messages.push(buildDailyPpeAssignmentStatusFlex_(ppeStatus));
     }

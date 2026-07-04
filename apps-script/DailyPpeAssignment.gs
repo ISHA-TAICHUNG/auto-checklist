@@ -18,13 +18,18 @@ const DAILY_PPE_ASSIGNMENT_STATUS_PENDING = '待確認';
 const DAILY_PPE_ASSIGNMENT_STATUS_CONFIRMED = '已確認';
 const DAILY_PPE_ASSIGNMENT_STATUS_NOTICE_FAILED = '通知失敗';
 
-function setupDailyPpeAssignmentSheet_(ss) {
-  ss = ss || SpreadsheetApp.openById(CONFIG.DB_SHEET_ID);
-  setupSheet_(ss, DAILY_PPE_ASSIGNMENT_SHEET_NAME, [
+function dailyPpeAssignmentHeaders_() {
+  return [
     '指派ID', '指派日期', '建立時間', '指定同仁', 'LINE_USER_ID',
     '狀態', '確認時間', '場地代號清單', '場地名稱清單', '場地使用摘要',
     '確認項目JSON', '紀錄ID清單', 'PDF連結清單', 'Token', '通知結果', '備註',
-  ], []);
+    '最後補發時間', '補發次數', '最後補發者', '最後補發結果',
+  ];
+}
+
+function setupDailyPpeAssignmentSheet_(ss) {
+  ss = ss || SpreadsheetApp.openById(CONFIG.DB_SHEET_ID);
+  setupSheet_(ss, DAILY_PPE_ASSIGNMENT_SHEET_NAME, dailyPpeAssignmentHeaders_(), []);
   return ss.getSheetByName(DAILY_PPE_ASSIGNMENT_SHEET_NAME);
 }
 
@@ -89,14 +94,26 @@ function dailyPpeStatusLookbackDays_() {
   return Math.max(1, Math.min(31, Math.floor(raw)));
 }
 
+function dailyPpeResendMinAgeDays_() {
+  const raw = Number(getSetting_('dailyPpeResendMinAgeDays', '1'));
+  if (isNaN(raw) || raw < 0) return 1;
+  return Math.max(0, Math.min(7, Math.floor(raw)));
+}
+
 function dailyPpeListRecentUnconfirmedForLine_(opts) {
   opts = opts || {};
   const viewerId = String(opts.viewerId || '').trim();
+  const viewerIsSupervisor = opts.viewerIsSupervisor === true;
   const lookbackDays = Math.max(1, Math.min(31, Math.floor(Number(opts.days || dailyPpeStatusLookbackDays_()) || 14)));
   const targetDate = dailyPpeAssignmentResolveDate_(opts.today || opts.date || null);
   const startDate = new Date(targetDate.getTime());
   startDate.setDate(startDate.getDate() - lookbackDays + 1);
-  const limit = Math.max(1, Math.min(10, Math.floor(Number(opts.limit || 8) || 8)));
+  const limitCap = Math.max(1, Math.min(100, Math.floor(Number(opts.limitCap || 10) || 10)));
+  const limit = Math.max(1, Math.min(limitCap, Math.floor(Number(opts.limit || 8) || 8)));
+  const rawResendMinAgeDays = opts.resendMinAgeDays !== undefined && opts.resendMinAgeDays !== null && opts.resendMinAgeDays !== ''
+    ? opts.resendMinAgeDays
+    : dailyPpeResendMinAgeDays_();
+  const resendMinAgeDays = Math.max(0, Math.min(7, Math.floor(Number(rawResendMinAgeDays) || 0)));
   const dailyRecordIndex = dailyPpeDailyRecordIndex_(startDate, targetDate);
   const assignments = dailyPpeListAssignments_({
     statuses: [DAILY_PPE_ASSIGNMENT_STATUS_PENDING, DAILY_PPE_ASSIGNMENT_STATUS_NOTICE_FAILED],
@@ -119,12 +136,23 @@ function dailyPpeListRecentUnconfirmedForLine_(opts) {
     if (!pendingItems.length) return;
 
     const isMine = !!viewerId && String(assignment.userId || '') === viewerId;
+    const resendInfo = dailyPpeResendEligibility_(assignment, pendingItems, targetDate, {
+      viewerIsSupervisor,
+      minAgeDays: resendMinAgeDays,
+    });
     const safe = dailyPpeSafeAssignment_(
       Object.assign({}, assignment, { items: pendingItems }),
-      { includeUrl: isMine }
+      {
+        includeUrl: isMine || opts.includeUrlForResend === true,
+        includeTargetUserId: opts.includeTargetUserId === true,
+      }
     );
     safe.isMine = isMine;
     safe.itemCount = pendingItems.length;
+    safe.resendEligible = resendInfo.resendEligible;
+    safe.resendBlockedReason = resendInfo.resendBlockedReason;
+    safe.assignmentAgeDays = resendInfo.assignmentAgeDays;
+    safe.lastResentDate = resendInfo.lastResentDate;
     items.push(safe);
   });
 
@@ -138,10 +166,59 @@ function dailyPpeListRecentUnconfirmedForLine_(opts) {
   return {
     ok: true,
     lookbackDays,
+    viewerIsSupervisor,
+    resendMinAgeDays,
     count: items.length,
     items: items.slice(0, limit),
     truncatedCount: Math.max(0, items.length - limit),
+    resendEligibleCount: items.filter(item => item && item.resendEligible).length,
   };
+}
+
+function dailyPpeResendEligibility_(assignment, pendingItems, targetDate, opts) {
+  opts = opts || {};
+  if (!opts.viewerIsSupervisor) {
+    return { resendEligible: false, resendBlockedReason: 'not_supervisor', assignmentAgeDays: 0, lastResentDate: '' };
+  }
+  if (!assignment || !assignment.userId) {
+    return { resendEligible: false, resendBlockedReason: 'missing_target', assignmentAgeDays: 0, lastResentDate: '' };
+  }
+  if (!pendingItems || !pendingItems.length) {
+    return { resendEligible: false, resendBlockedReason: 'no_pending_items', assignmentAgeDays: 0, lastResentDate: '' };
+  }
+
+  const assignmentAgeDays = dailyPpeAssignmentAgeDays_(assignment.date, targetDate);
+  const minAgeDays = Math.max(0, Math.floor(Number(opts.minAgeDays || 0) || 0));
+  if (assignmentAgeDays < minAgeDays) {
+    return { resendEligible: false, resendBlockedReason: 'too_new', assignmentAgeDays, lastResentDate: '' };
+  }
+
+  const todayKey = formatISODate_(targetDate);
+  const lastResentDate = dailyPpeDateKeyFromDateTime_(assignment.lastResentAt);
+  if (lastResentDate && lastResentDate === todayKey) {
+    return { resendEligible: false, resendBlockedReason: 'resent_today', assignmentAgeDays, lastResentDate };
+  }
+
+  return { resendEligible: true, resendBlockedReason: '', assignmentAgeDays, lastResentDate };
+}
+
+function dailyPpeAssignmentAgeDays_(assignmentDate, targetDate) {
+  try {
+    const assigned = parseISODate_(String(assignmentDate || '').trim());
+    const today = dailyPpeAssignmentResolveDate_(targetDate || null);
+    return Math.max(0, Math.floor((today.getTime() - assigned.getTime()) / (24 * 60 * 60 * 1000)));
+  } catch (_) {
+    return 0;
+  }
+}
+
+function dailyPpeDateKeyFromDateTime_(value) {
+  if (!value) return '';
+  if (value instanceof Date) return formatISODate_(value);
+  const text = String(value || '').trim();
+  const m = text.match(/^(\d{4})[-\/](\d{1,2})[-\/](\d{1,2})/);
+  if (!m) return '';
+  return `${m[1]}-${String(m[2]).padStart(2, '0')}-${String(m[3]).padStart(2, '0')}`;
 }
 
 function dailyPpeDailyRecordIndex_(startDate, endDate) {
@@ -515,6 +592,245 @@ function dailyPpeSafePushAssignment_(assignment) {
   }
 }
 
+function dailyPpeResendAllForSupervisor_(userId, opts) {
+  opts = opts || {};
+  const profile = (typeof getLineSubscriberProfileByUserId_ === 'function')
+    ? getLineSubscriberProfileByUserId_(userId)
+    : null;
+  if (!profile || !profile.isSupervisor) {
+    return buildDailyPpeResendResultMessage_({
+      ok: false,
+      title: '無法補發',
+      detail: '此功能限訂閱者清單內「是否為主管=是」的人使用。',
+      color: '#D32F2F',
+    });
+  }
+
+  const lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    const summary = dailyPpeListRecentUnconfirmedForLine_({
+      viewerId: userId,
+      viewerIsSupervisor: true,
+      includeTargetUserId: true,
+      includeUrlForResend: true,
+      limit: 100,
+      limitCap: 100,
+      days: opts.days || dailyPpeStatusLookbackDays_(),
+      resendMinAgeDays: opts.resendMinAgeDays !== undefined && opts.resendMinAgeDays !== null && opts.resendMinAgeDays !== ''
+        ? opts.resendMinAgeDays
+        : dailyPpeResendMinAgeDays_(),
+    });
+    const eligible = (summary.items || [])
+      .filter(item => item && item.resendEligible && item.targetUserId && item.confirmUrl);
+
+    if (!eligible.length) {
+      return buildDailyPpeResendResultMessage_({
+        ok: true,
+        title: '目前沒有可補發項目',
+        detail: `只補發近 ${summary.lookbackDays || dailyPpeStatusLookbackDays_()} 天、已超過 ${summary.resendMinAgeDays || dailyPpeResendMinAgeDays_()} 天且今天尚未補發的待確認。`,
+        color: '#137333',
+      });
+    }
+
+    const groups = {};
+    eligible.forEach(item => {
+      const id = String(item.targetUserId || '').trim();
+      if (!id) return;
+      if (!groups[id]) groups[id] = [];
+      groups[id].push(item);
+    });
+
+    let sentRecipients = 0;
+    let sentAssignments = 0;
+    const failures = [];
+    Object.keys(groups).forEach(targetUserId => {
+      const assignments = groups[targetUserId];
+      const pushResult = dailyPpeSafePushResendDigest_(targetUserId, assignments);
+      const ok = pushResult && pushResult.ok !== false;
+      if (ok) {
+        sentRecipients += 1;
+        sentAssignments += assignments.length;
+      } else {
+        failures.push({
+          targetUserId,
+          count: assignments.length,
+          reason: (pushResult && (pushResult.reason || pushResult.code || pushResult.message)) || 'push_failed',
+        });
+      }
+      assignments.forEach(item => {
+        dailyPpeUpdateAssignmentResend_(
+          item.assignmentId,
+          pushResult,
+          profile.name || profile.userId || userId,
+          ok ? DAILY_PPE_ASSIGNMENT_STATUS_PENDING : DAILY_PPE_ASSIGNMENT_STATUS_NOTICE_FAILED
+        );
+      });
+    });
+
+    return buildDailyPpeResendResultMessage_({
+      ok: failures.length === 0,
+      title: failures.length ? '補發完成，部分失敗' : '補發完成',
+      detail: `已補發 ${sentRecipients} 位同仁、${sentAssignments} 筆待確認。LINE 主動推播約扣 ${sentRecipients} 則額度。`,
+      failures,
+      color: failures.length ? '#F29900' : '#137333',
+    });
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function dailyPpeSafePushResendDigest_(targetUserId, assignments) {
+  try {
+    return linePushTo_(
+      targetUserId,
+      withQuickReply_([dailyPpeBuildResendDigestMessage_(assignments)]),
+      'push'
+    );
+  } catch (err) {
+    return {
+      ok: false,
+      reason: 'push_exception',
+      message: String(err && err.message ? err.message : err).substring(0, 500),
+    };
+  }
+}
+
+function dailyPpeBuildResendDigestMessage_(assignments) {
+  assignments = assignments || [];
+  const first = assignments[0] || {};
+  const rows = assignments.slice(0, 8).map(item => {
+    const itemNames = (item.items || [])
+      .map(i => i.label || i.equipmentName || i.equipmentId)
+      .filter(Boolean)
+      .join('、') || '防護具';
+    return {
+      type: 'box',
+      layout: 'vertical',
+      spacing: 'xs',
+      margin: 'md',
+      contents: [
+        { type: 'text', text: item.rocDate || item.date || '未定日期', size: 'sm', color: '#202124', weight: 'bold' },
+        { type: 'text', text: trimLineText_(itemNames, 90), size: 'xs', color: '#5f6368', wrap: true },
+      ],
+    };
+  });
+  const buttons = assignments
+    .filter(item => item.confirmUrl)
+    .slice(0, 4)
+    .map(item => ({
+      type: 'button',
+      style: 'primary',
+      height: 'sm',
+      color: '#137333',
+      action: {
+        type: 'uri',
+        label: `確認 ${item.rocDate || item.date || ''}`.trim().slice(0, 20),
+        uri: item.confirmUrl,
+      },
+    }));
+
+  return {
+    type: 'flex',
+    altText: `🦺 每日防護具待確認補發 ${assignments.length} 筆`,
+    contents: {
+      type: 'bubble',
+      header: {
+        type: 'box',
+        layout: 'vertical',
+        backgroundColor: '#137333',
+        paddingAll: 'md',
+        contents: [
+          { type: 'text', text: '🦺 每日防護具待確認', color: '#ffffff', weight: 'bold', size: 'lg', wrap: true },
+          { type: 'text', text: first.assigneeName || '指定同仁', color: '#E8F0FE', size: 'sm' },
+        ],
+      },
+      body: {
+        type: 'box',
+        layout: 'vertical',
+        spacing: 'sm',
+        contents: [
+          { type: 'text', text: `尚有 ${assignments.length} 筆場地防護具待確認，請開啟下方連結補確認。`, size: 'sm', color: '#202124', wrap: true },
+          { type: 'separator', margin: 'md' },
+          ...rows,
+          ...(assignments.length > rows.length ? [{
+            type: 'text',
+            text: `... 還有 ${assignments.length - rows.length} 筆`,
+            size: 'xs',
+            color: '#5f6368',
+            margin: 'sm',
+          }] : []),
+        ],
+      },
+      footer: {
+        type: 'box',
+        layout: 'vertical',
+        spacing: 'sm',
+        contents: buttons.length ? buttons : [
+          {
+            type: 'button',
+            style: 'secondary',
+            height: 'sm',
+            action: { type: 'message', label: '查詢狀態', text: '狀態' },
+          },
+        ],
+      },
+    },
+  };
+}
+
+function dailyPpeUpdateAssignmentResend_(assignmentId, pushResult, actorName, status) {
+  const found = dailyPpeFindAssignment_(assignmentId);
+  if (!found) return;
+  const nowText = Utilities.formatDate(new Date(), tz_(), 'yyyy-MM-dd HH:mm:ss');
+  const safeResult = Object.assign({}, pushResult || {});
+  if (safeResult.body) safeResult.body = String(safeResult.body).substring(0, 500);
+  const updates = {
+    '最後補發時間': nowText,
+    '補發次數': Math.max(0, Number(found.resendCount || 0) || 0) + 1,
+    '最後補發者': actorName || '',
+    '最後補發結果': JSON.stringify(safeResult).substring(0, 2000),
+    '通知結果': JSON.stringify(Object.assign({ resend: true }, safeResult)).substring(0, 2000),
+  };
+  if (status) updates['狀態'] = status;
+  setSheetRowValues_(found.sheet, found.headers, found.rowNo, updates);
+}
+
+function buildDailyPpeResendResultMessage_(result) {
+  result = result || {};
+  const failures = result.failures || [];
+  const body = [
+    { type: 'text', text: result.title || '補發結果', size: 'md', color: result.color || '#137333', weight: 'bold', wrap: true },
+    { type: 'separator', margin: 'md' },
+    { type: 'text', text: result.detail || '', size: 'sm', color: '#202124', wrap: true, margin: 'md' },
+  ];
+  if (failures.length) {
+    body.push({ type: 'text', text: `失敗 ${failures.length} 位，請稍後再試或查看 LINE 額度。`, size: 'xs', color: '#D32F2F', wrap: true, margin: 'sm' });
+  }
+  return {
+    type: 'flex',
+    altText: result.title || '每日防護具補發結果',
+    contents: {
+      type: 'bubble',
+      header: {
+        type: 'box',
+        layout: 'vertical',
+        backgroundColor: result.color || '#137333',
+        paddingAll: 'md',
+        contents: [
+          { type: 'text', text: '🦺 防護具補發結果', color: '#ffffff', weight: 'bold', size: 'lg' },
+        ],
+      },
+      body: {
+        type: 'box',
+        layout: 'vertical',
+        spacing: 'sm',
+        contents: body,
+      },
+    },
+  };
+}
+
 function dailyPpeConfirmPageResponse_(e) {
   const template = HtmlService.createTemplateFromFile('DailyPpeConfirmPage');
   template.initialParamsJson = JSON.stringify({
@@ -739,6 +1055,10 @@ function dailyPpeAssignmentFromRow_(sheet, headers, row, rowNo) {
     token: String(get('Token') || '').trim(),
     noticeResult: String(get('通知結果') || '').trim(),
     remark: String(get('備註') || '').trim(),
+    lastResentAt: formatDisplayDateTime_(get('最後補發時間')),
+    resendCount: Math.max(0, Number(get('補發次數') || 0) || 0),
+    lastResentBy: String(get('最後補發者') || '').trim(),
+    lastResendResult: String(get('最後補發結果') || '').trim(),
   };
 }
 
@@ -788,7 +1108,11 @@ function dailyPpeSafeAssignment_(assignment, opts) {
     recordIds: assignment.recordIds || [],
     pdfUrls: assignment.pdfUrls || [],
     remark: assignment.remark || '',
+    lastResentAt: assignment.lastResentAt || '',
+    resendCount: Math.max(0, Number(assignment.resendCount || 0) || 0),
+    lastResentBy: assignment.lastResentBy || '',
   };
   if (opts.includeUrl) safe.confirmUrl = dailyPpeBuildAssignmentUrl_(assignment);
+  if (opts.includeTargetUserId) safe.targetUserId = assignment.userId || '';
   return safe;
 }

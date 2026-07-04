@@ -1285,6 +1285,19 @@ function buildDailyPpeAssignmentStatusFlex_(summary) {
         uri: assignment.confirmUrl,
       },
     }));
+  const supervisorCanResend = summary.viewerIsSupervisor === true && Number(summary.resendEligibleCount || 0) > 0;
+  const supervisorActions = supervisorCanResend ? [{
+    type: 'button',
+    style: 'primary',
+    height: 'sm',
+    color: '#F29900',
+    action: {
+      type: 'postback',
+      label: '補發全部待確認',
+      data: 'action=dailyPpeResendAll',
+      displayText: '補發每日防護具待確認',
+    },
+  }] : [];
 
   const contents = {
     type: 'bubble',
@@ -1313,16 +1326,27 @@ function buildDailyPpeAssignmentStatusFlex_(summary) {
           color: '#8a4b00',
           margin: 'sm',
         }] : []),
+        ...(summary.viewerIsSupervisor ? [{
+          type: 'text',
+          text: supervisorCanResend
+            ? `主管可補發 ${summary.resendEligibleCount} 筆；同一位同仁多筆會合併成 1 則。`
+            : '主管補發僅納入超過 1 天且今天尚未補發的項目。',
+          size: 'xs',
+          color: '#8a4b00',
+          margin: 'sm',
+          wrap: true,
+        }] : []),
       ],
     },
   };
 
-  if (ownActions.length) {
+  const footerActions = ownActions.concat(supervisorActions);
+  if (footerActions.length) {
     contents.footer = {
       type: 'box',
       layout: 'vertical',
       spacing: 'sm',
-      contents: ownActions,
+      contents: footerActions,
     };
   }
 
