@@ -943,7 +943,7 @@ function dailyPpeCreateDailyRecord_(equipmentId, date, assignment, opts) {
       order: it.order,
       name: it.name,
       method: it.method || '',
-      result: '已確認',
+      result: 'V',
       note: opts.remark || '',
       abnormalDesc: '',
       photos: [],

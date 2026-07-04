@@ -81,9 +81,7 @@ function createChecklistDoc_(formType, ctx) {
     // A4 可用寬度 = 595pt - 2×36pt margin = 523pt
     // colWidths 總和不可超過 523，否則 DocumentApp 會自動壓縮造成「跑版」
     if (isDaily) {
-      rows = isDigitalDailyConfirmation
-        ? [['項次', '確認項目', '確認狀態', '同仁回覆 / 補充說明']]
-        : [['項次', '檢查項目', '結果', '記事 / 異常說明']];
+      rows = [['項次', '檢查項目', '結果', '記事 / 異常說明']];
       colWidths = [30, 240, 55, 130];   // 共 455
       ctx.payload.items.forEach(it => {
         rows.push([String(it.order), it.name, it.result, it.note || '']);
@@ -144,17 +142,10 @@ function createChecklistDoc_(formType, ctx) {
     const tplLegal = tpl.legalBasis;
     let ruleText;
     if (tplRule) {
-      if (isDigitalDailyConfirmation) {
-        ruleText = '確認方式：本紀錄由指定同仁確認後留存；內容表示確認時未回報防護具異常，非系統自動判定。';
-        if (tplLegal) ruleText += '\n參考依據：' + tplLegal;
-      } else {
-        ruleText = '填寫規則：' + tplRule;
-        if (tplLegal) ruleText += '\n依據：' + tplLegal;
-      }
+      ruleText = '填寫規則：' + tplRule;
+      if (tplLegal) ruleText += '\n依據：' + tplLegal;
     } else {
-      ruleText = isDigitalDailyConfirmation
-        ? '確認方式：本紀錄由指定同仁確認後留存；內容表示確認時未回報防護具異常，非系統自動判定。'
-        : isDaily
+      ruleText = isDaily
         ? '填寫規則：良好「V」/ 無此項「/」/ 不良「X」（不良需於記事欄註明）。\n依據「職業安全衛生管理辦法」第五十二條規定，發現異常應立即檢修或採取必要措施。'
         : '注意事項：檢查結果應詳細紀錄。風險評估：嚴重性危害「V」/ 可能性危害「?」/ 無危害「—」';
     }
@@ -165,7 +156,7 @@ function createChecklistDoc_(formType, ctx) {
 
     // ----- 簽名（圖 + 姓名）-----
     const sigLabel = body.appendParagraph(
-      isDigitalDailyConfirmation ? '確認人員：' : (isDaily ? '檢點人員簽名：' : '檢查人員簽名：')
+      isDaily ? '檢點人員簽名：' : '檢查人員簽名：'
     );
     sigLabel.editAsText().setFontSize(11).setBold(true);
 
@@ -182,16 +173,7 @@ function createChecklistDoc_(formType, ctx) {
       }
       signatureInserted = true;
     }
-    if (!signatureInserted && ctx.payload.digitalConfirmation) {
-      if (ctx.payload.confirmedAt) {
-        const timeP = body.appendParagraph('確認時間：' + formatDisplayDateTime_(ctx.payload.confirmedAt));
-        timeP.editAsText().setFontSize(10).setForegroundColor('#555555');
-      }
-      if (ctx.payload.confirmationAssignmentId) {
-        const idP = body.appendParagraph('確認編號：' + ctx.payload.confirmationAssignmentId);
-        idP.editAsText().setFontSize(9).setForegroundColor('#777777');
-      }
-    } else if (!signatureInserted) {
+    if (!signatureInserted && !ctx.payload.digitalConfirmation) {
       const noSig = body.appendParagraph('（無簽名）');
       noSig.editAsText().setFontSize(10).setForegroundColor('#c5221f');
     }
@@ -201,9 +183,7 @@ function createChecklistDoc_(formType, ctx) {
 
     // ----- 送出時間 -----
     body.appendParagraph('');
-    const submitText = isDigitalDailyConfirmation
-      ? '產製時間：' + submittedAtStr + '   本 PDF 由系統於確認完成後產製'
-      : '送出時間：' + submittedAtStr + '   系統自動產製';
+    const submitText = '送出時間：' + submittedAtStr + '   系統自動產製';
     const submitP = body.appendParagraph(submitText);
     submitP.editAsText().setFontSize(9).setForegroundColor('#888888');
     submitP.setAlignment(DocumentApp.HorizontalAlignment.RIGHT);
