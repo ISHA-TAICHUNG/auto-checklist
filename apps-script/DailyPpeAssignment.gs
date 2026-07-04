@@ -23,7 +23,7 @@ function dailyPpeAssignmentHeaders_() {
     '指派ID', '指派日期', '建立時間', '指定同仁', 'LINE_USER_ID',
     '狀態', '確認時間', '場地代號清單', '場地名稱清單', '場地使用摘要',
     '確認項目JSON', '紀錄ID清單', 'PDF連結清單', 'Token', '通知結果', '備註',
-    '最後補發時間', '補發次數', '最後補發者', '最後補發結果',
+    '補發認領時間', '最後補發時間', '補發次數', '最後補發者', '最後補發結果',
   ];
 }
 
@@ -197,6 +197,10 @@ function dailyPpeResendEligibility_(assignment, pendingItems, targetDate, opts) 
   const lastResentDate = dailyPpeDateKeyFromDateTime_(assignment.lastResentAt);
   if (lastResentDate && lastResentDate === todayKey) {
     return { resendEligible: false, resendBlockedReason: 'resent_today', assignmentAgeDays, lastResentDate };
+  }
+  const claimedDate = dailyPpeDateKeyFromDateTime_(assignment.resendClaimedAt);
+  if (claimedDate && claimedDate === todayKey) {
+    return { resendEligible: false, resendBlockedReason: 'resend_claimed_today', assignmentAgeDays, lastResentDate };
   }
 
   return { resendEligible: true, resendBlockedReason: '', assignmentAgeDays, lastResentDate };
@@ -606,10 +610,13 @@ function dailyPpeResendAllForSupervisor_(userId, opts) {
     });
   }
 
+  let summary;
+  let claimed = [];
+  const actorName = profile.name || profile.userId || userId;
   const lock = LockService.getScriptLock();
   lock.waitLock(30000);
   try {
-    const summary = dailyPpeListRecentUnconfirmedForLine_({
+    summary = dailyPpeListRecentUnconfirmedForLine_({
       viewerId: userId,
       viewerIsSupervisor: true,
       includeTargetUserId: true,
@@ -623,61 +630,105 @@ function dailyPpeResendAllForSupervisor_(userId, opts) {
     });
     const eligible = (summary.items || [])
       .filter(item => item && item.resendEligible && item.targetUserId && item.confirmUrl);
-
-    if (!eligible.length) {
-      return buildDailyPpeResendResultMessage_({
-        ok: true,
-        title: '目前沒有可補發項目',
-        detail: `只補發近 ${summary.lookbackDays || dailyPpeStatusLookbackDays_()} 天、已超過 ${summary.resendMinAgeDays || dailyPpeResendMinAgeDays_()} 天且今天尚未補發的待確認。`,
-        color: '#137333',
-      });
-    }
-
-    const groups = {};
+    const claimText = Utilities.formatDate(new Date(), tz_(), 'yyyy-MM-dd HH:mm:ss');
     eligible.forEach(item => {
-      const id = String(item.targetUserId || '').trim();
-      if (!id) return;
-      if (!groups[id]) groups[id] = [];
-      groups[id].push(item);
-    });
-
-    let sentRecipients = 0;
-    let sentAssignments = 0;
-    const failures = [];
-    Object.keys(groups).forEach(targetUserId => {
-      const assignments = groups[targetUserId];
-      const pushResult = dailyPpeSafePushResendDigest_(targetUserId, assignments);
-      const ok = pushResult && pushResult.ok !== false;
-      if (ok) {
-        sentRecipients += 1;
-        sentAssignments += assignments.length;
-      } else {
-        failures.push({
-          targetUserId,
-          count: assignments.length,
-          reason: (pushResult && (pushResult.reason || pushResult.code || pushResult.message)) || 'push_failed',
-        });
+      try {
+        if (dailyPpeClaimAssignmentResend_(item.assignmentId, actorName, claimText)) {
+          claimed.push(item);
+        }
+      } catch (err) {
+        claimed.push(Object.assign({}, item, {
+          claimFailed: true,
+          claimFailureReason: String(err && err.message ? err.message : err).substring(0, 300),
+        }));
       }
-      assignments.forEach(item => {
-        dailyPpeUpdateAssignmentResend_(
-          item.assignmentId,
-          pushResult,
-          profile.name || profile.userId || userId,
-          ok
-        );
-      });
-    });
-
-    return buildDailyPpeResendResultMessage_({
-      ok: failures.length === 0,
-      title: failures.length ? '補發完成，部分失敗' : '補發完成',
-      detail: `已補發 ${sentRecipients} 位同仁、${sentAssignments} 筆待確認。LINE 主動推播約扣 ${sentRecipients} 則額度。`,
-      failures,
-      color: failures.length ? '#F29900' : '#137333',
     });
   } finally {
     lock.releaseLock();
   }
+
+  const claimFailures = claimed.filter(item => item && item.claimFailed);
+  claimed = claimed.filter(item => item && !item.claimFailed);
+
+  if (!claimed.length) {
+    return buildDailyPpeResendResultMessage_({
+      ok: !claimFailures.length,
+      title: claimFailures.length ? '補發失敗' : '目前沒有可補發項目',
+      detail: claimFailures.length
+        ? '待確認項目認領失敗，請稍後再試。'
+        : `只補發近 ${summary.lookbackDays || dailyPpeStatusLookbackDays_()} 天、已超過 ${summary.resendMinAgeDays || dailyPpeResendMinAgeDays_()} 天且今天尚未補發的待確認。`,
+      failures: claimFailures.map(item => ({
+        targetUserId: item.targetUserId || '',
+        count: 1,
+        reason: item.claimFailureReason || 'claim_failed',
+      })),
+      color: claimFailures.length ? '#D32F2F' : '#137333',
+    });
+  }
+
+  const groups = {};
+  claimed.forEach(item => {
+    const id = String(item.targetUserId || '').trim();
+    if (!id) return;
+    if (!groups[id]) groups[id] = [];
+    groups[id].push(item);
+  });
+
+  let sentRecipients = 0;
+  let sentAssignments = 0;
+  const failures = claimFailures.map(item => ({
+    targetUserId: item.targetUserId || '',
+    count: 1,
+    reason: item.claimFailureReason || 'claim_failed',
+  }));
+  Object.keys(groups).forEach(targetUserId => {
+    const assignments = groups[targetUserId];
+    let pushResult;
+    try {
+      pushResult = dailyPpeSafePushResendDigest_(targetUserId, assignments);
+    } catch (err) {
+      pushResult = {
+        ok: false,
+        reason: 'push_exception',
+        message: String(err && err.message ? err.message : err).substring(0, 500),
+      };
+    }
+    const ok = pushResult && pushResult.ok !== false;
+    if (ok) {
+      sentRecipients += 1;
+      sentAssignments += assignments.length;
+    } else {
+      failures.push({
+        targetUserId,
+        count: assignments.length,
+        reason: (pushResult && (pushResult.reason || pushResult.code || pushResult.message)) || 'push_failed',
+      });
+    }
+    assignments.forEach(item => {
+      try {
+        dailyPpeUpdateAssignmentResend_(
+          item.assignmentId,
+          pushResult,
+          actorName,
+          ok
+        );
+      } catch (err) {
+        failures.push({
+          targetUserId,
+          count: 1,
+          reason: `writeback_failed:${String(err && err.message ? err.message : err).substring(0, 200)}`,
+        });
+      }
+    });
+  });
+
+  return buildDailyPpeResendResultMessage_({
+    ok: failures.length === 0,
+    title: failures.length ? '補發完成，部分失敗' : '補發完成',
+    detail: `已補發 ${sentRecipients} 位同仁、${sentAssignments} 筆待確認。LINE 主動推播約扣 ${sentRecipients} 則額度。`,
+    failures,
+    color: failures.length ? '#F29900' : '#137333',
+  });
 }
 
 function dailyPpeSafePushResendDigest_(targetUserId, assignments) {
@@ -779,25 +830,50 @@ function dailyPpeBuildResendDigestMessage_(assignments) {
   };
 }
 
-function dailyPpeUpdateAssignmentResend_(assignmentId, pushResult, actorName, succeeded) {
+function dailyPpeClaimAssignmentResend_(assignmentId, actorName, claimText) {
   const found = dailyPpeFindAssignment_(assignmentId);
-  if (!found) return;
-  const nowText = Utilities.formatDate(new Date(), tz_(), 'yyyy-MM-dd HH:mm:ss');
-  const safeResult = Object.assign({}, pushResult || {});
-  if (safeResult.body) safeResult.body = String(safeResult.body).substring(0, 500);
-  safeResult.resend = true;
-  safeResult.succeeded = succeeded === true;
-  safeResult.attemptedAt = nowText;
-  safeResult.actor = actorName || '';
-  const updates = {
-    '最後補發結果': JSON.stringify(safeResult).substring(0, 2000),
+  if (!found) return false;
+  const safeResult = {
+    resend: true,
+    claimed: true,
+    succeeded: false,
+    attemptedAt: claimText,
+    actor: actorName || '',
   };
-  if (succeeded === true) {
-    updates['最後補發時間'] = nowText;
-    updates['補發次數'] = Math.max(0, Number(found.resendCount || 0) || 0) + 1;
-    updates['最後補發者'] = actorName || '';
+  setSheetRowValues_(found.sheet, found.headers, found.rowNo, {
+    '補發認領時間': claimText,
+    '最後補發者': actorName || '',
+    '最後補發結果': JSON.stringify(safeResult).substring(0, 2000),
+  });
+  return true;
+}
+
+function dailyPpeUpdateAssignmentResend_(assignmentId, pushResult, actorName, succeeded) {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    const found = dailyPpeFindAssignment_(assignmentId);
+    if (!found) return;
+    const nowText = Utilities.formatDate(new Date(), tz_(), 'yyyy-MM-dd HH:mm:ss');
+    const safeResult = Object.assign({}, pushResult || {});
+    if (safeResult.body) safeResult.body = String(safeResult.body).substring(0, 500);
+    safeResult.resend = true;
+    safeResult.succeeded = succeeded === true;
+    safeResult.attemptedAt = nowText;
+    safeResult.actor = actorName || '';
+    const updates = {
+      '補發認領時間': '',
+      '最後補發結果': JSON.stringify(safeResult).substring(0, 2000),
+    };
+    if (succeeded === true) {
+      updates['最後補發時間'] = nowText;
+      updates['補發次數'] = Math.max(0, Number(found.resendCount || 0) || 0) + 1;
+      updates['最後補發者'] = actorName || '';
+    }
+    setSheetRowValues_(found.sheet, found.headers, found.rowNo, updates);
+  } finally {
+    lock.releaseLock();
   }
-  setSheetRowValues_(found.sheet, found.headers, found.rowNo, updates);
 }
 
 function buildDailyPpeResendResultMessage_(result) {
@@ -1052,6 +1128,7 @@ function dailyPpeAssignmentFromRow_(sheet, headers, row, rowNo) {
     token: String(get('Token') || '').trim(),
     noticeResult: String(get('通知結果') || '').trim(),
     remark: String(get('備註') || '').trim(),
+    resendClaimedAt: formatDisplayDateTime_(get('補發認領時間')),
     lastResentAt: formatDisplayDateTime_(get('最後補發時間')),
     resendCount: Math.max(0, Number(get('補發次數') || 0) || 0),
     lastResentBy: String(get('最後補發者') || '').trim(),
