@@ -25,6 +25,7 @@ function buildPdf_(formType, ctx) {
 
 function createChecklistDoc_(formType, ctx) {
   const isDaily = formType === 'daily';
+  const isDigitalDailyConfirmation = isDaily && ctx && ctx.payload && ctx.payload.digitalConfirmation === true;
   const docName = 'tmp_pdf_' + ctx.recordId;
   const doc = DocumentApp.create(docName);
   const docId = doc.getId();
@@ -48,7 +49,9 @@ function createChecklistDoc_(formType, ctx) {
     // ----- 標題 -----
     // codex P2: 用 DB 模板的 templateName，未來新增機具不會錯
     const fallbackTitle = isDaily ? '每日作業前檢點表' : '每月定期檢查紀錄';
-    const titleText = (ctx.template && ctx.template.templateName) || fallbackTitle;
+    const titleText = isDigitalDailyConfirmation
+      ? '場地防護具每日線上確認紀錄'
+      : ((ctx.template && ctx.template.templateName) || fallbackTitle);
     const titleP = body.appendParagraph(titleText);
     titleP.setHeading(DocumentApp.ParagraphHeading.TITLE);
     titleP.setAlignment(DocumentApp.HorizontalAlignment.CENTER);
@@ -78,7 +81,9 @@ function createChecklistDoc_(formType, ctx) {
     // A4 可用寬度 = 595pt - 2×36pt margin = 523pt
     // colWidths 總和不可超過 523，否則 DocumentApp 會自動壓縮造成「跑版」
     if (isDaily) {
-      rows = [['項次', '檢查項目', '結果', '記事 / 異常說明']];
+      rows = isDigitalDailyConfirmation
+        ? [['項次', '確認項目', '確認狀態', '同仁回覆 / 補充說明']]
+        : [['項次', '檢查項目', '結果', '記事 / 異常說明']];
       colWidths = [30, 240, 55, 130];   // 共 455
       ctx.payload.items.forEach(it => {
         rows.push([String(it.order), it.name, it.result, it.note || '']);
@@ -139,10 +144,17 @@ function createChecklistDoc_(formType, ctx) {
     const tplLegal = tpl.legalBasis;
     let ruleText;
     if (tplRule) {
-      ruleText = '填寫規則：' + tplRule;
-      if (tplLegal) ruleText += '\n依據：' + tplLegal;
+      if (isDigitalDailyConfirmation) {
+        ruleText = '確認方式：本紀錄為系統依場地使用情形指派同仁，並由指派同仁於 LINE 線上回覆確認後留存；內容表示指派同仁未回報防護具異常，非系統自動判定或現場逐項實測結果。';
+        if (tplLegal) ruleText += '\n參考依據：' + tplLegal;
+      } else {
+        ruleText = '填寫規則：' + tplRule;
+        if (tplLegal) ruleText += '\n依據：' + tplLegal;
+      }
     } else {
-      ruleText = isDaily
+      ruleText = isDigitalDailyConfirmation
+        ? '確認方式：本紀錄為系統依場地使用情形指派同仁，並由指派同仁於 LINE 線上回覆確認後留存；內容表示指派同仁未回報防護具異常，非系統自動判定或現場逐項實測結果。'
+        : isDaily
         ? '填寫規則：良好「V」/ 無此項「/」/ 不良「X」（不良需於記事欄註明）。\n依據「職業安全衛生管理辦法」第五十二條規定，發現異常應立即檢修或採取必要措施。'
         : '注意事項：檢查結果應詳細紀錄。風險評估：嚴重性危害「V」/ 可能性危害「?」/ 無危害「—」';
     }
@@ -153,7 +165,7 @@ function createChecklistDoc_(formType, ctx) {
 
     // ----- 簽名（圖 + 姓名）-----
     const sigLabel = body.appendParagraph(
-      isDaily ? '檢點人員簽名：' : '檢查人員簽名：'
+      isDigitalDailyConfirmation ? '線上確認人員：' : (isDaily ? '檢點人員簽名：' : '檢查人員簽名：')
     );
     sigLabel.editAsText().setFontSize(11).setBold(true);
 
@@ -171,7 +183,7 @@ function createChecklistDoc_(formType, ctx) {
       signatureInserted = true;
     }
     if (!signatureInserted && ctx.payload.digitalConfirmation) {
-      const confirmP = body.appendParagraph('數位確認：已由系統指派同仁確認，不需手寫簽名');
+      const confirmP = body.appendParagraph('確認方式：由指派同仁於 LINE 回覆確認，不使用手寫簽名；非系統自動判定。');
       confirmP.editAsText().setFontSize(10).setForegroundColor('#188038');
       if (ctx.payload.confirmedAt) {
         const timeP = body.appendParagraph('確認時間：' + formatDisplayDateTime_(ctx.payload.confirmedAt));
@@ -191,7 +203,10 @@ function createChecklistDoc_(formType, ctx) {
 
     // ----- 送出時間 -----
     body.appendParagraph('');
-    const submitP = body.appendParagraph('送出時間：' + submittedAtStr + '   系統自動產製');
+    const submitText = isDigitalDailyConfirmation
+      ? '產製時間：' + submittedAtStr + '   本 PDF 由系統於同仁線上確認後產製'
+      : '送出時間：' + submittedAtStr + '   系統自動產製';
+    const submitP = body.appendParagraph(submitText);
     submitP.editAsText().setFontSize(9).setForegroundColor('#888888');
     submitP.setAlignment(DocumentApp.HorizontalAlignment.RIGHT);
 
@@ -717,7 +732,7 @@ function styleItemsTable_(table, colWidths, isDaily, resultOptions) {
           const v = text.getText();
           setCenter(cell);
           if (v === badValue) text.setForegroundColor('#c5221f').setBold(true);
-          else if (v === goodValue) text.setForegroundColor('#137333').setBold(true);
+          else if (v === goodValue || v === '已確認') text.setForegroundColor('#137333').setBold(true);
           else text.setForegroundColor('#666666');
         }
         // 月檢結果欄（crane_full 在 c=3、simple 也在 c=3）

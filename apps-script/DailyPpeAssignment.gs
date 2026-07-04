@@ -924,7 +924,6 @@ function dailyPpeCreateDailyRecord_(equipmentId, date, assignment, opts) {
   if (!equipment || !equipment.active) throw new Error('找不到啟用中的防護具場地：' + equipmentId);
   const meta = getFormMeta_('daily', equipmentId);
   const template = getTemplateForCategoryCycle_(equipment.category, 'daily', equipment);
-  const normalResult = dailyPpeNormalResult_(meta.template || template);
   const recordId = uuid_();
   const submittedAt = opts.confirmedAt || new Date();
   const payload = {
@@ -934,7 +933,7 @@ function dailyPpeCreateDailyRecord_(equipmentId, date, assignment, opts) {
     inspector: assignment.assigneeName,
     signature: '',
     digitalConfirmation: true,
-    digitalConfirmationMode: 'LINE 指派確認',
+    digitalConfirmationMode: 'LINE 線上確認',
     confirmationAssignmentId: assignment.assignmentId,
     assignedAt: assignment.createdAt,
     confirmedAt: Utilities.formatDate(submittedAt, tz_(), 'yyyy-MM-dd HH:mm:ss'),
@@ -944,8 +943,8 @@ function dailyPpeCreateDailyRecord_(equipmentId, date, assignment, opts) {
       order: it.order,
       name: it.name,
       method: it.method || '',
-      result: normalResult,
-      note: opts.remark || 'LINE 指派確認：未接獲異常',
+      result: '已確認',
+      note: opts.remark || '指派同仁於 LINE 回覆確認；未回報異常',
       abnormalDesc: '',
       photos: [],
     })),
@@ -976,12 +975,6 @@ function dailyPpeCreateDailyRecord_(equipmentId, date, assignment, opts) {
   });
 
   return { recordId, fileUrl };
-}
-
-function dailyPpeNormalResult_(template) {
-  const options = (template && template.resultOptions) || [];
-  if (options.length) return options[0];
-  return 'V';
 }
 
 function dailyPpeAssignmentUsageForEquipment_(assignment, equipmentId) {
