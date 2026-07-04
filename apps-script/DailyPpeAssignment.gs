@@ -663,7 +663,7 @@ function dailyPpeResendAllForSupervisor_(userId, opts) {
           item.assignmentId,
           pushResult,
           profile.name || profile.userId || userId,
-          ok ? DAILY_PPE_ASSIGNMENT_STATUS_PENDING : DAILY_PPE_ASSIGNMENT_STATUS_NOTICE_FAILED
+          ok
         );
       });
     });
@@ -779,20 +779,24 @@ function dailyPpeBuildResendDigestMessage_(assignments) {
   };
 }
 
-function dailyPpeUpdateAssignmentResend_(assignmentId, pushResult, actorName, status) {
+function dailyPpeUpdateAssignmentResend_(assignmentId, pushResult, actorName, succeeded) {
   const found = dailyPpeFindAssignment_(assignmentId);
   if (!found) return;
   const nowText = Utilities.formatDate(new Date(), tz_(), 'yyyy-MM-dd HH:mm:ss');
   const safeResult = Object.assign({}, pushResult || {});
   if (safeResult.body) safeResult.body = String(safeResult.body).substring(0, 500);
+  safeResult.resend = true;
+  safeResult.succeeded = succeeded === true;
+  safeResult.attemptedAt = nowText;
+  safeResult.actor = actorName || '';
   const updates = {
-    '最後補發時間': nowText,
-    '補發次數': Math.max(0, Number(found.resendCount || 0) || 0) + 1,
-    '最後補發者': actorName || '',
     '最後補發結果': JSON.stringify(safeResult).substring(0, 2000),
-    '通知結果': JSON.stringify(Object.assign({ resend: true }, safeResult)).substring(0, 2000),
   };
-  if (status) updates['狀態'] = status;
+  if (succeeded === true) {
+    updates['最後補發時間'] = nowText;
+    updates['補發次數'] = Math.max(0, Number(found.resendCount || 0) || 0) + 1;
+    updates['最後補發者'] = actorName || '';
+  }
   setSheetRowValues_(found.sheet, found.headers, found.rowNo, updates);
 }
 

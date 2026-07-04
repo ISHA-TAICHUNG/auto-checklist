@@ -137,11 +137,10 @@ function dispatchLinePostback_(ev) {
   const params = parseLinePostbackData_(ev.postback && ev.postback.data);
   const action = String(params.action || '').trim();
 
-  if (source.type === 'user' && typeof startLoadingAnimation_ === 'function') {
-    startLoadingAnimation_(userId, 10);
-  }
-
   if (action === 'dailyPpeResendAll') {
+    if (source.type === 'user' && typeof startLoadingAnimation_ === 'function') {
+      startLoadingAnimation_(userId, 10);
+    }
     if (!isLineSubscriberUser_(userId)) {
       return lineReply_(replyToken, buildSubscriberRegistrationFlex_());
     }
@@ -152,6 +151,13 @@ function dispatchLinePostback_(ev) {
       }));
     }
     return lineReply_(replyToken, withQuickReply_(dailyPpeResendAllForSupervisor_(userId)));
+  }
+
+  if (replyToken && source.type === 'user') {
+    return lineReply_(replyToken, withQuickReply_({
+      type: 'text',
+      text: '這個按鈕動作目前無法辨識，請重新輸入「狀態」取得最新按鈕。',
+    }));
   }
 }
 
