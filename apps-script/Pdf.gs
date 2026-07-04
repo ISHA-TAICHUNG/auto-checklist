@@ -50,7 +50,7 @@ function createChecklistDoc_(formType, ctx) {
     // codex P2: 用 DB 模板的 templateName，未來新增機具不會錯
     const fallbackTitle = isDaily ? '每日作業前檢點表' : '每月定期檢查紀錄';
     const titleText = isDigitalDailyConfirmation
-      ? '場地防護具每日線上確認紀錄'
+      ? '防護具每日檢點表'
       : ((ctx.template && ctx.template.templateName) || fallbackTitle);
     const titleP = body.appendParagraph(titleText);
     titleP.setHeading(DocumentApp.ParagraphHeading.TITLE);
@@ -145,7 +145,7 @@ function createChecklistDoc_(formType, ctx) {
     let ruleText;
     if (tplRule) {
       if (isDigitalDailyConfirmation) {
-        ruleText = '確認方式：本紀錄為系統依場地使用情形指派同仁，並由指派同仁於 LINE 線上回覆確認後留存；內容表示指派同仁未回報防護具異常，非系統自動判定或現場逐項實測結果。';
+        ruleText = '確認方式：本紀錄由指定同仁確認後留存；內容表示確認時未回報防護具異常，非系統自動判定。';
         if (tplLegal) ruleText += '\n參考依據：' + tplLegal;
       } else {
         ruleText = '填寫規則：' + tplRule;
@@ -153,7 +153,7 @@ function createChecklistDoc_(formType, ctx) {
       }
     } else {
       ruleText = isDigitalDailyConfirmation
-        ? '確認方式：本紀錄為系統依場地使用情形指派同仁，並由指派同仁於 LINE 線上回覆確認後留存；內容表示指派同仁未回報防護具異常，非系統自動判定或現場逐項實測結果。'
+        ? '確認方式：本紀錄由指定同仁確認後留存；內容表示確認時未回報防護具異常，非系統自動判定。'
         : isDaily
         ? '填寫規則：良好「V」/ 無此項「/」/ 不良「X」（不良需於記事欄註明）。\n依據「職業安全衛生管理辦法」第五十二條規定，發現異常應立即檢修或採取必要措施。'
         : '注意事項：檢查結果應詳細紀錄。風險評估：嚴重性危害「V」/ 可能性危害「?」/ 無危害「—」';
@@ -165,7 +165,7 @@ function createChecklistDoc_(formType, ctx) {
 
     // ----- 簽名（圖 + 姓名）-----
     const sigLabel = body.appendParagraph(
-      isDigitalDailyConfirmation ? '線上確認人員：' : (isDaily ? '檢點人員簽名：' : '檢查人員簽名：')
+      isDigitalDailyConfirmation ? '確認人員：' : (isDaily ? '檢點人員簽名：' : '檢查人員簽名：')
     );
     sigLabel.editAsText().setFontSize(11).setBold(true);
 
@@ -183,8 +183,6 @@ function createChecklistDoc_(formType, ctx) {
       signatureInserted = true;
     }
     if (!signatureInserted && ctx.payload.digitalConfirmation) {
-      const confirmP = body.appendParagraph('確認方式：由指派同仁於 LINE 回覆確認，不使用手寫簽名；非系統自動判定。');
-      confirmP.editAsText().setFontSize(10).setForegroundColor('#188038');
       if (ctx.payload.confirmedAt) {
         const timeP = body.appendParagraph('確認時間：' + formatDisplayDateTime_(ctx.payload.confirmedAt));
         timeP.editAsText().setFontSize(10).setForegroundColor('#555555');
@@ -204,7 +202,7 @@ function createChecklistDoc_(formType, ctx) {
     // ----- 送出時間 -----
     body.appendParagraph('');
     const submitText = isDigitalDailyConfirmation
-      ? '產製時間：' + submittedAtStr + '   本 PDF 由系統於同仁線上確認後產製'
+      ? '產製時間：' + submittedAtStr + '   本 PDF 由系統於確認完成後產製'
       : '送出時間：' + submittedAtStr + '   系統自動產製';
     const submitP = body.appendParagraph(submitText);
     submitP.editAsText().setFontSize(9).setForegroundColor('#888888');
