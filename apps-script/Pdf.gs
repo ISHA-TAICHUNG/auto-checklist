@@ -26,6 +26,10 @@ function buildPdf_(formType, ctx) {
 function createChecklistDoc_(formType, ctx) {
   const isDaily = formType === 'daily';
   const isDigitalDailyConfirmation = isDaily && ctx && ctx.payload && ctx.payload.digitalConfirmation === true;
+  const isDailyPpeTypedSignature = isDaily &&
+    ctx &&
+    ctx.equipment &&
+    String(ctx.equipment.category || '').trim() === '防護具檢點';
   const docName = 'tmp_pdf_' + ctx.recordId;
   const doc = DocumentApp.create(docName);
   const docId = doc.getId();
@@ -173,7 +177,7 @@ function createChecklistDoc_(formType, ctx) {
       }
       signatureInserted = true;
     }
-    if (!signatureInserted && !ctx.payload.digitalConfirmation) {
+    if (!signatureInserted && !ctx.payload.digitalConfirmation && !isDailyPpeTypedSignature) {
       const noSig = body.appendParagraph('（無簽名）');
       noSig.editAsText().setFontSize(10).setForegroundColor('#c5221f');
     }
