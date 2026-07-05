@@ -2,7 +2,7 @@
  * ===== 每日場地防護具隨機指派確認 =====
  *
  * 目的：
- *   - VENUE-CRANE / VENUE-FORK 當天場地有使用且尚未有人填防護具日檢時，
+ *   - VENUE-CRANE / VENUE-FORK 對應機具當天場地有使用且尚未有人填防護具日檢時，
  *     系統隨機指派一位「同仁且非主管」確認。
  *   - 同一天若兩個場地都需確認，只推同一則 LINE 給同一人，節省額度。
  *   - 正式填報紀錄與 PDF 必須在被指派同仁按下確認後才產生。
@@ -11,8 +11,8 @@
 
 const DAILY_PPE_ASSIGNMENT_SHEET_NAME = '每日防護具待確認';
 const DAILY_PPE_ASSIGNMENT_EQUIPMENTS = [
-  { id: 'VENUE-CRANE', label: '起重機防護具' },
-  { id: 'VENUE-FORK', label: '堆高機防護具' },
+  { id: 'VENUE-CRANE', label: '起重機防護具', usageCategory: '固定式起重機', usageEquipmentId: 'CRANE-LJ-001' },
+  { id: 'VENUE-FORK', label: '堆高機防護具', usageCategory: '堆高機', usageEquipmentId: 'FORK-LJ-A' },
 ];
 const DAILY_PPE_ASSIGNMENT_STATUS_PENDING = '待確認';
 const DAILY_PPE_ASSIGNMENT_STATUS_CONFIRMED = '已確認';
@@ -380,7 +380,8 @@ function dailyPpeCollectMissingConfirmations_(date) {
   DAILY_PPE_ASSIGNMENT_EQUIPMENTS.forEach(def => {
     const equipment = getEquipmentById_(def.id);
     if (!equipment || !equipment.active) return;
-    const usage = getVenueUsage_(equipment, date);
+    const usageProbe = dailyPpeUsageProbeEquipment_(def, equipment);
+    const usage = getVenueUsage_(usageProbe, date);
     if (!usage || !usage.used) return;
     if (dailyPpeHasDailyRecordForEquipment_(def.id, date)) return;
     out.push({
@@ -390,10 +391,27 @@ function dailyPpeCollectMissingConfirmations_(date) {
       category: equipment.category || '防護具檢點',
       location: equipment.location || '',
       usageContent: usage.content || '',
+      usageCategory: usageProbe.category || equipment.category || '',
       equipment,
     });
   });
   return out;
+}
+
+function dailyPpeUsageProbeEquipment_(def, ppeEquipment) {
+  const usageCategory = String((def && def.usageCategory) || '').trim();
+  const probe = Object.assign({}, ppeEquipment || {});
+  if (usageCategory) probe.category = usageCategory;
+
+  if (!String(probe.venueSheetTab || '').trim()) {
+    const linkedId = String((def && def.usageEquipmentId) || '').trim();
+    const linked = linkedId ? getEquipmentById_(linkedId) : null;
+    if (linked && String(linked.venueSheetTab || '').trim()) {
+      probe.venueSheetTab = linked.venueSheetTab;
+    }
+  }
+
+  return probe;
 }
 
 function dailyPpeHasDailyRecordForEquipment_(equipmentId, date) {

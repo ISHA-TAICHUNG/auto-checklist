@@ -9,8 +9,8 @@
 
 const MONTHLY_PPE_SUMMARY_FOLDER_NAME = '月度防護具檢點彙整確認表';
 const MONTHLY_PPE_SUMMARY_EQUIPMENTS = [
-  { id: 'VENUE-CRANE', label: '起重機防護具' },
-  { id: 'VENUE-FORK', label: '堆高機防護具' },
+  { id: 'VENUE-CRANE', label: '起重機防護具', usageCategory: '固定式起重機', usageEquipmentId: 'CRANE-LJ-001' },
+  { id: 'VENUE-FORK', label: '堆高機防護具', usageCategory: '堆高機', usageEquipmentId: 'FORK-LJ-A' },
 ];
 const MONTHLY_PPE_CONFIRMATION_STATUSES = ['未接獲異常', '異常已改善', '異常待追蹤', '不適用'];
 
@@ -368,9 +368,10 @@ function monthlyPpeCollectRecords_(ss, month, incidentMap) {
   MONTHLY_PPE_SUMMARY_EQUIPMENTS.forEach(item => {
     const equipment = getEquipmentById_(item.id);
     if (!equipment || !equipment.active) return;
+    const usageProbe = monthlyPpeUsageProbeEquipment_(item, equipment);
     for (let d = new Date(month.start.getTime()); d < month.next; d.setDate(d.getDate() + 1)) {
       const checkDate = new Date(d.getFullYear(), d.getMonth(), d.getDate());
-      const usage = getVenueUsage_(equipment, checkDate);
+      const usage = getVenueUsage_(usageProbe, checkDate);
       if (!usage || !usage.used) continue;
       const iso = formatISODate_(checkDate);
       const key = `${item.id}|${iso}`;
@@ -401,6 +402,22 @@ function monthlyPpeCollectRecords_(ss, month, incidentMap) {
     return a.equipmentId < b.equipmentId ? -1 : 1;
   });
   return out;
+}
+
+function monthlyPpeUsageProbeEquipment_(item, ppeEquipment) {
+  const usageCategory = String((item && item.usageCategory) || '').trim();
+  const probe = Object.assign({}, ppeEquipment || {});
+  if (usageCategory) probe.category = usageCategory;
+
+  if (!String(probe.venueSheetTab || '').trim()) {
+    const linkedId = String((item && item.usageEquipmentId) || '').trim();
+    const linked = linkedId ? getEquipmentById_(linkedId) : null;
+    if (linked && String(linked.venueSheetTab || '').trim()) {
+      probe.venueSheetTab = linked.venueSheetTab;
+    }
+  }
+
+  return probe;
 }
 
 function monthlyPpeCollectMachineIncidents_(ss, month) {
