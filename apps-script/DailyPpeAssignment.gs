@@ -180,6 +180,45 @@ function dailyPpeCollectMissingConfirmations_(date) {
   return out;
 }
 
+function dailyPpeChecklistStatusResults_(date) {
+  const targetDate = dailyPpeAssignmentResolveDate_(date);
+  const out = [];
+  DAILY_PPE_ASSIGNMENT_EQUIPMENTS.forEach(def => {
+    const equipment = getEquipmentById_(def.id);
+    const category = dailyPpeStatusCategoryLabel_(def);
+    if (!equipment || !equipment.active) {
+      return;
+    }
+
+    const usageProbe = dailyPpeUsageProbeEquipment_(def, equipment);
+    const usage = getVenueUsage_(usageProbe, targetDate);
+    if (!usage || !usage.used) {
+      return;
+    }
+
+    const alreadyFilled = dailyPpeHasDailyRecordForEquipment_(def.id, targetDate);
+    out.push({
+      type: 'dailyPpeStatus',
+      equipmentId: def.id,
+      equipmentName: equipment.equipmentName || def.label,
+      category,
+      formType: '每日',
+      action: alreadyFilled ? 'skip' : 'wouldNotifyDailyPpeMissing',
+      reason: alreadyFilled ? '該類別當日已填' : '本日場地防護具未填',
+      usage: usage.content || '',
+      alreadyFilled,
+    });
+  });
+  return out;
+}
+
+function dailyPpeStatusCategoryLabel_(def) {
+  const category = String((def && def.usageCategory) || '').trim();
+  if (category.indexOf('固定式起重機') >= 0) return '固定式起重機防護具';
+  if (category.indexOf('堆高機') >= 0) return '堆高機防護具';
+  return String((def && def.label) || '場地防護具').trim() || '場地防護具';
+}
+
 function dailyPpeUsageProbeEquipment_(def, ppeEquipment) {
   const usageCategory = String((def && def.usageCategory) || '').trim();
   const probe = Object.assign({}, ppeEquipment || {});

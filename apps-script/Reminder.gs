@@ -65,6 +65,14 @@ function dailyReminderJob(opts) {
                    usage: usage.content });
   }
 
+  if (typeof dailyPpeChecklistStatusResults_ === 'function') {
+    try {
+      dailyPpeChecklistStatusResults_(today).forEach(r => results.push(r));
+    } catch (err) {
+      Logger.log('場地防護具狀態查詢失敗：' + (err && err.message ? err.message : err));
+    }
+  }
+
   if (typeof monthlyReminderJob_ === 'function') {
     const monthlyResults = monthlyReminderJob_({ dryRun, today });
     monthlyResults.forEach(r => results.push(r));

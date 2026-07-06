@@ -1100,8 +1100,8 @@ function normalizeChecklistPendingRow_(category, result) {
     (formType === '每月' ? '本月尚未填月檢' : '本日尚未填日檢');
   return {
     category,
-    equipmentId: category,
-    equipmentName: category,
+    equipmentId: (result && result.equipmentId) || category,
+    equipmentName: (result && result.equipmentName) || category,
     reason,
   };
 }
