@@ -80,7 +80,7 @@
       const root = document.getElementById('content');
       root.textContent = '';
       updatePageTitle(resolveDailyPageTitle());
-      const typedSignatureOnly = isDailyPpeForm();
+      const isVenuePpeForm = isDailyPpeForm();
 
       // ----- 設備資訊卡 -----
       const infoCard = makeCard('設備資訊');
@@ -108,7 +108,7 @@
 
       const fInspector = makeField('檢點人員姓名', 'text', '');
       fInspector.input.id = 'inspector';
-      fInspector.input.placeholder = typedSignatureOnly ? '請輸入檢點人員姓名' : '請填寫操作員姓名';
+      fInspector.input.placeholder = isVenuePpeForm ? '請輸入檢點人員姓名' : '請填寫操作員姓名';
       dateCard.body.appendChild(fInspector.field);
 
       root.appendChild(dateCard.card);
