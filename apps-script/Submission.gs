@@ -16,7 +16,7 @@
  *     checkDate: '2026-05-18',            // 必填，daily 也要
  *     inspector: '張三',
  *     items: [{ order, name, result, note }, ...],
- *     signature: 'data:image/png;base64,...', // 每日場地防護具可留空，改以 inspector 姓名留痕
+ *     signature: 'data:image/png;base64,...',
  *   }
  *
  * payload 範例（monthly）：
@@ -47,11 +47,8 @@ function handleSubmission_(payload) {
     // 先取得這張表的 template，從 template.resultOptions 動態決定 result 白名單
     // 找不到 template → fallback 到舊的 hard-coded 白名單
     const equipmentForTpl = getEquipmentById_(payload.equipmentId);
-    const isDailyPpeTypedSignature = payload.formType === 'daily' &&
-      equipmentForTpl &&
-      String(equipmentForTpl.category || '').trim() === '防護具檢點';
-    // 簽名格式驗證（一般檢點仍必填；每日場地防護具改以檢點人員姓名留痕）
-    if (!isDailyPpeTypedSignature) validateSignature_(payload.signature);
+    // 簽名格式驗證（每日場地防護具已改回手寫簽名，所有檢點表皆必填）
+    validateSignature_(payload.signature);
 
     let tplForValidation = null;
     if (equipmentForTpl) {

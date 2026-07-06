@@ -225,38 +225,36 @@
 
       // ----- 簽名 -----
       sigPad = null;
-      if (!typedSignatureOnly) {
-        const sigCard = makeCard('檢點人員簽名');
-        const sigWrap = document.createElement('div');
+      const sigCard = makeCard('檢點人員簽名');
+      const sigWrap = document.createElement('div');
 
-        const sigHint = document.createElement('div');
-        sigHint.className = 'signature-hint';
-        // 內容會由 SignaturePad 依手機方向動態更新
-        sigHint.textContent = '可將手機橫向旋轉以獲得更大的簽名空間';
-        sigWrap.appendChild(sigHint);
+      const sigHint = document.createElement('div');
+      sigHint.className = 'signature-hint';
+      // 內容會由 SignaturePad 依手機方向動態更新
+      sigHint.textContent = '可將手機橫向旋轉以獲得更大的簽名空間';
+      sigWrap.appendChild(sigHint);
 
-        const canvas = document.createElement('canvas');
-        canvas.className = 'signature-pad';
-        sigWrap.appendChild(canvas);
+      const canvas = document.createElement('canvas');
+      canvas.className = 'signature-pad';
+      sigWrap.appendChild(canvas);
 
-        const sigActions = document.createElement('div');
-        sigActions.className = 'signature-actions';
-        const clearBtn = document.createElement('button');
-        clearBtn.type = 'button';
-        clearBtn.className = 'btn';
-        clearBtn.textContent = '清除重簽';
-        sigActions.appendChild(clearBtn);
-        sigWrap.appendChild(sigActions);
+      const sigActions = document.createElement('div');
+      sigActions.className = 'signature-actions';
+      const clearBtn = document.createElement('button');
+      clearBtn.type = 'button';
+      clearBtn.className = 'btn';
+      clearBtn.textContent = '清除重簽';
+      sigActions.appendChild(clearBtn);
+      sigWrap.appendChild(sigActions);
 
-        sigCard.body.appendChild(sigWrap);
-        root.appendChild(sigCard.card);
+      sigCard.body.appendChild(sigWrap);
+      root.appendChild(sigCard.card);
 
-        // 必須等 canvas 加進 DOM 才能 init（要拿 boundingClientRect）
-        setTimeout(() => {
-          sigPad = new SignaturePad(canvas, { hintElement: sigHint });
-          clearBtn.onclick = () => sigPad.clear();
-        }, 0);
-      }
+      // 必須等 canvas 加進 DOM 才能 init（要拿 boundingClientRect）
+      setTimeout(() => {
+        sigPad = new SignaturePad(canvas, { hintElement: sigHint });
+        clearBtn.onclick = () => sigPad.clear();
+      }, 0);
 
       // ----- 送出 -----
       const submitArea = document.createElement('div');
@@ -398,8 +396,7 @@
       if (missing > 0) return alert('第 ' + missing + ' 項尚未勾選');
       if (missingDesc > 0) return alert('第 ' + missingDesc + ' 項標為「異常」但未填寫異常情形說明');
 
-      const typedSignatureOnly = isDailyPpeForm();
-      if (!typedSignatureOnly && (!sigPad || sigPad.isEmpty())) return alert('請簽名');
+      if (!sigPad || sigPad.isEmpty()) return alert('請簽名');
 
       // codex P1: idempotency — 產 UUID v4，後端用此判斷是否重複送出
       // 同一筆 submit 重試會用同一個 ID，後端會回原紀錄而不是建新的
@@ -411,7 +408,7 @@
         checkDate: checkDate,
         inspector: inspector,
         items: results,
-        signature: typedSignatureOnly ? '' : sigPad.trimmedDataURL(),
+        signature: sigPad.trimmedDataURL(),
       };
 
       btn.disabled = true;

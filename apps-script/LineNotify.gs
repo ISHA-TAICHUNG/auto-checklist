@@ -1285,19 +1285,8 @@ function buildDailyPpeAssignmentStatusFlex_(summary) {
         uri: assignment.confirmUrl,
       },
     }));
-  const supervisorCanResend = summary.viewerIsSupervisor === true && Number(summary.resendEligibleCount || 0) > 0;
-  const supervisorActions = supervisorCanResend ? [{
-    type: 'button',
-    style: 'primary',
-    height: 'sm',
-    color: '#F29900',
-    action: {
-      type: 'postback',
-      label: '補發全部待確認',
-      data: 'action=dailyPpeResendAll',
-      displayText: '補發每日防護具待確認',
-    },
-  }] : [];
+  const supervisorCanResend = false;
+  const supervisorActions = [];
 
   const contents = {
     type: 'bubble',
@@ -1328,9 +1317,7 @@ function buildDailyPpeAssignmentStatusFlex_(summary) {
         }] : []),
         ...(summary.viewerIsSupervisor ? [{
           type: 'text',
-          text: supervisorCanResend
-            ? `主管可補發 ${summary.resendEligibleCount} 筆；同一位同仁多筆會合併成 1 則。`
-            : '主管補發僅納入超過 1 天且今天尚未補發的項目。',
+          text: '每日防護具已改為人工催填流程，不再使用主管補發待確認。',
           size: 'xs',
           color: '#8a4b00',
           margin: 'sm',

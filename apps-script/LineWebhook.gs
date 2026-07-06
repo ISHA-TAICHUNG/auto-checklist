@@ -138,19 +138,10 @@ function dispatchLinePostback_(ev) {
   const action = String(params.action || '').trim();
 
   if (action === 'dailyPpeResendAll') {
-    if (source.type === 'user' && typeof startLoadingAnimation_ === 'function') {
-      startLoadingAnimation_(userId, 10);
-    }
-    if (!isLineSubscriberUser_(userId)) {
-      return lineReply_(replyToken, buildSubscriberRegistrationFlex_());
-    }
-    if (typeof dailyPpeResendAllForSupervisor_ !== 'function') {
-      return lineReply_(replyToken, withQuickReply_({
-        type: 'text',
-        text: '每日防護具補發功能尚未部署完成。',
-      }));
-    }
-    return lineReply_(replyToken, withQuickReply_(dailyPpeResendAllForSupervisor_(userId)));
+    return lineReply_(replyToken, withQuickReply_({
+      type: 'text',
+      text: '每日防護具補發待確認功能已停用；現在改為 17:00 檢查未填項目後通知卓小媛與張家豪，由人工提醒同仁開表手寫簽名。',
+    }));
   }
 
   if (replyToken && source.type === 'user') {
