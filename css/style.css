@@ -476,6 +476,11 @@ body {
 
 /* ---- 異常照片上傳 ---- */
 .photo-manager { margin: 10px 0 0 42px; }
+.photo-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
 .photo-add-btn {
   display: inline-block;
   padding: 12px 18px;

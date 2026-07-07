@@ -25,24 +25,37 @@
     _buildUI() {
       this.container.classList.add('photo-manager');
 
-      const btn = document.createElement('label');
-      btn.className = 'photo-add-btn';
-      btn.innerHTML = '📷 拍照 / 上傳異常照片';
-      const input = document.createElement('input');
-      input.type = 'file';
-      input.accept = 'image/*';
-      input.capture = 'environment';
-      input.multiple = false;
-      input.style.display = 'none';
-      input.onchange = (e) => this._onFile(e.target.files);
-      btn.appendChild(input);
-      this.container.appendChild(btn);
-      this.addBtn = btn;
+      const actions = document.createElement('div');
+      actions.className = 'photo-actions';
+      this.cameraBtn = this._createPicker('📷 拍照', true, false);
+      this.uploadBtn = this._createPicker('🖼️ 上傳照片', false, true);
+      actions.appendChild(this.cameraBtn);
+      actions.appendChild(this.uploadBtn);
+      this.container.appendChild(actions);
+      this.addButtons = [this.cameraBtn, this.uploadBtn];
 
       const grid = document.createElement('div');
       grid.className = 'photo-grid';
       this.container.appendChild(grid);
       this.grid = grid;
+    }
+
+    _createPicker(labelText, useCamera, multiple) {
+      const btn = document.createElement('label');
+      btn.className = 'photo-add-btn';
+      btn.textContent = labelText;
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = 'image/*';
+      if (useCamera) input.capture = 'environment';
+      input.multiple = !!multiple;
+      input.style.display = 'none';
+      input.onchange = (e) => {
+        this._onFile(e.target.files);
+        e.target.value = '';
+      };
+      btn.appendChild(input);
+      return btn;
     }
 
     async _onFile(files) {
@@ -84,7 +97,8 @@
     }
 
     _refreshAddBtnState() {
-      this.addBtn.style.display = this.photos.length >= this.max ? 'none' : '';
+      const hidden = this.photos.length >= this.max;
+      (this.addButtons || []).forEach(btn => { btn.style.display = hidden ? 'none' : ''; });
     }
 
     toDataURLs() {
