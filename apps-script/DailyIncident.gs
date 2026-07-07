@@ -958,6 +958,7 @@ function createDailyIncidentPdf_(data, stage) {
   const blob = buildDailyIncidentPdfBlob_(data, stage);
   blob.setName(buildDailyIncidentPdfFilename_(data));
   const file = folder.createFile(blob);
+  sharePdfFileForLinkView_(file, 'daily-incident');
   return { fileId: file.getId(), fileUrl: file.getUrl() };
 }
 

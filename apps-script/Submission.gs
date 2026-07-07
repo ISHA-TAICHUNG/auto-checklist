@@ -197,6 +197,7 @@ function handleSubmission_(payload) {
         pdfBlob.setName(buildPdfFilename_(payload.formType, checkDate, equipment));
         const folder = getOrCreateArchiveFolderForSubmission_(payload.formType, equipment, checkDate);
         const file = folder.createFile(pdfBlob);
+        sharePdfFileForLinkView_(file, 'submission');
         fileUrl = file.getUrl();
       }
 
@@ -873,6 +874,7 @@ function handleApprovalSubmission_(payload) {
     pdfBlob.setName(fileName);
     const folder = getOrCreateArchiveFolderForSubmission_(rec.formType, equipment, checkDate);
     const file = folder.createFile(pdfBlob);
+    sharePdfFileForLinkView_(file, 'approval');
     const fileUrl = file.getUrl();
 
     updateApprovalRecord_(rec.sheet, rec.headers, rec.rowNo, {

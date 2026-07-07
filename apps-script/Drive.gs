@@ -98,6 +98,99 @@ function cleanDriveFolderName_(name) {
 }
 
 /**
+ * 將系統產出的 PDF 設為「知道連結者可檢視」。
+ * 只處理 PDF 檔，避免誤開放試算表、Apps Script 或其他系統檔案。
+ */
+function sharePdfFileForLinkView_(file, context) {
+  if (!file) return { ok: false, reason: 'no_file' };
+  const label = context ? ` (${context})` : '';
+  try {
+    const mimeType = String(file.getMimeType ? file.getMimeType() : '');
+    if (mimeType !== MimeType.PDF && mimeType !== 'application/pdf') {
+      return { ok: false, reason: 'not_pdf', mimeType };
+    }
+    file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+    return { ok: true };
+  } catch (err) {
+    Logger.log('sharePdfFileForLinkView_ failed' + label + ': ' + err + '\n' + (err.stack || ''));
+    return { ok: false, error: String((err && err.message) || err) };
+  }
+}
+
+/**
+ * 批次修復歸檔根資料夾下既有 PDF 權限。
+ * 僅允許 ARCHIVE_ROOT_FOLDER_ID 範圍內執行，並限制批次數避免 Apps Script timeout。
+ */
+function shareArchivePdfsForLinkView_(opts) {
+  opts = opts || {};
+  const limit = Math.max(1, Math.min(Number(opts.limit || 500), 2000));
+  const maxDepth = Math.max(1, Math.min(Number(opts.maxDepth || 20), 30));
+  const folderId = sanitizeText_(opts.folderId || opts.id, 160);
+  const root = folderId ? DriveApp.getFolderById(folderId) : getArchiveRootFolder_();
+  if (folderId && !isFolderUnderArchiveRoot_(folderId)) {
+    throw new Error('該資料夾非系統歸檔範圍');
+  }
+
+  const stats = {
+    rootFolderIdMasked: String(root.getId()).substring(0, 8) + '...',
+    rootFolderName: root.getName(),
+    limit,
+    scannedFolders: 0,
+    scannedFiles: 0,
+    pdfCount: 0,
+    sharedCount: 0,
+    skippedCount: 0,
+    failedCount: 0,
+    stoppedByLimit: false,
+    failures: [],
+  };
+
+  function walk(folder, depth) {
+    if (stats.scannedFiles >= limit || depth > maxDepth) return;
+    stats.scannedFolders += 1;
+
+    const files = folder.getFiles();
+    while (files.hasNext()) {
+      if (stats.scannedFiles >= limit) {
+        stats.stoppedByLimit = true;
+        return;
+      }
+      const file = files.next();
+      stats.scannedFiles += 1;
+      if (file.getMimeType() !== 'application/pdf') {
+        stats.skippedCount += 1;
+        continue;
+      }
+      stats.pdfCount += 1;
+      const shared = sharePdfFileForLinkView_(file, 'shareArchivePdfsForLinkView');
+      if (shared.ok) {
+        stats.sharedCount += 1;
+      } else {
+        stats.failedCount += 1;
+        if (stats.failures.length < 20) {
+          stats.failures.push({
+            name: file.getName(),
+            reason: shared.reason || shared.error || 'unknown',
+          });
+        }
+      }
+    }
+
+    const folders = folder.getFolders();
+    while (folders.hasNext()) {
+      if (stats.scannedFiles >= limit) {
+        stats.stoppedByLimit = true;
+        return;
+      }
+      walk(folders.next(), depth + 1);
+    }
+  }
+
+  walk(root, 0);
+  return stats;
+}
+
+/**
  * 驗證一個 file 是否在 ARCHIVE_ROOT_FOLDER_ID 之下（含深層子資料夾）
  * 用於 admin fetchPdf 限制範圍（防止讀其他 Drive 檔案）
  */

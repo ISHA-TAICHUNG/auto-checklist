@@ -531,6 +531,7 @@ function monthlyPpeCreateSummaryPdf_(month, grouped, records, confirmation) {
   doc.saveAndClose();
   const blob = DriveApp.getFileById(docId).getAs(MimeType.PDF).setName(fileName);
   const file = folder.createFile(blob);
+  sharePdfFileForLinkView_(file, 'monthly-ppe-summary');
   DriveApp.getFileById(docId).setTrashed(true);
 
   return {

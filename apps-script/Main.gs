@@ -125,6 +125,7 @@ function doGet(e) {
                                'openIssues', 'reminderStatus',
                                'systemStatus', 'archiveWriteHealth', 'lastPostError',
                                'driveFolderDiagnostics',
+                               'shareArchivePdfsForLinkView',
                                'dailyReminderTriggerStatus',
                                'installDailyReminderTrigger',
                                'installDailyWorkCheckTriggers',
@@ -510,6 +511,18 @@ function doGet(e) {
               action,
               ...diagnoseDriveFolder_({
                 folderId: e.parameter.folderId || e.parameter.id,
+              }),
+            };
+            break;
+          }
+          case 'shareArchivePdfsForLinkView': {
+            result = {
+              ok: true,
+              action,
+              ...shareArchivePdfsForLinkView_({
+                folderId: e.parameter.folderId || e.parameter.id,
+                limit: e.parameter.limit,
+                maxDepth: e.parameter.maxDepth,
               }),
             };
             break;
@@ -912,7 +925,7 @@ function friendlyError_(err) {
     '公文待發文', '待發文佇列',
     'cleanupAll dryRun 需帶', 'cleanupDate dryRun 需帶', 'cleanupDate 實刪需帶',
     // admin 用錯誤訊息
-    '該檔案非', '需要 fileId', '未知 admin action', '未知的 api',
+    '該檔案非', '該資料夾非', '需要 fileId', '未知 admin action', '未知的 api',
     'LINE_CHANNEL_ACCESS_TOKEN', 'LINE Rich Menu', '圖文選單圖片',
     // 新增安全分層相關 (codex 2026-05-26)
     'adminToken', '此 action 需 adminToken', '破壞性 action', 'ADMIN_TOKEN', 'ALLOW_DESTRUCTIVE_HTTP',
