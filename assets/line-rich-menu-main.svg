@@ -32,16 +32,16 @@
     <text class="hint" x="389" y="708">開啟檢查表</text>
   </g>
 
-  <!-- 2. 待發文 -->
+  <!-- 2. 日常通報 -->
   <g transform="translate(862 28)">
     <rect class="card" width="777" height="787" rx="46" filter="url(#cardShadow)"/>
-    <rect x="0" y="0" width="22" height="787" rx="11" fill="#0F766E"/>
+    <rect x="0" y="0" width="22" height="787" rx="11" fill="#D93025"/>
     <text class="brand" x="72" y="92">ISHA 工作台</text>
-    <circle cx="388.5" cy="252" r="108" fill="#CCFBF1" stroke="#0F766E" stroke-width="9"/>
-    <text class="symbol" x="388.5" y="252" fill="#0F766E">文</text>
-    <text class="title" x="388.5" y="480" text-anchor="middle">待發文</text>
-    <text class="subtitle" x="388.5" y="575" text-anchor="middle">公文系統提醒</text>
-    <text class="hint" x="388.5" y="708">查看待發文</text>
+    <circle cx="388.5" cy="252" r="108" fill="#FCE8E6" stroke="#D93025" stroke-width="9"/>
+    <text class="symbol" x="388.5" y="252" fill="#D93025">報</text>
+    <text class="title" x="388.5" y="480" text-anchor="middle">日常通報</text>
+    <text class="subtitle" x="388.5" y="575" text-anchor="middle">場地・環境・安全</text>
+    <text class="hint" x="388.5" y="708">通報異常事件</text>
   </g>
 
   <!-- 3. 填表狀態 -->
@@ -56,16 +56,16 @@
     <text class="hint" x="388.5" y="708">查看填寫狀態</text>
   </g>
 
-  <!-- 4. 日常通報 -->
+  <!-- 4. 設備異常 -->
   <g transform="translate(28 871)">
     <rect class="card" width="778" height="787" rx="46" filter="url(#cardShadow)"/>
-    <rect x="0" y="0" width="22" height="787" rx="11" fill="#D93025"/>
+    <rect x="0" y="0" width="22" height="787" rx="11" fill="#7C3AED"/>
     <text class="brand" x="72" y="92">ISHA 工作台</text>
-    <circle cx="389" cy="252" r="108" fill="#FCE8E6" stroke="#D93025" stroke-width="9"/>
-    <text class="symbol" x="389" y="252" fill="#D93025">報</text>
-    <text class="title" x="389" y="480" text-anchor="middle">日常通報</text>
-    <text class="subtitle" x="389" y="575" text-anchor="middle">場地・環境・安全</text>
-    <text class="hint" x="389" y="708">通報異常事件</text>
+    <circle cx="389" cy="252" r="108" fill="#F3E8FF" stroke="#7C3AED" stroke-width="9"/>
+    <text class="symbol" x="389" y="252" fill="#7C3AED">異</text>
+    <text class="title" x="389" y="480" text-anchor="middle">設備異常</text>
+    <text class="subtitle" x="389" y="575" text-anchor="middle">機具檢查異常</text>
+    <text class="hint" x="389" y="708">查看異常清單</text>
   </g>
 
   <!-- 5. 日常待處理 -->
@@ -80,16 +80,16 @@
     <text class="hint" x="388.5" y="708">追蹤處理進度</text>
   </g>
 
-  <!-- 6. QR 選單 -->
+  <!-- 6. 待簽核 -->
   <g transform="translate(1695 871)">
     <rect class="card" width="777" height="787" rx="46" filter="url(#cardShadow)"/>
-    <rect x="0" y="0" width="22" height="787" rx="11" fill="#00897B"/>
+    <rect x="0" y="0" width="22" height="787" rx="11" fill="#0F766E"/>
     <text class="brand" x="72" y="92">ISHA 工作台</text>
-    <circle cx="388.5" cy="252" r="108" fill="#E0F2F1" stroke="#00897B" stroke-width="9"/>
-    <text class="symbol" x="388.5" y="252" fill="#00897B" font-size="72">QR</text>
-    <text class="title" x="388.5" y="480" text-anchor="middle">QR 選單</text>
-    <text class="subtitle" x="388.5" y="575" text-anchor="middle">設備・教室入口</text>
-    <text class="hint" x="388.5" y="708">開啟 QR 清單</text>
+    <circle cx="388.5" cy="252" r="108" fill="#CCFBF1" stroke="#0F766E" stroke-width="9"/>
+    <text class="symbol" x="388.5" y="252" fill="#0F766E">簽</text>
+    <text class="title" x="388.5" y="480" text-anchor="middle">待簽核</text>
+    <text class="subtitle" x="388.5" y="575" text-anchor="middle">主管簽核待辦</text>
+    <text class="hint" x="388.5" y="708">查看待簽資料</text>
   </g>
 
   <rect x="2.5" y="2.5" width="2495" height="1681" fill="none" stroke="#102A4C" stroke-width="5"/>

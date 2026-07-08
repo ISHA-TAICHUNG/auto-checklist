@@ -2465,11 +2465,11 @@ function buildDefaultLineRichMenu_() {
     chatBarText: 'ISHA 工作台',
     areas: [
       lineRichMenuArea_(0, 0, 834, 843, { type: 'uri', uri: indexUrl }),
-      lineRichMenuArea_(834, 0, 833, 843, { type: 'message', text: '待發文' }),
+      lineRichMenuArea_(834, 0, 833, 843, { type: 'uri', uri: incidentUrl }),
       lineRichMenuArea_(1667, 0, 833, 843, { type: 'message', text: '狀態' }),
-      lineRichMenuArea_(0, 843, 834, 843, { type: 'uri', uri: incidentUrl }),
+      lineRichMenuArea_(0, 843, 834, 843, { type: 'message', text: '異常' }),
       lineRichMenuArea_(834, 843, 833, 843, { type: 'message', text: '待處理' }),
-      lineRichMenuArea_(1667, 843, 833, 843, { type: 'message', text: 'QR選單' }),
+      lineRichMenuArea_(1667, 843, 833, 843, { type: 'message', text: '待簽核' }),
     ],
   };
 }
