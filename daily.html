@@ -42,7 +42,7 @@
     const eqp = urlParams.get('eqp');
 
     let formMeta = null;
-    let lockedItems = [];   // [{ order, itemName, incidentId, reportDate, description, status }]
+    let lockedItems = [];   // [{ order, itemName, incidentId, reportDate, description, status, note, dueDate, assignee }]
     let sigPad = null;
 
     if (!eqp) {
@@ -58,6 +58,31 @@
       div.className = 'alert alert-error';
       div.textContent = msg;
       root.appendChild(div);
+    }
+
+    function lockedStatusText(lock) {
+      return String((lock && lock.status) || '').trim() || '未完成';
+    }
+
+    function buildLockedBannerText(lock) {
+      return `⚠ 此項上次 (${lock.reportDate}) 異常仍在追蹤（目前狀態：${lockedStatusText(lock)}）。須在「機具設備異常事件」表標記為「已完成」才能解鎖。`;
+    }
+
+    function buildLockedPrefillText(lock) {
+      const status = lockedStatusText(lock);
+      const date = String((lock && lock.reportDate) || '').trim();
+      const rawDescription = String((lock && lock.description) || '').trim() || '(無說明)';
+      const description = rawDescription.replace(/^\[沒改善\]\s*/, '[持續追蹤] ');
+      const lines = /^\[[^\]]+\]\s*/.test(description)
+        ? [description]
+        : [`[${status}追蹤] ${date ? date + ' ' : ''}異常：${description}`];
+      const note = String((lock && lock.note) || '').trim();
+      if (note) lines.push(`處理備註：${note}`);
+      const assignee = String((lock && lock.assignee) || '').trim();
+      if (assignee) lines.push(`負責人：${assignee}`);
+      const dueDate = String((lock && lock.dueDate) || '').trim();
+      if (dueDate) lines.push(`預計完成日：${dueDate}`);
+      return lines.join('\n');
     }
 
     async function loadForm() {
@@ -155,7 +180,7 @@
         if (lock) {
           const banner = document.createElement('div');
           banner.className = 'lock-banner';
-          banner.textContent = `⚠ 此項上次 (${lock.reportDate}) 異常未處理，須先在「機具設備異常事件」表標記為「已完成」才能解鎖。`;
+          banner.textContent = buildLockedBannerText(lock);
           row.appendChild(banner);
         }
 
@@ -209,7 +234,7 @@
           });
           group.value = badValue;
           // 預填異常說明
-          ta.value = `[沒改善] ${lock.reportDate} 異常：${lock.description}`;
+          ta.value = buildLockedPrefillText(lock);
           abnormalWrap.classList.add('show');
         }
 

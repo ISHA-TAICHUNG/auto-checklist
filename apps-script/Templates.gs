@@ -165,7 +165,7 @@ function getTemplateCyclesByCategory_() {
  *
  * 同一項次（order）有多筆 → 取最新一筆（依通報日期 desc）
  *
- * 回傳：[ { order, itemName, incidentId, reportDate, description, status } ]
+ * 回傳：[ { order, itemName, incidentId, reportDate, description, status, note, dueDate, assignee } ]
  */
 function getLockedItemsForEquipment_(equipmentId, formType) {
   const ss = SpreadsheetApp.openById(CONFIG.DB_SHEET_ID);
@@ -175,6 +175,15 @@ function getLockedItemsForEquipment_(equipmentId, formType) {
   const data = sheet.getDataRange().getValues();
   const headers = data[0];
   const idx = name => headers.indexOf(name);
+  const cell = (row, name) => {
+    const col = idx(name);
+    return col >= 0 ? row[col] : '';
+  };
+  const dateCell = (row, name) => {
+    const value = cell(row, name);
+    if (value instanceof Date) return Utilities.formatDate(value, tz_(), 'yyyy-MM-dd');
+    return String(value || '').trim();
+  };
 
   // 欄位防呆：「機具設備異常事件」表如果還沒初始化會缺欄位，避免崩潰
   const REQUIRED = ['設備代號', '表單類型', '項次', '項目名稱', '通報日期', '異常說明', '狀態'];
@@ -195,37 +204,82 @@ function getLockedItemsForEquipment_(equipmentId, formType) {
     return s !== '已完成';
   };
 
-  // 依 order 聚合，取最新一筆
+  // 依 order 聚合，先收全部未完成列，再由最新列承接前一筆處理脈絡。
   const byOrder = {};
   for (let i = 1; i < data.length; i++) {
-    if (data[i][idx('設備代號')] !== equipmentId) continue;
-    if (data[i][idx('表單類型')] !== targetType) continue;
-    if (!isLocked(data[i][idx('狀態')])) continue;
+    if (cell(data[i], '設備代號') !== equipmentId) continue;
+    if (cell(data[i], '表單類型') !== targetType) continue;
+    if (!isLocked(cell(data[i], '狀態'))) continue;
 
-    const order = Number(data[i][idx('項次')]) || 0;
+    const order = Number(cell(data[i], '項次')) || 0;
     if (!order) continue;
 
-    const rd = data[i][idx('通報日期')];
-    const rdStr = rd instanceof Date
-      ? Utilities.formatDate(rd, tz_(), 'yyyy-MM-dd')
-      : String(rd || '').trim();
+    const rdStr = dateCell(data[i], '通報日期');
 
     const candidate = {
       order,
-      itemName: String(data[i][idx('項目名稱')] || ''),
-      incidentId: String(data[i][idx('事件ID')] || ''),
+      itemName: String(cell(data[i], '項目名稱') || ''),
+      incidentId: String(cell(data[i], '事件ID') || ''),
       reportDate: rdStr,
-      description: String(data[i][idx('異常說明')] || ''),
-      status: String(data[i][idx('狀態')] || ''),
+      description: String(cell(data[i], '異常說明') || ''),
+      status: String(cell(data[i], '狀態') || ''),
+      note: String(cell(data[i], '備註') || ''),
+      dueDate: dateCell(data[i], '預計完成日'),
+      assignee: String(cell(data[i], '負責人') || ''),
     };
 
-    // 取較新的（reportDate 比較 string 排序在 YYYY-MM-DD 格式下等同日期排序）
-    if (!byOrder[order] || candidate.reportDate >= byOrder[order].reportDate) {
-      byOrder[order] = candidate;
-    }
+    if (!byOrder[order]) byOrder[order] = [];
+    byOrder[order].push(candidate);
   }
 
-  return Object.values(byOrder).sort((a, b) => a.order - b.order);
+  return Object.keys(byOrder)
+    .map(order => {
+      const rows = byOrder[order].sort(machineIncidentCompareByReportDateDesc_);
+      return machineIncidentMergeTrackingContext_(rows[0], rows);
+    })
+    .sort((a, b) => a.order - b.order);
+}
+
+function machineIncidentCompareByReportDateDesc_(a, b) {
+  return String(b && b.reportDate || '').localeCompare(String(a && a.reportDate || ''));
+}
+
+function machineIncidentIsGeneratedTracking_(description) {
+  return /^\[(沒改善|[^\]]*追蹤)\]\s*/.test(String(description || '').trim());
+}
+
+function machineIncidentNormalizeTrackingDescription_(description) {
+  return String(description || '').trim().replace(/^\[沒改善\]\s*/, '[持續追蹤] ');
+}
+
+function machineIncidentHasHandlingContext_(incident) {
+  if (!incident) return false;
+  const status = String(incident.status || '').trim();
+  return (!!status && status !== '待處理') ||
+    !!String(incident.note || '').trim() ||
+    !!String(incident.assignee || '').trim() ||
+    !!String(incident.dueDate || '').trim();
+}
+
+function machineIncidentMergeTrackingContext_(latest, historyRows) {
+  if (!latest) return latest;
+  const merged = Object.assign({}, latest);
+  merged.description = machineIncidentNormalizeTrackingDescription_(merged.description);
+
+  if (!machineIncidentIsGeneratedTracking_(latest.description) || machineIncidentHasHandlingContext_(latest)) {
+    return merged;
+  }
+
+  const inherited = (historyRows || []).find(row => row !== latest && machineIncidentHasHandlingContext_(row));
+  if (!inherited) return merged;
+
+  if (!String(merged.status || '').trim() || String(merged.status || '').trim() === '待處理') {
+    merged.status = inherited.status || merged.status;
+  }
+  if (!String(merged.note || '').trim()) merged.note = inherited.note || '';
+  if (!String(merged.assignee || '').trim()) merged.assignee = inherited.assignee || '';
+  if (!String(merged.dueDate || '').trim()) merged.dueDate = inherited.dueDate || '';
+  return merged;
 }
 
 /**

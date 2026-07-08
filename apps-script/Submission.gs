@@ -137,7 +137,8 @@ function handleSubmission_(payload) {
     });
     // b) 鎖定項驗證：「機具設備異常事件」未完成的 order，本次 result 必須仍為 bad
     //    (避免使用者繞過前端鎖定送出「良好」)
-    const lockedItems = getLockedItemsForEquipment_(payload.equipmentId, payload.formType);
+    let lockedItems = [];
+    lockedItems = getLockedItemsForEquipment_(payload.equipmentId, payload.formType);
     if (lockedItems.length > 0) {
       const lockedOrders = new Set(lockedItems.map(l => l.order));
       payload.items.forEach(it => {
@@ -242,14 +243,14 @@ function handleSubmission_(payload) {
       try {
         // tplMeta 帶下去，writeIncidents_ 內部會從 tplMeta.resultOptions 算 allowedResults
         writeIncidents_({ recordId, submittedAt, checkDate, formType: payload.formType,
-                          equipment, payload, fileUrl, tplMeta });
+                          equipment, payload, fileUrl, tplMeta, lockedItems });
       } catch (incidentErr) {
         Logger.log('writeIncidents_ 失敗（主紀錄已寫，異常追蹤可從 JSON 重建）: ' +
                    incidentErr + '\n' + (incidentErr.stack || ''));
       }
       // 異常通報仍維持「檢查人送出當下即時推播」；正式 PDF 連結待主管簽核後回填到 Sheet。
       if (incidentCount > 0) {
-        try { notifyLineIncidents_(recordId, submittedAt, checkDate, payload, equipment, fileUrl, allowedResults); }
+        try { notifyLineIncidents_(recordId, submittedAt, checkDate, payload, equipment, fileUrl, allowedResults, lockedItems); }
         catch (lineErr) { Logger.log('[LINE incident push] 失敗: ' + lineErr + '\n' + (lineErr.stack || '')); }
       }
 
@@ -1094,24 +1095,27 @@ function abnormalDescriptionWithCheckResults_(it) {
  * 把該次填報的所有異常項，透過 LINE 即時通報
  * （sendIncidentAlert_ 在 LineNotify.gs，會自動判斷有沒 token 並決定是否真的 push）
  */
-function notifyLineIncidents_(recordId, submittedAt, checkDate, payload, equipment, fileUrl, allowedResults) {
+function notifyLineIncidents_(recordId, submittedAt, checkDate, payload, equipment, fileUrl, allowedResults, lockedItems) {
   if (typeof sendIncidentAlert_ !== 'function') return;
   const cfg = (typeof getLineConfig_ === 'function') ? getLineConfig_() : null;
   if (!cfg || !cfg.token) return;  // 沒設 token 就 silently skip
 
   const formTypeZh = payload.formType === 'daily' ? '每日' : '每月';
   const checkDateStr = formatISODate_(checkDate);
+  const lockedByOrder = machineIncidentLockedByOrder_(lockedItems);
 
   const incidents = [];
   payload.items.forEach(it => {
     if (!isBadResult_(payload.formType, it.result, allowedResults)) return;
+    const tracking = machineIncidentSubmissionTracking_(it, lockedByOrder[it.order]);
     incidents.push({
       order: it.order,
       itemName: itemNameWithSection_(it),
       result: it.result,
-      description: abnormalDescriptionWithCheckResults_(it) || '(無說明)',
+      description: tracking.description,
       photoCount: Array.isArray(it.photos) ? it.photos.length : 0,
-      status: '待處理',
+      status: tracking.status,
+      note: tracking.note,
     });
   });
   if (!incidents.length) return;
@@ -1144,7 +1148,7 @@ function notifyLineIncidents_(recordId, submittedAt, checkDate, payload, equipme
  * 一筆檢查表可能產生多筆異常事件（例如 3 項 X）
  * 每筆都有獨立的事件ID、初始狀態 = 待處理
  */
-function writeIncidents_({ recordId, submittedAt, checkDate, formType, equipment, payload, fileUrl, tplMeta }) {
+function writeIncidents_({ recordId, submittedAt, checkDate, formType, equipment, payload, fileUrl, tplMeta, lockedItems }) {
   // 修 P1.1: 用模板 resultOptions 動態判定 bad（兼容未來新結果選項）
   const allowedResults = (tplMeta && Array.isArray(tplMeta.resultOptions) && tplMeta.resultOptions.length)
     ? tplMeta.resultOptions
@@ -1160,10 +1164,12 @@ function writeIncidents_({ recordId, submittedAt, checkDate, formType, equipment
   const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
   const submittedAtStr = Utilities.formatDate(submittedAt, tz_(), 'HH:mm:ss');
   const checkDateStr = formatISODate_(checkDate);
+  const lockedByOrder = machineIncidentLockedByOrder_(lockedItems);
 
   const rowsToAppend = [];
   for (const it of payload.items) {
     if (!isBadResult_(formType, it.result, allowedResults)) continue;
+    const tracking = machineIncidentSubmissionTracking_(it, lockedByOrder[it.order]);
     const row = new Array(headers.length).fill('');
     const setCol = (name, value) => {
       const i = headers.indexOf(name);
@@ -1180,11 +1186,14 @@ function writeIncidents_({ recordId, submittedAt, checkDate, formType, equipment
     setCol('項目名稱', itemNameWithSection_(it));
     setCol('結果代號', it.result);
     // monthly 用 abnormalDesc，daily 用 note
-    setCol('異常說明', abnormalDescriptionWithCheckResults_(it));
+    setCol('異常說明', tracking.description);
     setCol('照片數', Array.isArray(it.photos) ? it.photos.length : 0);
     setCol('PDF連結', fileUrl);
     setCol('紀錄ID', recordId);
-    setCol('狀態', '待處理');
+    setCol('狀態', tracking.status);
+    setCol('預計完成日', tracking.dueDate);
+    setCol('負責人', tracking.assignee);
+    setCol('備註', tracking.note);
     rowsToAppend.push(row);
   }
 
@@ -1192,6 +1201,41 @@ function writeIncidents_({ recordId, submittedAt, checkDate, formType, equipment
     sheet.getRange(sheet.getLastRow() + 1, 1, rowsToAppend.length, headers.length).setValues(rowsToAppend);
     Logger.log(`寫入 ${rowsToAppend.length} 筆異常事件`);
   }
+}
+
+function machineIncidentLockedByOrder_(lockedItems) {
+  const out = {};
+  (lockedItems || []).forEach(item => {
+    const order = Number(item && item.order) || 0;
+    if (order) out[order] = item;
+  });
+  return out;
+}
+
+function machineIncidentSubmissionTracking_(item, locked) {
+  const currentDescription = abnormalDescriptionWithCheckResults_(item) || '(無說明)';
+  if (!locked) {
+    return {
+      description: currentDescription,
+      status: '待處理',
+      note: '',
+      dueDate: '',
+      assignee: '',
+    };
+  }
+
+  const status = String(locked.status || '').trim() || '待處理';
+  const normalizedCurrent = machineIncidentNormalizeTrackingDescription_(currentDescription);
+  const description = machineIncidentIsGeneratedTracking_(normalizedCurrent)
+    ? normalizedCurrent
+    : `[${status}追蹤] ${locked.reportDate ? locked.reportDate + ' ' : ''}異常：${currentDescription}`;
+  return {
+    description,
+    status,
+    note: String(locked.note || '').trim(),
+    dueDate: String(locked.dueDate || '').trim(),
+    assignee: String(locked.assignee || '').trim(),
+  };
 }
 
 /**

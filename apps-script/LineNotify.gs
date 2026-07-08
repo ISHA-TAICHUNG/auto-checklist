@@ -928,9 +928,10 @@ function buildReminderFlex_(category, equipments, webFrontendUrl, opts) {
  */
 function buildIncidentFlex_(incident, pdfUrl, sheetUrl) {
   // incident: { equipmentName, category, formType('每日'/'每月'), order, itemName, result, description, photoCount, status, reportTime }
+  const displayDescription = machineIncidentDescriptionForDisplay_(incident);
   return {
     type: 'flex',
-    altText: `🚨 ${incident.equipmentName} 第${incident.order}項異常: ${incident.description}`,
+    altText: `🚨 ${incident.equipmentName} 第${incident.order}項異常: ${displayDescription}`,
     contents: {
       type: 'bubble',
       header: {
@@ -958,7 +959,7 @@ function buildIncidentFlex_(incident, pdfUrl, sheetUrl) {
           ]},
           { type: 'separator', margin: 'md' },
           { type: 'text', text: '⚠ 異常說明', size: 'sm', color: '#666666', margin: 'md' },
-          { type: 'text', text: String(incident.description || '(無說明)'), size: 'md', color: '#D32F2F', weight: 'bold', wrap: true },
+          { type: 'text', text: displayDescription, size: 'md', color: '#D32F2F', weight: 'bold', wrap: true },
           ...(incident.photoCount > 0 ? [{ type: 'text', text: `📷 附 ${incident.photoCount} 張照片`, size: 'xs', color: '#666666', margin: 'sm' }] : []),
         ],
       },
@@ -988,9 +989,20 @@ function buildIncidentFlex_(incident, pdfUrl, sheetUrl) {
   };
 }
 
+function machineIncidentDescriptionForDisplay_(incident) {
+  const raw = String((incident && incident.description) || '').trim();
+  const normalized = raw.replace(/^\[沒改善\]\s*/, '[持續追蹤] ');
+  const text = normalized || '(無說明)';
+  const note = String((incident && incident.note) || '').trim();
+  if (note && text.indexOf(note) < 0) {
+    return `${text}\n處理備註：${note}`;
+  }
+  return text;
+}
+
 function incidentSummaryItemBox_(incident) {
   const title = `第 ${incident.order || '—'} 項｜${trimLineText_(incident.itemName || '未命名項目', 70)}`;
-  const desc = trimLineText_(incident.description || '(無說明)', 120);
+  const desc = trimLineText_(machineIncidentDescriptionForDisplay_(incident), 120);
   return {
     type: 'box',
     layout: 'vertical',
@@ -1614,6 +1626,7 @@ function buildOpenIncidentBubble_(incident) {
   const incidentId = String(incident.incidentId || '');
   const shortId = incidentId ? incidentId.substring(0, 8) : '';
   const pdfUrl = incident.pdfUrl && /^https?:\/\//.test(incident.pdfUrl) ? incident.pdfUrl : '';
+  const displayDescription = machineIncidentDescriptionForDisplay_(incident);
   const completeAction = shortId
     ? { type: 'message', label: '標記完成', text: `/完成 ${shortId}` }
     : { type: 'message', label: '標記完成', text: '完成 ' };
@@ -1643,7 +1656,7 @@ function buildOpenIncidentBubble_(incident) {
         { type: 'text', text: '異常項目', size: 'sm', color: '#666666', margin: 'md' },
         { type: 'text', text: trimLineText_(incident.itemName || '—', 180), size: 'sm', color: '#202124', weight: 'bold', wrap: true },
         { type: 'text', text: '異常說明', size: 'sm', color: '#666666', margin: 'md' },
-        { type: 'text', text: trimLineText_(incident.description || '—', 260), size: 'md', color: '#D32F2F', weight: 'bold', wrap: true },
+        { type: 'text', text: trimLineText_(displayDescription, 260), size: 'md', color: '#D32F2F', weight: 'bold', wrap: true },
         { type: 'text', text: incident.photoCount > 0 ? `📷 附 ${incident.photoCount} 張照片` : '📷 無照片', size: 'xs', color: '#666666', margin: 'sm' },
       ],
     },

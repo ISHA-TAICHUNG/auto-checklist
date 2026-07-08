@@ -1064,11 +1064,34 @@ function listOpenIncidents_() {
       status,
       dueDate: toISO(data[i][idx('預計完成日')]),
       assignee: data[i][idx('負責人')],
+      note: idx('備註') >= 0 ? data[i][idx('備註')] : '',
     });
   }
+  applyMachineIncidentTrackingContext_(incidents);
   // 依通報日期降冪（最新在前）— ISO 字串排序正確對應時間
   incidents.sort((a, b) => (b.reportDate || '').localeCompare(a.reportDate || ''));
   return { count: incidents.length, incidents };
+}
+
+function applyMachineIncidentTrackingContext_(incidents) {
+  const groups = {};
+  (incidents || []).forEach(incident => {
+    const key = [
+      incident.equipmentId || '',
+      incident.formType || '',
+      incident.order || '',
+    ].join('|');
+    if (!groups[key]) groups[key] = [];
+    groups[key].push(incident);
+  });
+
+  Object.keys(groups).forEach(key => {
+    const rows = groups[key].sort(machineIncidentCompareByReportDateDesc_);
+    rows.forEach(row => {
+      const merged = machineIncidentMergeTrackingContext_(row, rows);
+      Object.assign(row, merged);
+    });
+  });
 }
 
 /**
