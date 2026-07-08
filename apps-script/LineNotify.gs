@@ -652,12 +652,10 @@ function defaultQuickReply_() {
   return {
     items: [
       { type: 'action', action: { type: 'message', label: '📊 填表狀態',   text: '狀態' } },
-      { type: 'action', action: { type: 'message', label: '📨 待發文',     text: '待發文' } },
-      { type: 'action', action: { type: 'message', label: '🖊 待簽核',     text: '待簽核' } },
-      { type: 'action', action: { type: 'message', label: '🚨 設備異常',   text: '異常' } },
       { type: 'action', action: { type: 'message', label: '📝 日常通報',   text: '通報' } },
+      { type: 'action', action: { type: 'message', label: '🚨 設備異常',   text: '異常' } },
       { type: 'action', action: { type: 'message', label: '📌 日常待處理', text: '待處理' } },
-      { type: 'action', action: { type: 'message', label: '📷 QR選單',     text: 'QR選單' } },
+      { type: 'action', action: { type: 'message', label: '🖊 待簽核',     text: '待簽核' } },
       { type: 'action', action: { type: 'message', label: '❓ 幫助',       text: '幫助' } },
     ],
   };
