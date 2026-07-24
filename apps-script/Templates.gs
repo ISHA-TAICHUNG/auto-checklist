@@ -329,5 +329,28 @@ function getFormMeta_(formType, equipmentId) {
   }
   items.sort((a, b) => a.order - b.order);
 
+  // 固定式起重機月檢的既有資料表曾保留舊版 9 項設定。前端與送出流程
+  // 一律使用原始 Word 已核對的 15 項定義；歷史填報與 PDF 不受影響。
+  if (template.templateId === 'F-CRANE-M') {
+    const source = getFixedCraneMonthlySourceDefinition_();
+    const sourceTemplate = source.templateRow;
+    return {
+      equipment,
+      template: {
+        ...template,
+        templateName: sourceTemplate[2],
+        legalBasis: sourceTemplate[4],
+        rule: sourceTemplate[5],
+        resultOptions: sourceTemplate[6].split(','),
+        monthlySchema: 'crane_full',
+      },
+      items: source.items.map((item) => ({
+        order: item[1],
+        name: item[2],
+        method: item[3],
+      })),
+    };
+  }
+
   return { equipment, template, items };
 }

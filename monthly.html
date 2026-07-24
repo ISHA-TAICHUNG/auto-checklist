@@ -1,714 +1,858 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="zh-Hant">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-  <meta name="theme-color" content="#1a73e8">
-  <title>ISHA 每月定期檢查紀錄</title>
-  <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="css/style.css?v=2026070701">
-  <script src="js/config.js?v=2026070101"></script>
-  <script src="js/api.js"></script>
-  <script src="js/signature.js"></script>
-  <script src="js/photos.js?v=2026070701"></script>
-</head>
-<body>
-  <header class="header">
-    <a class="back" href="index.html">回工作台</a>
-    <h1>每月定期檢查紀錄</h1>
-    <div class="sub" data-org-name></div>
-    <nav class="site-tabs" aria-label="主要分頁">
-      <a class="active" href="index.html">檢查填報</a>
-      <a href="incident.html">日常通報</a>
-    </nav>
-  </header>
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, maximum-scale=1"
+    />
+    <meta name="theme-color" content="#1a73e8" />
+    <title>ISHA 每月定期檢查紀錄</title>
+    <link rel="icon" href="assets/favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="css/style.css?v=2026070701" />
+    <script src="js/config.js?v=2026070101"></script>
+    <script src="js/api.js"></script>
+    <script src="js/signature.js"></script>
+    <script src="js/photos.js?v=2026070701"></script>
+  </head>
+  <body>
+    <header class="header">
+      <a class="back" href="index.html">回工作台</a>
+      <h1>每月定期檢查紀錄</h1>
+      <div class="sub" data-org-name></div>
+      <nav class="site-tabs" aria-label="主要分頁">
+        <a class="active" href="index.html">檢查填報</a>
+        <a href="incident.html">日常通報</a>
+      </nav>
+    </header>
 
-  <main class="container">
-    <div id="content">
-      <div class="page-loading"><span class="loading"></span>&nbsp;載入中...</div>
-    </div>
-  </main>
+    <main class="container">
+      <div id="content">
+        <div class="page-loading">
+          <span class="loading"></span>&nbsp;載入中...
+        </div>
+      </div>
+    </main>
 
-  <script>
-    // 全域錯誤捕捉：避免「點送出沒反應」這種 silent failure
-    window.addEventListener('error', (e) => {
-      alert('JS 錯誤：' + (e.message || e) + '\n' + (e.filename || '') + ':' + (e.lineno || ''));
-    });
-    window.addEventListener('unhandledrejection', (e) => {
-      alert('Promise 錯誤：' + (e.reason && e.reason.message ? e.reason.message : e.reason));
-    });
-
-    const urlParams = new URLSearchParams(location.search);
-    const eqp = urlParams.get('eqp');
-    const classroomMonthlyIds = new Set([
-      'CLASSROOM-LJ-MEAS-PPE',
-      'CLASSROOM-FX-MEAS-PPE',
-      'CLASSROOM-ZM-MEAS-PPE',
-    ]);
-
-    let formMeta = null;
-    let lockedItems = [];   // [{ order, itemName, incidentId, reportDate, description, status, note, dueDate, assignee }]
-    let sigPad = null;
-
-    if (!eqp) {
-      showError('未指定設備（缺少 eqp 參數）');
-    } else if (eqp.toUpperCase() === 'PPE-SCBA-MONTHLY') {
-      showLegacyScbaNotice();
-    } else {
-      loadForm();
-    }
-
-    function isClassroomMonthlyForm() {
-      return classroomMonthlyIds.has(String(eqp || '').toUpperCase());
-    }
-
-    function showError(msg) {
-      const root = document.getElementById('content');
-      root.textContent = '';
-      const div = document.createElement('div');
-      div.className = 'alert alert-error';
-      div.textContent = msg;
-      root.appendChild(div);
-    }
-
-    function lockedStatusText(lock) {
-      return String((lock && lock.status) || '').trim() || '未完成';
-    }
-
-    function buildLockedBannerText(lock) {
-      return `⚠ 此項上次 (${lock.reportDate}) 異常仍在追蹤（目前狀態：${lockedStatusText(lock)}）。須在「機具設備異常事件」表標記為「已完成」才能解鎖。`;
-    }
-
-    function buildLockedPrefillText(lock) {
-      const status = lockedStatusText(lock);
-      const date = String((lock && lock.reportDate) || '').trim();
-      const rawDescription = String((lock && lock.description) || '').trim() || '(無說明)';
-      const description = rawDescription.replace(/^\[沒改善\]\s*/, '[持續追蹤] ');
-      const lines = /^\[[^\]]+\]\s*/.test(description)
-        ? [description]
-        : [`[${status}追蹤] ${date ? date + ' ' : ''}異常：${description}`];
-      const note = String((lock && lock.note) || '').trim();
-      if (note) lines.push(`處理備註：${note}`);
-      const assignee = String((lock && lock.assignee) || '').trim();
-      if (assignee) lines.push(`負責人：${assignee}`);
-      const dueDate = String((lock && lock.dueDate) || '').trim();
-      if (dueDate) lines.push(`預計完成日：${dueDate}`);
-      return lines.join('\n');
-    }
-
-    function showLegacyScbaNotice() {
-      const root = document.getElementById('content');
-      root.textContent = '';
-      const card = document.createElement('div');
-      card.className = 'card';
-
-      const title = document.createElement('h2');
-      title.className = 'card-title';
-      title.textContent = 'SCBA 月檢已併入教室月檢';
-      card.appendChild(title);
-
-      const msg = document.createElement('div');
-      msg.className = 'alert alert-info';
-      msg.textContent = '請選擇教室月檢表，SCBA 檢查項目會在表單下方以獨立區塊呈現。';
-      card.appendChild(msg);
-
-      const actions = document.createElement('div');
-      actions.className = 'equip-actions';
-      [
-        ['龍井月檢', 'CLASSROOM-LJ-MEAS-PPE'],
-        ['復興月檢', 'CLASSROOM-FX-MEAS-PPE'],
-        ['忠明月檢', 'CLASSROOM-ZM-MEAS-PPE'],
-      ].forEach(([label, id]) => {
-        const link = document.createElement('a');
-        link.className = 'btn-monthly';
-        link.href = 'monthly.html?eqp=' + encodeURIComponent(id);
-        link.textContent = label;
-        actions.appendChild(link);
+    <script>
+      // 全域錯誤捕捉：避免「點送出沒反應」這種 silent failure
+      window.addEventListener("error", (e) => {
+        alert(
+          "JS 錯誤：" +
+            (e.message || e) +
+            "\n" +
+            (e.filename || "") +
+            ":" +
+            (e.lineno || ""),
+        );
       });
-      card.appendChild(actions);
-      root.appendChild(card);
-    }
+      window.addEventListener("unhandledrejection", (e) => {
+        alert(
+          "Promise 錯誤：" +
+            (e.reason && e.reason.message ? e.reason.message : e.reason),
+        );
+      });
 
-    async function loadForm() {
-      try {
-        const [metaRes, lockedRes] = await Promise.all([
-          API.getFormMeta('monthly', eqp),
-          API.getLockedItems('monthly', eqp),
-        ]);
-        if (!metaRes.ok) return showError(metaRes.error || '取得表單失敗');
-        formMeta = metaRes.meta;
-        lockedItems = (lockedRes && lockedRes.ok) ? (lockedRes.locked || []) : [];
-        renderForm();
-      } catch (err) {
-        showError('連線後端失敗：' + err.message);
-      }
-    }
+      const urlParams = new URLSearchParams(location.search);
+      const eqp = urlParams.get("eqp");
+      const classroomMonthlyIds = new Set([
+        "CLASSROOM-LJ-MEAS-PPE",
+        "CLASSROOM-FX-MEAS-PPE",
+        "CLASSROOM-ZM-MEAS-PPE",
+      ]);
 
-    function renderForm() {
-      const root = document.getElementById('content');
-      root.textContent = '';
+      let formMeta = null;
+      let lockedItems = []; // [{ order, itemName, incidentId, reportDate, description, status, note, dueDate, assignee }]
+      let sigPad = null;
 
-      // ----- 設備資訊 -----
-      const infoCard = makeCard('設備資訊');
-      const grid = document.createElement('div');
-      grid.className = 'meta-grid';
-      const eqInfo = formMeta.equipment;
-      if (isClassroomMonthlyForm()) {
-        addGridRow(grid, '所在教室', eqInfo.location);
+      if (!eqp) {
+        showError("未指定設備（缺少 eqp 參數）");
+      } else if (eqp.toUpperCase() === "PPE-SCBA-MONTHLY") {
+        showLegacyScbaNotice();
       } else {
-        addGridRow(grid, '設備名稱', eqInfo.equipmentName);
-        addGridRow(grid, '設備類別', eqInfo.category);
-        addGridRow(grid, '機械編號', eqInfo.machineSerial);
-        addGridRow(grid, '型式規格', eqInfo.machineType);
-        addGridRow(grid, '所在位置', eqInfo.location);
+        loadForm();
       }
-      infoCard.body.appendChild(grid);
-      root.appendChild(infoCard.card);
 
-      // ----- 檢查資訊 -----
-      const dateCard = makeCard('檢查資訊');
-      // 用 local timezone 組今日字串，避免 UTC 早上 8 點前顯示前一天
-      const today = new Date();
-      const pad = n => String(n).padStart(2, '0');
-      const isoToday = `${today.getFullYear()}-${pad(today.getMonth() + 1)}-${pad(today.getDate())}`;
-
-      const fDate = makeField('檢查日期', 'date', isoToday);
-      fDate.input.id = 'checkDate';
-      dateCard.body.appendChild(fDate.field);
-
-      const fInspector = makeField('檢查人員姓名', 'text', '');
-      fInspector.input.id = 'inspector';
-      fInspector.input.placeholder = '請填寫檢查人員姓名';
-      dateCard.body.appendChild(fInspector.field);
-
-      root.appendChild(dateCard.card);
-
-      // ----- 檢查項目 -----
-      const itemsCard = makeCard('檢查項目（' + formMeta.items.length + ' 項）');
-      const rule = document.createElement('div');
-      rule.className = 'alert alert-info';
-      // 取 schema 與動態結果選項
-      const schema = formMeta.template.monthlySchema || 'crane_full';
-      const isSimple = schema === 'simple';
-
-      const resultOptions = (formMeta.template.resultOptions && formMeta.template.resultOptions.length)
-        ? formMeta.template.resultOptions
-        : (isSimple ? ['ˇ', 'X'] : ['normal', 'abnormal']);
-      const badValue = resultOptions[resultOptions.length - 1];
-
-      rule.style.margin = '0 0 12px';
-      rule.style.fontSize = '13px';
-      rule.textContent = formMeta.template.rule || '請依規則勾選結果';
-      itemsCard.body.appendChild(rule);
-
-      // 把 lockedItems 轉成 Map by order
-      const lockedByOrder = {};
-      lockedItems.forEach(l => { lockedByOrder[l.order] = l; });
-      const hasSectionedItems = formMeta.items.some(hasMonthlyItemSection);
-      let lastSection = '';
-
-      formMeta.items.forEach((it, idx) => {
-        const display = getMonthlyItemDisplay(it);
-        it._section = display.section;
-        it._displayName = display.name;
-        const isClassroomRegularItem = isClassroomMonthlyForm() && display.section !== 'SCBA 空氣呼吸器檢查';
-        if (hasSectionedItems && display.section !== lastSection) {
-          itemsCard.body.appendChild(makeSectionHeader(display.section));
-          lastSection = display.section;
-        }
-
-        const lock = lockedByOrder[it.order] || null;
-        const row = document.createElement('div');
-        row.className = 'item-row' + (lock ? ' item-locked' : '');
-
-        const title = document.createElement('div');
-        title.className = 'item-title';
-        const order = document.createElement('span');
-        order.className = 'order';
-        order.textContent = it.order;
-        title.appendChild(order);
-        const text = document.createElement('span');
-        text.className = 'text';
-        text.textContent = display.name;
-        title.appendChild(text);
-        row.appendChild(title);
-
-        if (lock) {
-          const banner = document.createElement('div');
-          banner.className = 'lock-banner';
-          banner.textContent = buildLockedBannerText(lock);
-          row.appendChild(banner);
-        }
-
-        let resultGroup = null;
-        let metricGroups = null;
-
-        // 檢查方法
-        if (isSimple) {
-          // 教室月檢一般項目：數量 / 外觀 / 操作三項各自判定。
-          if (isClassroomRegularItem) {
-            const parsed = parseMonthlySafetyPpeMethod(it.method || '');
-            const methodLabel = document.createElement('div');
-            methodLabel.className = 'item-method';
-            const specText = parsed.spec ? `；廠牌規格或型號：${parsed.spec}` : '';
-            methodLabel.textContent = `檢查基準：應備${parsed.quantity || '—'}${parsed.unit || ''}${specText}`;
-            row.appendChild(methodLabel);
-          } else {
-            // simple schema：method 是固定的字串（DB 預設），顯示給使用者看不可改
-            const methodLabel = document.createElement('div');
-            methodLabel.className = 'item-method';
-            methodLabel.textContent = '檢查方法：' + (it.method || '—');
-            row.appendChild(methodLabel);
-          }
-        } else {
-          // crane_full：方法多選
-          const methodGroup = document.createElement('div');
-          methodGroup.className = 'method-group';
-          ['目視', '測試'].forEach(m => {
-            const lbl = document.createElement('label');
-            const cb = document.createElement('input');
-            cb.type = 'checkbox';
-            cb.dataset.itemIdx = idx;
-            cb.dataset.method = m;
-            lbl.appendChild(cb);
-            lbl.appendChild(document.createTextNode(m));
-            methodGroup.appendChild(lbl);
-          });
-          row.appendChild(methodGroup);
-        }
-
-        // 結果 radio（動態 resultOptions）
-        // label 用 resultLabel() 提供中文 + 原代號（兩行顯示）
-        const radioOpts = isSimple
-          ? resultOptions.map((v, i) => ({
-              value: v,
-              label: window.resultLabel(v),
-              cls: i === 0 ? 'checked-good' : 'checked-bad',
-            }))
-          : [
-              { value: 'normal',   label: '正常',     cls: 'checked-good' },
-              { value: 'abnormal', label: '異常',     cls: 'checked-bad' },
-            ];
-
-        if (isClassroomRegularItem) {
-          metricGroups = {
-            quantity: makeMetricRadioRow(row, '數量', `metric_${idx}_quantity`, radioOpts),
-            appearance: makeMetricRadioRow(row, '外觀', `metric_${idx}_appearance`, radioOpts),
-            operation: makeMetricRadioRow(row, '操作', `metric_${idx}_operation`, radioOpts),
-          };
-          it._metricGroups = metricGroups;
-        } else {
-          resultGroup = makeRadioGroup('result_' + idx, radioOpts);
-          row.appendChild(resultGroup.el);
-        }
-
-        // 異常說明 + 照片上傳（選 bad 才出現）
-        const abnormalWrap = document.createElement('div');
-        abnormalWrap.className = 'abnormal-input';
-        const ta = document.createElement('textarea');
-        ta.placeholder = '請填寫異常情形';
-        ta.dataset.itemIdx = idx;
-        ta.dataset.field = 'abnormalDesc';
-        abnormalWrap.appendChild(ta);
-
-        // 異常照片 manager
-        const photoWrap = document.createElement('div');
-        abnormalWrap.appendChild(photoWrap);
-        const photoMgr = new PhotoManager(photoWrap, { max: 4 });
-        it._photoMgr = photoMgr;
-
-        row.appendChild(abnormalWrap);
-
-        // 風險評估、定期檢討 — 僅 crane_full
-        if (!isSimple) {
-          const riskRow = document.createElement('div');
-          riskRow.className = 'risk-row';
-          const riskLabel = document.createElement('label');
-          riskLabel.className = 'field-label';
-          riskLabel.style.display = 'block';
-          riskLabel.style.marginBottom = '6px';
-          riskLabel.textContent = '風險評估';
-          riskRow.appendChild(riskLabel);
-
-          const riskGroup = makeRadioGroup('risk_' + idx, [
-            { value: 'severe',   label: 'V 嚴重',  cls: 'checked-bad' },
-            { value: 'possible', label: '? 可能',  cls: 'checked-na' },
-            { value: 'none',     label: '— 無危害', cls: 'checked-good' },
-          ]);
-          riskRow.appendChild(riskGroup.el);
-          row.appendChild(riskRow);
-
-          const reviewField = makeField('定期性檢討改善措施合宜性之情形', 'text', '');
-          reviewField.field.style.marginLeft = '34px';
-          reviewField.input.dataset.itemIdx = idx;
-          reviewField.input.dataset.field = 'review';
-          reviewField.input.placeholder = '檢討結果說明';
-          row.appendChild(reviewField.field);
-        }
-
-        // 改善措施（兩種 schema 都有）
-        const actField = makeField('改善措施', 'text', '');
-        actField.field.style.marginLeft = '34px';
-        actField.input.dataset.itemIdx = idx;
-        actField.input.dataset.field = 'action';
-        actField.input.placeholder = '無 / 處理方式說明';
-        row.appendChild(actField.field);
-
-        const updateAbnormalVisibility = () => {
-          const hasBadMetric = metricGroups
-            ? Object.values(metricGroups).some(g => g.value === badValue)
-            : false;
-          const isBad = hasBadMetric || (resultGroup && resultGroup.value === badValue);
-          if (isBad) abnormalWrap.classList.add('show');
-          else abnormalWrap.classList.remove('show');
-        };
-
-        // 套用鎖定：自動選 bad、disable 其他選項、預填說明
-        if (lock) {
-          const badForSchema = isSimple ? badValue : 'abnormal';
-          if (metricGroups) {
-            Object.values(metricGroups).forEach(g => forceRadioGroupValue(g, badForSchema, true));
-          } else {
-            forceRadioGroupValue(resultGroup, badForSchema, true);
-          }
-          ta.value = buildLockedPrefillText(lock);
-          abnormalWrap.classList.add('show');
-        }
-
-        if (metricGroups) {
-          Object.values(metricGroups).forEach(g => { g.onChange = updateAbnormalVisibility; });
-        } else {
-          resultGroup.onChange = updateAbnormalVisibility;
-        }
-
-        itemsCard.body.appendChild(row);
-      });
-
-      root.appendChild(itemsCard.card);
-
-      // ----- 簽名 -----
-      const sigCard = makeCard('檢查人員簽名');
-
-      const sigHint = document.createElement('div');
-      sigHint.className = 'signature-hint';
-      // 內容會由 SignaturePad 依手機方向動態更新
-      sigHint.textContent = '可將手機橫向旋轉以獲得更大的簽名空間';
-      sigCard.body.appendChild(sigHint);
-
-      const canvas = document.createElement('canvas');
-      canvas.className = 'signature-pad';
-      sigCard.body.appendChild(canvas);
-
-      const sigActions = document.createElement('div');
-      sigActions.className = 'signature-actions';
-      const clearBtn = document.createElement('button');
-      clearBtn.type = 'button';
-      clearBtn.className = 'btn';
-      clearBtn.textContent = '清除重簽';
-      sigActions.appendChild(clearBtn);
-      sigCard.body.appendChild(sigActions);
-
-      root.appendChild(sigCard.card);
-
-      setTimeout(() => {
-        sigPad = new SignaturePad(canvas, { hintElement: sigHint });
-        clearBtn.onclick = () => sigPad.clear();
-      }, 0);
-
-      // ----- 送出 -----
-      const submitArea = document.createElement('div');
-      submitArea.className = 'submit-area';
-      const submitBtn = document.createElement('button');
-      submitBtn.type = 'button';
-      submitBtn.className = 'btn btn-primary';
-      submitBtn.id = 'submitBtn';
-      submitBtn.textContent = '送出檢查紀錄';
-      submitArea.appendChild(submitBtn);
-      root.appendChild(submitArea);
-
-      submitBtn.onclick = onSubmit;
-    }
-
-    function makeCard(titleText) {
-      const card = document.createElement('div');
-      card.className = 'card';
-      const title = document.createElement('h2');
-      title.className = 'card-title';
-      title.textContent = titleText;
-      card.appendChild(title);
-      return { card, body: card };
-    }
-
-    function hasMonthlyItemSection(it) {
-      return /^【[^】]+】/.test(String((it && it.name) || ''));
-    }
-
-    function getMonthlyItemDisplay(it) {
-      const rawName = String((it && it.name) || '');
-      const match = rawName.match(/^【([^】]+)】\s*(.*)$/);
-      if (match) return { section: match[1], name: match[2] || rawName };
-      return { section: '安全衛生量測設備及個人防護具', name: rawName };
-    }
-
-    function makeSectionHeader(text) {
-      const div = document.createElement('div');
-      div.className = 'item-section-header';
-      div.textContent = text;
-      return div;
-    }
-
-    function parseMonthlySafetyPpeMethod(methodText) {
-      let text = String(methodText || '').replace(/\s+/g, ' ').trim();
-      text = text.replace(/^數量\s*\/\s*外觀\s*\/\s*操作\s*[；;:：]?\s*/, '').trim();
-      const parts = text.split(/[；;]/).map(s => s.trim()).filter(Boolean);
-      let quantityUnit = '';
-      let spec = text;
-      if (parts.length > 0 && /^應備/.test(parts[0])) {
-        quantityUnit = parts.shift();
-        spec = parts.join('；').trim();
+      function isClassroomMonthlyForm() {
+        return classroomMonthlyIds.has(String(eqp || "").toUpperCase());
       }
-      const m = quantityUnit.match(/^應備\s*([0-9０-９一二三四五六七八九十]+)\s*(.+)$/);
-      return {
-        quantity: m ? m[1] : '',
-        unit: m ? m[2] : '',
-        spec,
-      };
-    }
 
-    function makeMetricRadioRow(parent, labelText, name, options) {
-      const row = document.createElement('div');
-      row.className = 'metric-row';
-      const label = document.createElement('div');
-      label.className = 'metric-label';
-      label.textContent = labelText;
-      row.appendChild(label);
-      const group = makeRadioGroup(name, options);
-      group.el.classList.add('metric-radio');
-      row.appendChild(group.el);
-      parent.appendChild(row);
-      return group;
-    }
+      function showError(msg) {
+        const root = document.getElementById("content");
+        root.textContent = "";
+        const div = document.createElement("div");
+        div.className = "alert alert-error";
+        div.textContent = msg;
+        root.appendChild(div);
+      }
 
-    function addGridRow(grid, label, value) {
-      const l = document.createElement('div');
-      l.className = 'label';
-      l.textContent = label;
-      const v = document.createElement('div');
-      v.className = 'value';
-      v.textContent = value || '—';
-      grid.appendChild(l);
-      grid.appendChild(v);
-    }
+      function lockedStatusText(lock) {
+        return String((lock && lock.status) || "").trim() || "未完成";
+      }
 
-    function makeField(labelText, type, defaultValue) {
-      const field = document.createElement('div');
-      field.className = 'field';
-      const label = document.createElement('label');
-      label.className = 'field-label';
-      label.textContent = labelText;
-      field.appendChild(label);
-      const input = document.createElement('input');
-      input.type = type;
-      if (defaultValue) input.value = defaultValue;
-      field.appendChild(input);
-      return { field, input };
-    }
+      function buildLockedBannerText(lock) {
+        return `⚠ 此項上次 (${lock.reportDate}) 異常仍在追蹤（目前狀態：${lockedStatusText(lock)}）。須在「機具設備異常事件」表標記為「已完成」才能解鎖。`;
+      }
 
-    function makeRadioGroup(name, options) {
-      const el = document.createElement('div');
-      el.className = 'radio-group';
-      const wrapper = { el, value: null, onChange: null };
-      options.forEach(opt => {
-        const lbl = document.createElement('label');
-        lbl.dataset.value = opt.value;
-        lbl.dataset.cls = opt.cls;
-        lbl.textContent = opt.label;
-        const input = document.createElement('input');
-        input.type = 'radio';
-        input.name = name;
-        input.value = opt.value;
-        lbl.insertBefore(input, lbl.firstChild);
-        input.onchange = () => {
-          el.querySelectorAll('label').forEach(L => {
-            L.classList.remove('checked-good', 'checked-bad', 'checked-na');
-          });
-          lbl.classList.add(opt.cls);
-          wrapper.value = opt.value;
-          if (wrapper.onChange) wrapper.onChange(opt.value);
-        };
-        el.appendChild(lbl);
-      });
-      return wrapper;
-    }
+      function buildLockedPrefillText(lock) {
+        const status = lockedStatusText(lock);
+        const date = String((lock && lock.reportDate) || "").trim();
+        const rawDescription =
+          String((lock && lock.description) || "").trim() || "(無說明)";
+        const description = rawDescription.replace(
+          /^\[沒改善\]\s*/,
+          "[持續追蹤] ",
+        );
+        const lines = /^\[[^\]]+\]\s*/.test(description)
+          ? [description]
+          : [`[${status}追蹤] ${date ? date + " " : ""}異常：${description}`];
+        const note = String((lock && lock.note) || "").trim();
+        if (note) lines.push(`處理備註：${note}`);
+        const assignee = String((lock && lock.assignee) || "").trim();
+        if (assignee) lines.push(`負責人：${assignee}`);
+        const dueDate = String((lock && lock.dueDate) || "").trim();
+        if (dueDate) lines.push(`預計完成日：${dueDate}`);
+        return lines.join("\n");
+      }
 
-    function forceRadioGroupValue(group, value, locked) {
-      if (!group || !group.el) return;
-      group.el.querySelectorAll('label').forEach(L => {
-        const v = L.dataset.value;
-        const inp = L.querySelector('input');
-        L.classList.remove('checked-good', 'checked-bad', 'checked-na');
-        if (v === value) {
-          if (inp) inp.checked = true;
-          L.classList.add(L.dataset.cls);
-          group.value = value;
-        } else if (inp) {
-          inp.checked = false;
-        }
-        if (locked) {
-          L.style.opacity = v === value ? '1' : '0.4';
-          L.style.cursor = v === value ? 'default' : 'not-allowed';
-          if (inp && v !== value) inp.disabled = true;
-        }
-      });
-    }
+      function showLegacyScbaNotice() {
+        const root = document.getElementById("content");
+        root.textContent = "";
+        const card = document.createElement("div");
+        card.className = "card";
 
-    async function onSubmit() {
-      const btn = document.getElementById('submitBtn');
-      const inspector = document.getElementById('inspector').value.trim();
-      const checkDate = document.getElementById('checkDate').value;
+        const title = document.createElement("h2");
+        title.className = "card-title";
+        title.textContent = "SCBA 月檢已併入教室月檢";
+        card.appendChild(title);
 
-      if (!checkDate) return alert('請選擇檢查日期');
-      if (!inspector)  return alert('請填寫檢查人員姓名');
+        const msg = document.createElement("div");
+        msg.className = "alert alert-info";
+        msg.textContent =
+          "請選擇教室月檢表，SCBA 檢查項目會在表單下方以獨立區塊呈現。";
+        card.appendChild(msg);
 
-      const schema = formMeta.template.monthlySchema || 'crane_full';
-      const isSimple = schema === 'simple';
-      const resultOptions = (formMeta.template.resultOptions && formMeta.template.resultOptions.length)
-        ? formMeta.template.resultOptions
-        : (isSimple ? ['ˇ', 'X'] : ['normal', 'abnormal']);
-      const badValue = resultOptions[resultOptions.length - 1];
-
-      const items = [];
-      let problem = '';
-      formMeta.items.forEach((it, idx) => {
-        // simple: method 從 it 取（固定字串）；crane_full: methods 從 checkbox 取
-        let methods, method, result, checkResults = null;
-        const isClassroomRegularItem = isClassroomMonthlyForm() && (it._section || '') !== 'SCBA 空氣呼吸器檢查';
-        if (isSimple) {
-          method = it.method || '';
-          methods = method ? [method] : [];
-        } else {
-          methods = Array.from(document.querySelectorAll(
-            `input[type="checkbox"][data-item-idx="${idx}"]`)).filter(c => c.checked).map(c => c.dataset.method);
-        }
-        if (isClassroomRegularItem) {
-          checkResults = {
-            quantity: (document.querySelector(`input[name="metric_${idx}_quantity"]:checked`) || {}).value || '',
-            appearance: (document.querySelector(`input[name="metric_${idx}_appearance"]:checked`) || {}).value || '',
-            operation: (document.querySelector(`input[name="metric_${idx}_operation"]:checked`) || {}).value || '',
-          };
-          const metricLabels = { quantity: '數量', appearance: '外觀', operation: '操作' };
-          Object.keys(checkResults).forEach(key => {
-            if (!checkResults[key] && !problem) problem = '第 ' + it.order + ' 項：' + metricLabels[key] + '未選擇結果';
-          });
-          result = Object.values(checkResults).some(v => v === badValue) ? badValue : resultOptions[0];
-        } else {
-          result = (document.querySelector(`input[name="result_${idx}"]:checked`) || {}).value;
-        }
-        const risk = isSimple ? '' : ((document.querySelector(`input[name="risk_${idx}"]:checked`) || {}).value || '');
-        const abnormalDesc = (document.querySelector(`textarea[data-item-idx="${idx}"][data-field="abnormalDesc"]`) || {}).value || '';
-        const action = (document.querySelector(`input[data-item-idx="${idx}"][data-field="action"]`) || {}).value || '';
-        const review = isSimple ? '' : ((document.querySelector(`input[data-item-idx="${idx}"][data-field="review"]`) || {}).value || '');
-
-        // 驗證：simple schema 不要求勾選方法（method 是固定的）
-        if (!isSimple && !methods.length && !problem) problem = '第 ' + it.order + ' 項：未勾選檢查方法';
-        if (!result && !problem)        problem = '第 ' + it.order + ' 項：未選擇結果';
-        if (result === badValue && !abnormalDesc.trim() && !problem)
-          problem = '第 ' + it.order + ' 項：異常請填說明';
-
-        const photos = (it._photoMgr && result === badValue)
-          ? it._photoMgr.toDataURLs()
-          : [];
-        items.push({
-          order: it.order,
-          name: it._displayName || it.name,
-          section: it._section || '',
-          methods,
-          method,                                                 // simple schema 用
-          result,
-          checkResults,
-          abnormalDesc: abnormalDesc.trim(),
-          risk,
-          action: action.trim(),
-          review: review.trim(),
-          photos,
+        const actions = document.createElement("div");
+        actions.className = "equip-actions";
+        [
+          ["龍井月檢", "CLASSROOM-LJ-MEAS-PPE"],
+          ["復興月檢", "CLASSROOM-FX-MEAS-PPE"],
+          ["忠明月檢", "CLASSROOM-ZM-MEAS-PPE"],
+        ].forEach(([label, id]) => {
+          const link = document.createElement("a");
+          link.className = "btn-monthly";
+          link.href = "monthly.html?eqp=" + encodeURIComponent(id);
+          link.textContent = label;
+          actions.appendChild(link);
         });
-      });
-
-      if (problem) return alert(problem);
-      if (!sigPad || sigPad.isEmpty()) return alert('請簽名');
-
-      // codex P1: idempotency — 產 UUID v4，後端用此判斷是否重複送出
-      if (!window._submissionId) window._submissionId = crypto.randomUUID();
-      const payload = {
-        clientSubmissionId: window._submissionId,
-        formType: 'monthly',
-        equipmentId: eqp,
-        checkDate: checkDate,
-        inspector: inspector,
-        items: items,
-        signature: sigPad.trimmedDataURL(),
-      };
-
-      btn.disabled = true;
-      const span = document.createElement('span');
-      span.className = 'loading';
-      btn.textContent = '';
-      btn.appendChild(span);
-      btn.appendChild(document.createTextNode(' 送出中...'));
-
-      try {
-        const r = await API.submit(payload);
-        if (!r.ok) throw new Error(r.error || '送出失敗');
-        showResult(r);
-      } catch (err) {
-        btn.disabled = false;
-        btn.textContent = '送出檢查紀錄';
-        alert('送出失敗：' + err.message);
-      }
-    }
-
-    function showResult(r) {
-      const root = document.getElementById('content');
-      root.textContent = '';
-      const card = document.createElement('div');
-      card.className = 'card';
-
-      const icon = document.createElement('div');
-      icon.className = 'result-icon';
-      icon.textContent = '✓';
-      icon.style.color = '#34a853';
-      card.appendChild(icon);
-
-      const title = document.createElement('div');
-      title.className = 'result-title';
-      title.textContent = '月檢紀錄已送出';
-      card.appendChild(title);
-
-      const meta = document.createElement('div');
-      meta.className = 'result-meta';
-      meta.textContent = r.approvalPending
-        ? '已送出主管簽核通知，主管簽名後才會正式歸檔'
-        : '本次紀錄已自動歸檔';
-      card.appendChild(meta);
-
-      if (r.approvalPending && r.approvalNotice && !r.approvalNotice.ok) {
-        const warn = document.createElement('div');
-        warn.className = 'alert alert-error';
-        warn.textContent = '主管 LINE 簽核通知未送出，請管理員確認 LINE 通知設定';
-        card.appendChild(warn);
+        card.appendChild(actions);
+        root.appendChild(card);
       }
 
-      const back = document.createElement('a');
-      back.href = 'index.html';
-      back.className = 'btn btn-primary';
-      back.style.display = 'block';
-      back.style.textAlign = 'center';
-      back.style.textDecoration = 'none';
-      back.textContent = '回工作台';
-      card.appendChild(back);
+      async function loadForm() {
+        try {
+          const [metaRes, lockedRes] = await Promise.all([
+            API.getFormMeta("monthly", eqp),
+            API.getLockedItems("monthly", eqp),
+          ]);
+          if (!metaRes.ok) return showError(metaRes.error || "取得表單失敗");
+          formMeta = metaRes.meta;
+          lockedItems = lockedRes && lockedRes.ok ? lockedRes.locked || [] : [];
+          renderForm();
+        } catch (err) {
+          showError("連線後端失敗：" + err.message);
+        }
+      }
 
-      root.appendChild(card);
-    }
-  </script>
-</body>
+      function renderForm() {
+        const root = document.getElementById("content");
+        root.textContent = "";
+
+        // ----- 設備資訊 -----
+        const infoCard = makeCard("設備資訊");
+        const grid = document.createElement("div");
+        grid.className = "meta-grid";
+        const eqInfo = formMeta.equipment;
+        if (isClassroomMonthlyForm()) {
+          addGridRow(grid, "所在教室", eqInfo.location);
+        } else {
+          addGridRow(grid, "設備名稱", eqInfo.equipmentName);
+          addGridRow(grid, "設備類別", eqInfo.category);
+          addGridRow(grid, "機械編號", eqInfo.machineSerial);
+          addGridRow(grid, "型式規格", eqInfo.machineType);
+          addGridRow(grid, "所在位置", eqInfo.location);
+        }
+        infoCard.body.appendChild(grid);
+        root.appendChild(infoCard.card);
+
+        // ----- 檢查資訊 -----
+        const dateCard = makeCard("檢查資訊");
+        // 用 local timezone 組今日字串，避免 UTC 早上 8 點前顯示前一天
+        const today = new Date();
+        const pad = (n) => String(n).padStart(2, "0");
+        const isoToday = `${today.getFullYear()}-${pad(today.getMonth() + 1)}-${pad(today.getDate())}`;
+
+        const fDate = makeField("檢查日期", "date", isoToday);
+        fDate.input.id = "checkDate";
+        dateCard.body.appendChild(fDate.field);
+
+        const fInspector = makeField("檢查人員姓名", "text", "");
+        fInspector.input.id = "inspector";
+        fInspector.input.placeholder = "請填寫檢查人員姓名";
+        dateCard.body.appendChild(fInspector.field);
+
+        root.appendChild(dateCard.card);
+
+        // ----- 檢查項目 -----
+        const itemsCard = makeCard(
+          "檢查項目（" + formMeta.items.length + " 項）",
+        );
+        const rule = document.createElement("div");
+        rule.className = "alert alert-info";
+        // 取 schema 與動態結果選項
+        const schema = formMeta.template.monthlySchema || "crane_full";
+        const isSimple = schema === "simple";
+        const isCraneMonthly = schema === "crane_full";
+        const usesFixedMethod = isSimple || isCraneMonthly;
+
+        const resultOptions =
+          formMeta.template.resultOptions &&
+          formMeta.template.resultOptions.length
+            ? formMeta.template.resultOptions
+            : usesFixedMethod
+              ? ["V", "/", "X"]
+              : ["normal", "abnormal"];
+        const badValue = resultOptions[resultOptions.length - 1];
+
+        rule.style.margin = "0 0 12px";
+        rule.style.fontSize = "13px";
+        rule.textContent = formMeta.template.rule || "請依規則勾選結果";
+        itemsCard.body.appendChild(rule);
+
+        // 把 lockedItems 轉成 Map by order
+        const lockedByOrder = {};
+        lockedItems.forEach((l) => {
+          lockedByOrder[l.order] = l;
+        });
+        const hasSectionedItems = formMeta.items.some(hasMonthlyItemSection);
+        let lastSection = "";
+
+        formMeta.items.forEach((it, idx) => {
+          const display = getMonthlyItemDisplay(it);
+          it._section = display.section;
+          it._displayName = display.name;
+          const isClassroomRegularItem =
+            isClassroomMonthlyForm() &&
+            display.section !== "SCBA 空氣呼吸器檢查";
+          if (hasSectionedItems && display.section !== lastSection) {
+            itemsCard.body.appendChild(makeSectionHeader(display.section));
+            lastSection = display.section;
+          }
+
+          const lock = lockedByOrder[it.order] || null;
+          const row = document.createElement("div");
+          row.className = "item-row" + (lock ? " item-locked" : "");
+
+          const title = document.createElement("div");
+          title.className = "item-title";
+          const order = document.createElement("span");
+          order.className = "order";
+          order.textContent = it.order;
+          title.appendChild(order);
+          const text = document.createElement("span");
+          text.className = "text";
+          text.textContent = display.name;
+          title.appendChild(text);
+          row.appendChild(title);
+
+          if (lock) {
+            const banner = document.createElement("div");
+            banner.className = "lock-banner";
+            banner.textContent = buildLockedBannerText(lock);
+            row.appendChild(banner);
+          }
+
+          let resultGroup = null;
+          let metricGroups = null;
+
+          // 檢查方法
+          if (usesFixedMethod) {
+            // 教室月檢一般項目：數量 / 外觀 / 操作三項各自判定。
+            if (isClassroomRegularItem) {
+              const parsed = parseMonthlySafetyPpeMethod(it.method || "");
+              const methodLabel = document.createElement("div");
+              methodLabel.className = "item-method";
+              const specText = parsed.spec
+                ? `；廠牌規格或型號：${parsed.spec}`
+                : "";
+              methodLabel.textContent = `檢查基準：應備${parsed.quantity || "—"}${parsed.unit || ""}${specText}`;
+              row.appendChild(methodLabel);
+            } else if (isSimple) {
+              // simple schema：method 是固定的字串（DB 預設），顯示給使用者看不可改
+              const methodLabel = document.createElement("div");
+              methodLabel.className = "item-method";
+              methodLabel.textContent = "檢查方法：" + (it.method || "—");
+              row.appendChild(methodLabel);
+            } else {
+              const methodLabel = document.createElement("div");
+              methodLabel.className = "item-method";
+              methodLabel.textContent = "檢查內容及方法：" + (it.method || "—");
+              row.appendChild(methodLabel);
+            }
+          } else {
+            // crane_full：方法多選
+            const methodGroup = document.createElement("div");
+            methodGroup.className = "method-group";
+            ["目視", "測試"].forEach((m) => {
+              const lbl = document.createElement("label");
+              const cb = document.createElement("input");
+              cb.type = "checkbox";
+              cb.dataset.itemIdx = idx;
+              cb.dataset.method = m;
+              lbl.appendChild(cb);
+              lbl.appendChild(document.createTextNode(m));
+              methodGroup.appendChild(lbl);
+            });
+            row.appendChild(methodGroup);
+          }
+
+          // 結果 radio（動態 resultOptions）
+          // label 用 resultLabel() 提供中文 + 原代號（兩行顯示）
+          const radioOpts = usesFixedMethod
+            ? resultOptions.map((v, i) => ({
+                value: v,
+                label: window.resultLabel(v),
+                cls:
+                  i === 0
+                    ? "checked-good"
+                    : i === resultOptions.length - 1
+                      ? "checked-bad"
+                      : "checked-na",
+              }))
+            : [
+                { value: "normal", label: "正常", cls: "checked-good" },
+                { value: "abnormal", label: "異常", cls: "checked-bad" },
+              ];
+
+          if (isClassroomRegularItem) {
+            metricGroups = {
+              quantity: makeMetricRadioRow(
+                row,
+                "數量",
+                `metric_${idx}_quantity`,
+                radioOpts,
+              ),
+              appearance: makeMetricRadioRow(
+                row,
+                "外觀",
+                `metric_${idx}_appearance`,
+                radioOpts,
+              ),
+              operation: makeMetricRadioRow(
+                row,
+                "操作",
+                `metric_${idx}_operation`,
+                radioOpts,
+              ),
+            };
+            it._metricGroups = metricGroups;
+          } else {
+            resultGroup = makeRadioGroup("result_" + idx, radioOpts);
+            row.appendChild(resultGroup.el);
+          }
+
+          // 異常說明 + 照片上傳（選 bad 才出現）
+          const abnormalWrap = document.createElement("div");
+          abnormalWrap.className = "abnormal-input";
+          const ta = document.createElement("textarea");
+          ta.placeholder = "請填寫異常情形";
+          ta.dataset.itemIdx = idx;
+          ta.dataset.field = "abnormalDesc";
+          abnormalWrap.appendChild(ta);
+
+          // 異常照片 manager
+          const photoWrap = document.createElement("div");
+          abnormalWrap.appendChild(photoWrap);
+          const photoMgr = new PhotoManager(photoWrap, { max: 4 });
+          it._photoMgr = photoMgr;
+
+          row.appendChild(abnormalWrap);
+
+          // 風險評估、定期檢討僅保留給其他舊月檢樣式；固定式起重機依原表不顯示。
+          if (!usesFixedMethod) {
+            const riskRow = document.createElement("div");
+            riskRow.className = "risk-row";
+            const riskLabel = document.createElement("label");
+            riskLabel.className = "field-label";
+            riskLabel.style.display = "block";
+            riskLabel.style.marginBottom = "6px";
+            riskLabel.textContent = "風險評估";
+            riskRow.appendChild(riskLabel);
+
+            const riskGroup = makeRadioGroup("risk_" + idx, [
+              { value: "severe", label: "V 嚴重", cls: "checked-bad" },
+              { value: "possible", label: "? 可能", cls: "checked-na" },
+              { value: "none", label: "— 無危害", cls: "checked-good" },
+            ]);
+            riskRow.appendChild(riskGroup.el);
+            row.appendChild(riskRow);
+
+            const reviewField = makeField(
+              "定期性檢討改善措施合宜性之情形",
+              "text",
+              "",
+            );
+            reviewField.field.style.marginLeft = "34px";
+            reviewField.input.dataset.itemIdx = idx;
+            reviewField.input.dataset.field = "review";
+            reviewField.input.placeholder = "檢討結果說明";
+            row.appendChild(reviewField.field);
+          }
+
+          // 改善措施（兩種 schema 都有）
+          const actField = makeField("改善措施", "text", "");
+          actField.field.style.marginLeft = "34px";
+          actField.input.dataset.itemIdx = idx;
+          actField.input.dataset.field = "action";
+          actField.input.placeholder = "無 / 處理方式說明";
+          row.appendChild(actField.field);
+
+          const updateAbnormalVisibility = () => {
+            const hasBadMetric = metricGroups
+              ? Object.values(metricGroups).some((g) => g.value === badValue)
+              : false;
+            const isBad =
+              hasBadMetric || (resultGroup && resultGroup.value === badValue);
+            if (isBad) abnormalWrap.classList.add("show");
+            else abnormalWrap.classList.remove("show");
+          };
+
+          // 套用鎖定：自動選 bad、disable 其他選項、預填說明
+          if (lock) {
+            const badForSchema = usesFixedMethod ? badValue : "abnormal";
+            if (metricGroups) {
+              Object.values(metricGroups).forEach((g) =>
+                forceRadioGroupValue(g, badForSchema, true),
+              );
+            } else {
+              forceRadioGroupValue(resultGroup, badForSchema, true);
+            }
+            ta.value = buildLockedPrefillText(lock);
+            abnormalWrap.classList.add("show");
+          }
+
+          if (metricGroups) {
+            Object.values(metricGroups).forEach((g) => {
+              g.onChange = updateAbnormalVisibility;
+            });
+          } else {
+            resultGroup.onChange = updateAbnormalVisibility;
+          }
+
+          itemsCard.body.appendChild(row);
+        });
+
+        root.appendChild(itemsCard.card);
+
+        // ----- 簽名 -----
+        const sigCard = makeCard("檢查人員簽名");
+
+        const sigHint = document.createElement("div");
+        sigHint.className = "signature-hint";
+        // 內容會由 SignaturePad 依手機方向動態更新
+        sigHint.textContent = "可將手機橫向旋轉以獲得更大的簽名空間";
+        sigCard.body.appendChild(sigHint);
+
+        const canvas = document.createElement("canvas");
+        canvas.className = "signature-pad";
+        sigCard.body.appendChild(canvas);
+
+        const sigActions = document.createElement("div");
+        sigActions.className = "signature-actions";
+        const clearBtn = document.createElement("button");
+        clearBtn.type = "button";
+        clearBtn.className = "btn";
+        clearBtn.textContent = "清除重簽";
+        sigActions.appendChild(clearBtn);
+        sigCard.body.appendChild(sigActions);
+
+        root.appendChild(sigCard.card);
+
+        setTimeout(() => {
+          sigPad = new SignaturePad(canvas, { hintElement: sigHint });
+          clearBtn.onclick = () => sigPad.clear();
+        }, 0);
+
+        // ----- 送出 -----
+        const submitArea = document.createElement("div");
+        submitArea.className = "submit-area";
+        const submitBtn = document.createElement("button");
+        submitBtn.type = "button";
+        submitBtn.className = "btn btn-primary";
+        submitBtn.id = "submitBtn";
+        submitBtn.textContent = "送出檢查紀錄";
+        submitArea.appendChild(submitBtn);
+        root.appendChild(submitArea);
+
+        submitBtn.onclick = onSubmit;
+      }
+
+      function makeCard(titleText) {
+        const card = document.createElement("div");
+        card.className = "card";
+        const title = document.createElement("h2");
+        title.className = "card-title";
+        title.textContent = titleText;
+        card.appendChild(title);
+        return { card, body: card };
+      }
+
+      function hasMonthlyItemSection(it) {
+        return /^【[^】]+】/.test(String((it && it.name) || ""));
+      }
+
+      function getMonthlyItemDisplay(it) {
+        const rawName = String((it && it.name) || "");
+        const match = rawName.match(/^【([^】]+)】\s*(.*)$/);
+        if (match) return { section: match[1], name: match[2] || rawName };
+        return { section: "安全衛生量測設備及個人防護具", name: rawName };
+      }
+
+      function makeSectionHeader(text) {
+        const div = document.createElement("div");
+        div.className = "item-section-header";
+        div.textContent = text;
+        return div;
+      }
+
+      function parseMonthlySafetyPpeMethod(methodText) {
+        let text = String(methodText || "")
+          .replace(/\s+/g, " ")
+          .trim();
+        text = text
+          .replace(/^數量\s*\/\s*外觀\s*\/\s*操作\s*[；;:：]?\s*/, "")
+          .trim();
+        const parts = text
+          .split(/[；;]/)
+          .map((s) => s.trim())
+          .filter(Boolean);
+        let quantityUnit = "";
+        let spec = text;
+        if (parts.length > 0 && /^應備/.test(parts[0])) {
+          quantityUnit = parts.shift();
+          spec = parts.join("；").trim();
+        }
+        const m = quantityUnit.match(
+          /^應備\s*([0-9０-９一二三四五六七八九十]+)\s*(.+)$/,
+        );
+        return {
+          quantity: m ? m[1] : "",
+          unit: m ? m[2] : "",
+          spec,
+        };
+      }
+
+      function makeMetricRadioRow(parent, labelText, name, options) {
+        const row = document.createElement("div");
+        row.className = "metric-row";
+        const label = document.createElement("div");
+        label.className = "metric-label";
+        label.textContent = labelText;
+        row.appendChild(label);
+        const group = makeRadioGroup(name, options);
+        group.el.classList.add("metric-radio");
+        row.appendChild(group.el);
+        parent.appendChild(row);
+        return group;
+      }
+
+      function addGridRow(grid, label, value) {
+        const l = document.createElement("div");
+        l.className = "label";
+        l.textContent = label;
+        const v = document.createElement("div");
+        v.className = "value";
+        v.textContent = value || "—";
+        grid.appendChild(l);
+        grid.appendChild(v);
+      }
+
+      function makeField(labelText, type, defaultValue) {
+        const field = document.createElement("div");
+        field.className = "field";
+        const label = document.createElement("label");
+        label.className = "field-label";
+        label.textContent = labelText;
+        field.appendChild(label);
+        const input = document.createElement("input");
+        input.type = type;
+        if (defaultValue) input.value = defaultValue;
+        field.appendChild(input);
+        return { field, input };
+      }
+
+      function makeRadioGroup(name, options) {
+        const el = document.createElement("div");
+        el.className = "radio-group";
+        const wrapper = { el, value: null, onChange: null };
+        options.forEach((opt) => {
+          const lbl = document.createElement("label");
+          lbl.dataset.value = opt.value;
+          lbl.dataset.cls = opt.cls;
+          lbl.textContent = opt.label;
+          const input = document.createElement("input");
+          input.type = "radio";
+          input.name = name;
+          input.value = opt.value;
+          lbl.insertBefore(input, lbl.firstChild);
+          input.onchange = () => {
+            el.querySelectorAll("label").forEach((L) => {
+              L.classList.remove("checked-good", "checked-bad", "checked-na");
+            });
+            lbl.classList.add(opt.cls);
+            wrapper.value = opt.value;
+            if (wrapper.onChange) wrapper.onChange(opt.value);
+          };
+          el.appendChild(lbl);
+        });
+        return wrapper;
+      }
+
+      function forceRadioGroupValue(group, value, locked) {
+        if (!group || !group.el) return;
+        group.el.querySelectorAll("label").forEach((L) => {
+          const v = L.dataset.value;
+          const inp = L.querySelector("input");
+          L.classList.remove("checked-good", "checked-bad", "checked-na");
+          if (v === value) {
+            if (inp) inp.checked = true;
+            L.classList.add(L.dataset.cls);
+            group.value = value;
+          } else if (inp) {
+            inp.checked = false;
+          }
+          if (locked) {
+            L.style.opacity = v === value ? "1" : "0.4";
+            L.style.cursor = v === value ? "default" : "not-allowed";
+            if (inp && v !== value) inp.disabled = true;
+          }
+        });
+      }
+
+      async function onSubmit() {
+        const btn = document.getElementById("submitBtn");
+        const inspector = document.getElementById("inspector").value.trim();
+        const checkDate = document.getElementById("checkDate").value;
+
+        if (!checkDate) return alert("請選擇檢查日期");
+        if (!inspector) return alert("請填寫檢查人員姓名");
+
+        const schema = formMeta.template.monthlySchema || "crane_full";
+        const isSimple = schema === "simple";
+        const isCraneMonthly = schema === "crane_full";
+        const usesFixedMethod = isSimple || isCraneMonthly;
+        const resultOptions =
+          formMeta.template.resultOptions &&
+          formMeta.template.resultOptions.length
+            ? formMeta.template.resultOptions
+            : usesFixedMethod
+              ? ["V", "/", "X"]
+              : ["normal", "abnormal"];
+        const badValue = resultOptions[resultOptions.length - 1];
+
+        const items = [];
+        let problem = "";
+        formMeta.items.forEach((it, idx) => {
+          // 固定格式月檢：檢查內容及方法由模板帶入；其他舊格式才會送 methods。
+          let methods,
+            method,
+            result,
+            checkResults = null;
+          const isClassroomRegularItem =
+            isClassroomMonthlyForm() &&
+            (it._section || "") !== "SCBA 空氣呼吸器檢查";
+          if (usesFixedMethod) {
+            method = it.method || "";
+            methods = method ? [method] : [];
+          } else {
+            methods = Array.from(
+              document.querySelectorAll(
+                `input[type="checkbox"][data-item-idx="${idx}"]`,
+              ),
+            )
+              .filter((c) => c.checked)
+              .map((c) => c.dataset.method);
+          }
+          if (isClassroomRegularItem) {
+            checkResults = {
+              quantity:
+                (
+                  document.querySelector(
+                    `input[name="metric_${idx}_quantity"]:checked`,
+                  ) || {}
+                ).value || "",
+              appearance:
+                (
+                  document.querySelector(
+                    `input[name="metric_${idx}_appearance"]:checked`,
+                  ) || {}
+                ).value || "",
+              operation:
+                (
+                  document.querySelector(
+                    `input[name="metric_${idx}_operation"]:checked`,
+                  ) || {}
+                ).value || "",
+            };
+            const metricLabels = {
+              quantity: "數量",
+              appearance: "外觀",
+              operation: "操作",
+            };
+            Object.keys(checkResults).forEach((key) => {
+              if (!checkResults[key] && !problem)
+                problem =
+                  "第 " + it.order + " 項：" + metricLabels[key] + "未選擇結果";
+            });
+            result = Object.values(checkResults).some((v) => v === badValue)
+              ? badValue
+              : resultOptions[0];
+          } else {
+            result = (
+              document.querySelector(`input[name="result_${idx}"]:checked`) ||
+              {}
+            ).value;
+          }
+          const risk = usesFixedMethod
+            ? ""
+            : (
+                document.querySelector(`input[name="risk_${idx}"]:checked`) ||
+                {}
+              ).value || "";
+          const abnormalDesc =
+            (
+              document.querySelector(
+                `textarea[data-item-idx="${idx}"][data-field="abnormalDesc"]`,
+              ) || {}
+            ).value || "";
+          const action =
+            (
+              document.querySelector(
+                `input[data-item-idx="${idx}"][data-field="action"]`,
+              ) || {}
+            ).value || "";
+          const review = usesFixedMethod
+            ? ""
+            : (
+                document.querySelector(
+                  `input[data-item-idx="${idx}"][data-field="review"]`,
+                ) || {}
+              ).value || "";
+
+          // 固定格式月檢不要求勾選方法，檢查內容已由模板定義。
+          if (!usesFixedMethod && !methods.length && !problem)
+            problem = "第 " + it.order + " 項：未勾選檢查方法";
+          if (!result && !problem)
+            problem = "第 " + it.order + " 項：未選擇結果";
+          if (result === badValue && !abnormalDesc.trim() && !problem)
+            problem = "第 " + it.order + " 項：異常請填說明";
+
+          const photos =
+            it._photoMgr && result === badValue
+              ? it._photoMgr.toDataURLs()
+              : [];
+          items.push({
+            order: it.order,
+            name: it._displayName || it.name,
+            section: it._section || "",
+            methods,
+            method, // simple schema 用
+            result,
+            checkResults,
+            abnormalDesc: abnormalDesc.trim(),
+            risk,
+            action: action.trim(),
+            review: review.trim(),
+            photos,
+          });
+        });
+
+        if (problem) return alert(problem);
+        if (!sigPad || sigPad.isEmpty()) return alert("請簽名");
+
+        // codex P1: idempotency — 產 UUID v4，後端用此判斷是否重複送出
+        if (!window._submissionId) window._submissionId = crypto.randomUUID();
+        const payload = {
+          clientSubmissionId: window._submissionId,
+          formType: "monthly",
+          equipmentId: eqp,
+          checkDate: checkDate,
+          inspector: inspector,
+          items: items,
+          signature: sigPad.trimmedDataURL(),
+        };
+
+        btn.disabled = true;
+        const span = document.createElement("span");
+        span.className = "loading";
+        btn.textContent = "";
+        btn.appendChild(span);
+        btn.appendChild(document.createTextNode(" 送出中..."));
+
+        try {
+          const r = await API.submit(payload);
+          if (!r.ok) throw new Error(r.error || "送出失敗");
+          showResult(r);
+        } catch (err) {
+          btn.disabled = false;
+          btn.textContent = "送出檢查紀錄";
+          alert("送出失敗：" + err.message);
+        }
+      }
+
+      function showResult(r) {
+        const root = document.getElementById("content");
+        root.textContent = "";
+        const card = document.createElement("div");
+        card.className = "card";
+
+        const icon = document.createElement("div");
+        icon.className = "result-icon";
+        icon.textContent = "✓";
+        icon.style.color = "#34a853";
+        card.appendChild(icon);
+
+        const title = document.createElement("div");
+        title.className = "result-title";
+        title.textContent = "月檢紀錄已送出";
+        card.appendChild(title);
+
+        const meta = document.createElement("div");
+        meta.className = "result-meta";
+        meta.textContent = r.approvalPending
+          ? "已送出主管簽核通知，主管簽名後才會正式歸檔"
+          : "本次紀錄已自動歸檔";
+        card.appendChild(meta);
+
+        if (r.approvalPending && r.approvalNotice && !r.approvalNotice.ok) {
+          const warn = document.createElement("div");
+          warn.className = "alert alert-error";
+          warn.textContent =
+            "主管 LINE 簽核通知未送出，請管理員確認 LINE 通知設定";
+          card.appendChild(warn);
+        }
+
+        const back = document.createElement("a");
+        back.href = "index.html";
+        back.className = "btn btn-primary";
+        back.style.display = "block";
+        back.style.textAlign = "center";
+        back.style.textDecoration = "none";
+        back.textContent = "回工作台";
+        card.appendChild(back);
+
+        root.appendChild(card);
+      }
+    </script>
+  </body>
 </html>
