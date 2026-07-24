@@ -92,6 +92,9 @@ function createChecklistDoc_(formType, ctx) {
     // ----- 檢查項目表 -----
     let rows, colWidths;
     const tplOptions = (ctx.template && ctx.template.resultOptions) || [];
+    const schema = isDaily
+      ? ""
+      : (ctx.template && ctx.template.monthlySchema) || "crane_full";
     // A4 可用寬度 = 595pt - 2×36pt margin = 523pt
     // colWidths 總和不可超過 523，否則 DocumentApp 會自動壓縮造成「跑版」
     if (isDaily) {
@@ -102,8 +105,6 @@ function createChecklistDoc_(formType, ctx) {
       });
     } else {
       // 月檢按 monthlySchema 決定欄位
-      const schema =
-        (ctx.template && ctx.template.monthlySchema) || "crane_full";
       if (schema === "simple") {
         // 堆高機月檢樣式：項次/檢查部份/檢查方法/檢查結果/改善措施
         rows = [["項次", "檢查部份", "檢查方法", "檢查結果", "改善措施"]];
