@@ -51,9 +51,15 @@
     }
   }
 
-  function buildUrl(params) {
-    const qs = Object.entries(params)
+  function buildUrl(params, cacheBust) {
+    const entries = Object.entries(params)
       .filter(([, v]) => v !== undefined && v !== null && v !== '')
+    // Apps Script Web App 會經過轉址；部分行動瀏覽器/代理可能把轉址後的
+    // 404 快取在固定 URL。每次 GET 使用新的查詢參數，避免沿用錯誤回應。
+    if (cacheBust) {
+      entries.push(['_cb', `${Date.now()}-${Math.random().toString(36).slice(2)}`]);
+    }
+    const qs = entries
       .map(([k, v]) => encodeURIComponent(k) + '=' + encodeURIComponent(v))
       .join('&');
     return C.API_BASE + (qs ? '?' + qs : '');
@@ -61,9 +67,33 @@
 
   async function apiGet(params) {
     ensureConfigured(false);
-    const res = await fetch(buildUrl(params), { method: 'GET' });
-    if (!res.ok) throw new Error('HTTP ' + res.status);
-    return res.json();
+    let lastError = null;
+    // Apps Script occasionally returns a cached redirect/404 or an HTML error
+    // page even though the endpoint is healthy. Retry with a fresh URL.
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        const res = await fetch(buildUrl(params, true), {
+          method: 'GET',
+          cache: 'no-store',
+        });
+        if (!res.ok) {
+          lastError = new Error('HTTP ' + res.status);
+        } else {
+          try {
+            return await res.json();
+          } catch (parseError) {
+            lastError = new Error('後端回應格式錯誤');
+            lastError.cause = parseError;
+          }
+        }
+      } catch (error) {
+        lastError = error;
+      }
+      if (attempt < 2) {
+        await new Promise(resolve => setTimeout(resolve, 300 * (attempt + 1)));
+      }
+    }
+    throw lastError || new Error('GET 失敗');
   }
 
   async function apiPost(payload) {
