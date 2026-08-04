@@ -142,6 +142,7 @@ function doGet(e) {
           "lineTargetStatus",
           "lineQuotaStatus",
           "syncLineWebhookEndpoint",
+          "syncWebAppUrl",
           "openIssues",
           "reminderStatus",
           "systemStatus",
@@ -442,6 +443,14 @@ function doGet(e) {
               ok: true,
               action,
               ...setLineWebhookEndpointToCurrent(),
+            };
+            break;
+          }
+          case "syncWebAppUrl": {
+            result = {
+              ok: true,
+              action,
+              webAppUrl: setWebAppUrlFromCurrent(),
             };
             break;
           }
