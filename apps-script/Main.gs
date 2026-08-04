@@ -161,6 +161,7 @@ function doGet(e) {
           "dailyPpeAssignmentJob",
           "installDailyPpeAssignmentTrigger",
           "resendApprovalRequest",
+          "migratePendingIncidentApprovals",
           "pendingApprovalStatus",
           "pendingApprovalReminder",
           "pendingApprovalReminderLastRun",
@@ -910,6 +911,18 @@ function doGet(e) {
                 latest:
                   String(e.parameter.latest || "").toLowerCase() === "true" ||
                   e.parameter.latest === "1",
+                dryRun:
+                  String(e.parameter.dryRun || "").toLowerCase() === "true" ||
+                  e.parameter.dryRun === "1",
+              }),
+            };
+            break;
+          }
+          case "migratePendingIncidentApprovals": {
+            result = {
+              ok: true,
+              action,
+              ...migratePendingMonthlyIncidentApprovals_({
                 dryRun:
                   String(e.parameter.dryRun || "").toLowerCase() === "true" ||
                   e.parameter.dryRun === "1",

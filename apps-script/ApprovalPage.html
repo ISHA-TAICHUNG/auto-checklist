@@ -334,8 +334,17 @@
 
       root.appendChild(infoCard());
       root.appendChild(checkItemsCard());
+      const handling = incidentHandlingCard();
+      if (handling) root.appendChild(handling);
       if (record.status === '已簽核歸檔') {
         root.appendChild(doneCard('此紀錄已完成簽核', record.fileUrl || ''));
+        return;
+      }
+      if (record.canApprove === false) {
+        const blocked = document.createElement('div');
+        blocked.className = 'alert alert-error';
+        blocked.textContent = record.approvalBlockReason || '異常項目尚未完成處理，暫時不能簽核歸檔。';
+        root.appendChild(blocked);
         return;
       }
 
@@ -442,6 +451,39 @@
       const list = document.createElement('div');
       list.className = 'check-list';
       items.forEach(item => list.appendChild(checkItemRow(item)));
+      c.appendChild(list);
+      return c;
+    }
+
+    function incidentHandlingCard() {
+      const handling = record && record.incidentHandling;
+      if (!handling || !Array.isArray(handling.items) || !handling.items.length) return null;
+      const c = card('異常處理紀錄（' + handling.items.length + ' 項）');
+      const list = document.createElement('div');
+      list.className = 'check-list';
+      handling.items.forEach(item => {
+        const row = document.createElement('div');
+        row.className = 'check-item' + (item.status === '已完成' ? '' : ' abnormal');
+        const title = document.createElement('div');
+        title.className = 'check-title';
+        const order = document.createElement('span');
+        order.className = 'check-order';
+        order.textContent = item.order || '';
+        const name = document.createElement('span');
+        name.textContent = item.itemName || '未命名異常項目';
+        title.appendChild(order);
+        title.appendChild(name);
+        row.appendChild(title);
+        const grid = document.createElement('div');
+        grid.className = 'check-grid';
+        addDetail(grid, '原異常', item.description);
+        addDetail(grid, '處理狀態', item.status, item.status === '已完成' ? 'result-good' : 'result-bad');
+        addDetail(grid, '處理人', item.owner);
+        addDetail(grid, '完成日期', item.completedDate);
+        addDetail(grid, '處理說明', item.note);
+        row.appendChild(grid);
+        list.appendChild(row);
+      });
       c.appendChild(list);
       return c;
     }

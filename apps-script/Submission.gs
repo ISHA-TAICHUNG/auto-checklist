@@ -265,6 +265,9 @@ function handleSubmission_(payload) {
     //   - writeRecord 成功 + writeIncidents 失敗 → log 後仍回 ok（避免主紀錄與 PDF 已寫但回錯誤的 partial state）
     // 修 P1.1: 傳 allowedResults 給 countIncidents_ 動態判定 bad（避免硬編碼漂移）
     const incidentCount = countIncidents_(payload, allowedResults);
+    const approvalStatus = needsApproval && incidentCount > 0
+      ? "待異常處理"
+      : "待主管簽核";
     try {
       writeRecord_({
         recordId,
@@ -277,7 +280,7 @@ function handleSubmission_(payload) {
         incidentCount,
         approval: needsApproval
           ? {
-              status: "待主管簽核",
+              status: approvalStatus,
               token: approvalToken,
               draftDocId: docInfo.docId,
               draftDocUrl,
@@ -350,7 +353,7 @@ function handleSubmission_(payload) {
     }
 
     let approvalNotice = null;
-    if (needsApproval) {
+    if (needsApproval && incidentCount === 0) {
       try {
         approvalNotice = notifySupervisorApprovalRequest_({
           recordId,
@@ -378,6 +381,7 @@ function handleSubmission_(payload) {
       recordId,
       fileUrl,
       approvalPending: needsApproval,
+      approvalDeferredForIncidents: needsApproval && incidentCount > 0,
       approvalNotice,
       incidentCount,
     };
@@ -1081,6 +1085,10 @@ function handleApprovalSubmission_(payload) {
     }
     if (!rec.draftDocId) throw new Error("待簽核草稿不存在");
 
+    if (rec.incidentCount > 0 && typeof ensureMachineIncidentHandlingReadyForApproval_ === "function") {
+      ensureMachineIncidentHandlingReadyForApproval_(rec);
+    }
+
     const approvedAt = new Date();
     const checkDate = parseISODate_(rec.checkDate);
     const equipment = getEquipmentById_(rec.equipmentId) || {
@@ -1122,6 +1130,13 @@ function handleApprovalSubmission_(payload) {
       ),
     });
     updateIncidentPdfLinks_(recordId, fileUrl);
+    if (typeof markMachineIncidentHandlingApproved_ === "function") {
+      try {
+        markMachineIncidentHandlingApproved_(recordId, fileUrl, supervisorName, approvedAt);
+      } catch (err) {
+        Logger.log("回填異常處理簽核結果失敗：" + err + "\n" + (err.stack || ""));
+      }
+    }
 
     trashChecklistDoc_(rec.draftDocId);
     return { ok: true, approved: true, recordId, fileName, fileUrl };
@@ -1149,6 +1164,64 @@ function getApprovalRecord_(recordId, token) {
     return approvalRecordFromRow_(sheet, headers, data[i], i + 2);
   }
   throw new Error("找不到待簽核紀錄");
+}
+
+function getApprovalRecordById_(recordId) {
+  const target = sanitizeText_(recordId, 80);
+  if (!target) throw new Error("缺少紀錄ID");
+  const ss = SpreadsheetApp.openById(CONFIG.DB_SHEET_ID);
+  const sheet = ss.getSheetByName("填報紀錄");
+  if (!sheet || sheet.getLastRow() < 2) throw new Error("找不到填報紀錄");
+  const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  const idIdx = headers.indexOf("紀錄ID");
+  if (idIdx < 0) throw new Error("填報紀錄缺少紀錄ID欄位");
+  const data = sheet.getRange(2, 1, sheet.getLastRow() - 1, headers.length).getValues();
+  for (let i = data.length - 1; i >= 0; i--) {
+    if (String(data[i][idIdx] || "").trim() !== target) continue;
+    return approvalRecordFromRow_(sheet, headers, data[i], i + 2);
+  }
+  throw new Error("找不到填報紀錄：" + target);
+}
+
+function migratePendingMonthlyIncidentApprovals_(opts) {
+  opts = opts || {};
+  const dryRun = !!opts.dryRun;
+  const ss = SpreadsheetApp.openById(CONFIG.DB_SHEET_ID);
+  if (!dryRun && typeof setupApprovalStatusValidation_ === "function") {
+    setupApprovalStatusValidation_(ss);
+  }
+  const sheet = ss.getSheetByName("填報紀錄");
+  if (!sheet || sheet.getLastRow() < 2) return { ok: true, scanned: 0, changed: 0, records: [] };
+  const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  const data = sheet.getRange(2, 1, sheet.getLastRow() - 1, headers.length).getValues();
+  const records = [];
+  let changed = 0;
+  data.forEach((row, index) => {
+    const rec = approvalRecordFromRow_(sheet, headers, row, index + 2);
+    if (rec.formType !== "monthly" || rec.incidentCount < 1 || rec.status !== "待主管簽核") return;
+    let group;
+    try {
+      group = getMachineIncidentGroupByRecordId_(rec.recordId);
+    } catch (err) {
+      records.push({ recordId: rec.recordId, action: "skipped", reason: friendlyError_(err) });
+      return;
+    }
+    const nextStatus = group.allCompleted ? "待主管簽核" : "待異常處理";
+    if (!dryRun && nextStatus === "待異常處理") {
+      updateApprovalRecord_(sheet, headers, rec.rowNo, { 簽核狀態: nextStatus });
+      changed++;
+    }
+    records.push({
+      recordId: rec.recordId,
+      equipmentName: rec.equipmentName,
+      incidentCount: rec.incidentCount,
+      allCompleted: group.allCompleted,
+      action: nextStatus === rec.status ? "unchanged" : dryRun ? "would_defer" : "deferred",
+      status: nextStatus,
+    });
+  });
+  if (!dryRun) SpreadsheetApp.flush();
+  return { ok: true, dryRun, scanned: data.length, changed, records };
 }
 
 function approvalRecordFromRow_(sheet, headers, row, rowNo) {
@@ -1191,6 +1264,7 @@ function approvalRecordFromRow_(sheet, headers, row, rowNo) {
     status: String(value("簽核狀態") || ""),
     draftDocId: String(value("草稿DocID") || ""),
     draftDocUrl: String(value("草稿Doc連結") || ""),
+    approvalToken: String(value("主管簽核Token") || ""),
     payload,
   };
 }
@@ -1231,6 +1305,22 @@ function getApprovalSummary_(recordId, token) {
   const fileUrl = archivedSibling
     ? archivedSibling.fileUrl || rec.fileUrl
     : rec.fileUrl;
+  let incidentHandling = null;
+  if (rec.incidentCount > 0 && typeof machineIncidentHandlingApprovalSummary_ === "function") {
+    try {
+      incidentHandling = machineIncidentHandlingApprovalSummary_(rec.recordId);
+    } catch (err) {
+      incidentHandling = {
+        allCompleted: false,
+        approvalStatus: "資料待修復",
+        items: [],
+        error: friendlyError_(err),
+      };
+    }
+  }
+  const canApprove = displayStatus === "已簽核歸檔" || !incidentHandling
+    ? true
+    : !!incidentHandling.allCompleted;
   return {
     ok: true,
     record: {
@@ -1246,6 +1336,9 @@ function getApprovalSummary_(recordId, token) {
       incidentCount: rec.incidentCount,
       fileUrl,
       items: approvalCheckItems_(rec),
+      incidentHandling,
+      canApprove,
+      approvalBlockReason: canApprove ? "" : "異常項目尚未全部完成處理回報",
     },
   };
 }
@@ -1548,14 +1641,14 @@ function findRecordByClientId_(clientId) {
   const data = sheet.getRange(2, 1, lastRow - 1, headers.length).getValues();
   for (let i = 0; i < data.length; i++) {
     if (data[i][idIdx] === clientId) {
+      const approvalStatus = headers.indexOf("簽核狀態") >= 0
+        ? String(data[i][headers.indexOf("簽核狀態")] || "")
+        : "";
       return {
         recordId: data[i][headers.indexOf("紀錄ID")],
         fileUrl: data[i][headers.indexOf("PDF連結")] || "",
-        approvalPending:
-          headers.indexOf("簽核狀態") >= 0
-            ? String(data[i][headers.indexOf("簽核狀態")] || "") ===
-              "待主管簽核"
-            : false,
+        approvalPending: ["待異常處理", "待主管簽核"].indexOf(approvalStatus) >= 0,
+        approvalDeferredForIncidents: approvalStatus === "待異常處理",
       };
     }
   }

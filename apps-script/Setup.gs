@@ -652,6 +652,11 @@ function initializeDatabase() {
       "實際完成日",
       "負責人",
       "備註",
+      "處理更新時間",
+      "處理紀錄PDF",
+      "處理簽核狀態",
+      "處理簽核主管",
+      "處理簽核時間",
     ],
     [],
   );
@@ -833,6 +838,11 @@ function normalizeMachineIncidentSheet_(ss) {
     "實際完成日",
     "負責人",
     "備註",
+    "處理更新時間",
+    "處理紀錄PDF",
+    "處理簽核狀態",
+    "處理簽核主管",
+    "處理簽核時間",
   ]);
   const lastCol = sheet.getLastColumn();
   const lastRow = sheet.getLastRow();
@@ -1827,7 +1837,7 @@ function setupApprovalStatusValidation_(ss) {
   if (statusCol < 1) return;
   const range = sheet.getRange(2, statusCol, sheet.getMaxRows() - 1, 1);
   const rule = SpreadsheetApp.newDataValidation()
-    .requireValueInList(["待主管簽核", "已簽核歸檔", "簽核略過"], true)
+    .requireValueInList(["待異常處理", "待主管簽核", "已簽核歸檔", "簽核略過"], true)
     .setAllowInvalid(false)
     .setHelpText("請從下拉選單選擇簽核狀態")
     .build();

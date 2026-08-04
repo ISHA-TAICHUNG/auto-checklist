@@ -144,7 +144,7 @@
     <p id="subtitle">讀取中...</p>
   </header>
   <main>
-    <div class="notice">同一次檢查的異常已整併在本頁。請逐項填寫處理狀態與說明；全部完成後會另產處理紀錄 PDF。</div>
+    <div class="notice">同一次檢查的異常已整併在本頁。若為月檢，全部處理完成後，處理紀錄會接在原月檢表後方送主管簽核；核准後才產生正式合併 PDF。</div>
     <div id="loading" class="loading">正在驗證連結並讀取資料...</div>
     <div id="errorBox" class="summary" hidden>
       <h2>無法載入</h2>
@@ -164,8 +164,8 @@
       </section>
 
       <section id="doneBox" class="done" hidden>
-        <h2>本次異常已完成處理</h2>
-        <p>處理資料已留存在機具設備異常事件表。</p>
+        <h2 id="doneTitle">本次異常已完成處理</h2>
+        <p id="doneText">處理資料已留存在機具設備異常事件表。</p>
         <a id="handlingPdf" class="pdf-link" target="_blank" rel="noopener" hidden>查看異常處理紀錄 PDF</a>
       </section>
 
@@ -314,6 +314,21 @@
     function renderDone(group) {
       document.getElementById('formBox').hidden = true;
       document.getElementById('doneBox').hidden = false;
+      const title = document.getElementById('doneTitle');
+      const text = document.getElementById('doneText');
+      if (group.approved) {
+        title.textContent = '主管已簽核並完成歸檔';
+        text.textContent = '原月檢表與異常處理紀錄已合併為同一份正式 PDF。';
+      } else if (group.awaitingApproval) {
+        title.textContent = '處理完成，已送主管簽核';
+        text.textContent = '處理紀錄已接在原月檢表後方；主管核准後才會產生正式合併 PDF。';
+      } else {
+        title.textContent = '本次異常已完成處理';
+        text.textContent = '處理資料已留存並產生處理紀錄 PDF。';
+      }
+      document.getElementById('handlingPdf').textContent = group.approved
+        ? '查看月檢與異常處理合併 PDF'
+        : '查看異常處理紀錄 PDF';
       setLink('handlingPdf', group.handlingPdfUrl);
     }
 

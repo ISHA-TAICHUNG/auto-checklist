@@ -829,9 +829,11 @@
 
         const meta = document.createElement("div");
         meta.className = "result-meta";
-        meta.textContent = r.approvalPending
-          ? "已送出主管簽核通知，主管簽名後才會正式歸檔"
-          : "本次紀錄已自動歸檔";
+        meta.textContent = r.approvalDeferredForIncidents
+          ? "已建立異常處理待辦；完成處理回報後才會送主管簽核並正式歸檔"
+          : r.approvalPending
+            ? "已送出主管簽核通知，主管簽名後才會正式歸檔"
+            : "本次紀錄已自動歸檔";
         card.appendChild(meta);
 
         if (r.approvalPending && r.approvalNotice && !r.approvalNotice.ok) {
