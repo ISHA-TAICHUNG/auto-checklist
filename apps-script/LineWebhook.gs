@@ -14,7 +14,7 @@
  *   - 更新 事件ID           取得日常異常事件處理回報連結
  *   - 陳核 事件ID           日常異常事件送主管審核
  *   - QR 設備代號          QR Code (附連結)
- *   - 完成 事件ID          標記異常已完成
+ *   - 處理 事件ID          開啟機具設備異常處理回報
  *   - 我的ID / myid         回應自己的 userId（debug 用）
  *   - 幫助 / help           列指令
  */
@@ -112,9 +112,13 @@ function dispatchLineEvent_(ev) {
     const eqp = cmd.match(/^QR\s*(.+)$/i)[1].trim();
     return cmdQR_(replyToken, eqp);
   }
+  if (/^處理\s*(.+)$/i.test(cmd)) {
+    const reference = cmd.match(/^處理\s*(.+)$/i)[1].trim();
+    return cmdMachineIncidentHandle_(replyToken, reference, userId);
+  }
   if (/^完成\s*(.+)$/i.test(cmd)) {
-    const incId = cmd.match(/^完成\s*(.+)$/i)[1].trim();
-    return cmdComplete_(replyToken, incId, userId);
+    const reference = cmd.match(/^完成\s*(.+)$/i)[1].trim();
+    return cmdMachineIncidentHandle_(replyToken, reference, userId);
   }
   if (/^(我的ID|myid|whoami)$/i.test(cmd)) {
     return lineReply_(replyToken, { type: 'text', text: `你的 userId: ${userId}` });
@@ -220,7 +224,7 @@ function cmdHelp_(replyToken) {
       '日常事件只顯示本人填報、承辦或被指定主管審核的案件。',
       '',
       '機具設備異常：',
-      '完成 <事件ID>：將機具設備異常標記為已完成',
+      '處理 <事件ID>：開啟處理回報，填寫狀態、處理說明與完成日期',
       '',
       '其他可輸入指令：',
       '待發文：查看 16:30 / 17:00 雲端檢核快照，不是即時登入公文系統',
@@ -442,57 +446,24 @@ function isLegacyScbaQrEquipment_(eqp) {
 }
 
 function cmdComplete_(replyToken, incIdPrefix, byUserId) {
-  // P2.1 (codex 2026-05-26): prefix 至少 8 碼且必須唯一命中（避免 LINE 使用者打太短誤標多筆）
-  if (!incIdPrefix || incIdPrefix.length < 8) {
-    return lineReply_(replyToken, { type: 'text', text: '✗ 事件ID 至少需 8 碼' });
-  }
-  // 用 prefix 找完整事件 ID
-  const ss = SpreadsheetApp.openById(CONFIG.DB_SHEET_ID);
-  const sheet = getMachineIncidentSheet_(ss);
-  if (!sheet) return lineReply_(replyToken, { type: 'text', text: '✗ 找不到「機具設備異常事件」表' });
-  const data = sheet.getDataRange().getValues();
-  const headers = data[0];
-  const idCol = headers.indexOf('事件ID');
-  const statusCol = headers.indexOf('狀態');
-  const completedCol = headers.indexOf('實際完成日');
-  const ownerCol = headers.indexOf('負責人');
-  if (idCol < 0 || statusCol < 0) {
-    return lineReply_(replyToken, { type: 'text', text: '✗ 「機具設備異常事件」表缺欄位' });
-  }
-  // 先找所有符合 prefix 的「未完成」列，若 >1 拒絕（避免一次標多筆）
-  const matched = [];
-  for (let i = 1; i < data.length; i++) {
-    const id = String(data[i][idCol] || '');
-    if (!id.startsWith(incIdPrefix)) continue;
-    if (String(data[i][statusCol]) === '已完成') continue;
-    matched.push({ rowIdx: i, id });
-  }
-  if (matched.length === 0) {
-    return lineReply_(replyToken, { type: 'text', text: '✗ 找不到符合的未完成異常（prefix 太短或已完成）' });
-  }
-  if (matched.length > 1) {
-    return lineReply_(replyToken, {
+  // 舊指令保留相容性，但不再允許一鍵改狀態；統一進入有處理說明與日期的回報頁。
+  return cmdMachineIncidentHandle_(replyToken, incIdPrefix, byUserId);
+}
+
+function cmdMachineIncidentHandle_(replyToken, reference, userId) {
+  try {
+    const group = getMachineIncidentGroupByReference_(reference);
+    const link = createMachineIncidentHandlingLink_(group.recordId, userId);
+    return lineReply_(replyToken, withQuickReply_(
+      buildMachineIncidentHandlingLinkFlex_(group, link.url, link.profile.name),
+    ));
+  } catch (err) {
+    Logger.log('[LINE] 建立機具設備異常處理連結失敗: ' + err + '\n' + (err.stack || ''));
+    return lineReply_(replyToken, withQuickReply_({
       type: 'text',
-      text: `✗ Prefix「${incIdPrefix}」命中 ${matched.length} 筆，請貼完整事件ID 才能標記（避免誤標）`,
-    });
+      text: '無法開啟處理回報：' + friendlyError_(err),
+    }));
   }
-  let found = 0;
-  const today = Utilities.formatDate(new Date(), tz_(), 'yyyy-MM-dd');
-  matched.forEach(m => {
-    const i = m.rowIdx;
-    sheet.getRange(i + 1, statusCol + 1).setValue('已完成');
-    if (completedCol >= 0 && !data[i][completedCol]) {
-      sheet.getRange(i + 1, completedCol + 1).setValue(today);
-    }
-    if (ownerCol >= 0 && byUserId && !data[i][ownerCol]) {
-      sheet.getRange(i + 1, ownerCol + 1).setValue(`LINE:${byUserId.substring(0,8)}`);
-    }
-    found++;
-  });
-  const msg = found > 0
-    ? `✓ 已標記 ${found} 筆異常為「已完成」`
-    : `✗ 找不到 ID 開頭為 ${incIdPrefix} 的待處理異常`;
-  return lineReply_(replyToken, { type: 'text', text: msg });
 }
 
 /**

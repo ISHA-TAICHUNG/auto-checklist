@@ -39,6 +39,8 @@ function doGet(e) {
           return monthlyPpeConfirmPageResponse_(e);
         case "daily-ppe-confirm":
           return dailyPpeConfirmPageResponse_(e);
+        case "machine-incident-handle":
+          return machineIncidentHandlingPageResponse_(e);
       }
     }
 
@@ -120,6 +122,8 @@ function doGet(e) {
           "addPpe",
           "setLineProps",
           "testLineIncident",
+          "resendLatestMachineIncidentCard",
+          "resendMachineIncidentHandlingCard",
           "markCompleted",
           "fetchPdf",
           "addMonthlySafetyPpeForms",
@@ -497,6 +501,32 @@ function doGet(e) {
                 error: String(innerErr.message || innerErr),
               };
             }
+            break;
+          }
+          case "resendLatestMachineIncidentCard": {
+            result = {
+              action,
+              ...resendLatestMachineIncidentCardToSupervisor_(
+                e.parameter.recipientName,
+                {
+                  equipmentName: e.parameter.equipmentName || "",
+                  reportDate: e.parameter.reportDate || "",
+                },
+              ),
+            };
+            break;
+          }
+          case "resendMachineIncidentHandlingCard": {
+            result = {
+              action,
+              ...resendLatestMachineIncidentHandlingCardToPeople_(
+                e.parameter.recipientNames,
+                {
+                  equipmentName: e.parameter.equipmentName || "",
+                  reportDate: e.parameter.reportDate || "",
+                },
+              ),
+            };
             break;
           }
           case "markCompleted": {

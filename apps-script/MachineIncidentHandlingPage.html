@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <base target="_top">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>機具設備異常處理回報</title>
+  <style>
+    :root {
+      --red: #b3261e;
+      --blue: #1a73e8;
+      --green: #137333;
+      --ink: #202124;
+      --muted: #5f6368;
+      --line: #d8dee8;
+      --surface: #ffffff;
+      --page: #f6f8fb;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--page);
+      color: var(--ink);
+      font-family: -apple-system, BlinkMacSystemFont, "Noto Sans TC", "Microsoft JhengHei", sans-serif;
+      line-height: 1.55;
+    }
+    header {
+      padding: 22px 16px;
+      background: var(--red);
+      color: #fff;
+      text-align: center;
+    }
+    header h1 { margin: 0; font-size: 23px; letter-spacing: 0; }
+    header p { margin: 4px 0 0; font-size: 14px; opacity: .92; }
+    main { width: min(760px, 100%); margin: 0 auto; padding: 16px; }
+    .notice {
+      padding: 12px 14px;
+      border-left: 4px solid var(--blue);
+      background: #e8f0fe;
+      color: #174ea6;
+      font-size: 14px;
+    }
+    .summary {
+      margin: 14px 0 18px;
+      padding: 16px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--surface);
+    }
+    .summary h2, .section-title { margin: 0 0 12px; font-size: 18px; }
+    .meta {
+      display: grid;
+      grid-template-columns: 92px minmax(0, 1fr);
+      gap: 7px 10px;
+      font-size: 15px;
+    }
+    .meta span { color: var(--muted); }
+    .meta strong { overflow-wrap: anywhere; }
+    .pdf-link {
+      display: block;
+      margin-top: 12px;
+      padding: 11px 14px;
+      border-radius: 6px;
+      background: #eef3fb;
+      color: #174ea6;
+      font-weight: 800;
+      text-align: center;
+      text-decoration: none;
+    }
+    .items { display: grid; gap: 12px; }
+    .item {
+      padding: 15px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--surface);
+      box-shadow: 0 1px 2px rgba(32, 33, 36, .08);
+    }
+    .item-head { display: flex; align-items: flex-start; gap: 10px; }
+    .order {
+      flex: 0 0 34px;
+      min-height: 34px;
+      display: grid;
+      place-items: center;
+      border-radius: 50%;
+      background: #fce8e6;
+      color: var(--red);
+      font-weight: 900;
+    }
+    .item h3 { margin: 0; font-size: 16px; }
+    .description { margin: 6px 0 0; color: var(--red); white-space: pre-wrap; }
+    label { display: block; margin: 13px 0 6px; color: var(--muted); font-size: 14px; font-weight: 800; }
+    select, textarea, input {
+      width: 100%;
+      padding: 11px 12px;
+      border: 1px solid #c7ccd4;
+      border-radius: 6px;
+      background: #fff;
+      color: var(--ink);
+      font: inherit;
+    }
+    textarea { min-height: 92px; resize: vertical; }
+    .actions {
+      position: sticky;
+      bottom: 0;
+      margin: 18px -16px -16px;
+      padding: 14px 16px calc(14px + env(safe-area-inset-bottom));
+      border-top: 1px solid var(--line);
+      background: rgba(246, 248, 251, .97);
+    }
+    button {
+      width: 100%;
+      border: 0;
+      border-radius: 7px;
+      padding: 13px 16px;
+      background: var(--blue);
+      color: #fff;
+      font: inherit;
+      font-weight: 900;
+      cursor: pointer;
+    }
+    button:disabled { opacity: .58; cursor: wait; }
+    .message { margin: 10px 0 0; text-align: center; font-weight: 800; }
+    .error { color: var(--red); }
+    .success { color: var(--green); }
+    .done {
+      padding: 22px 16px;
+      border: 1px solid #a8dab5;
+      border-radius: 8px;
+      background: #eef8f0;
+      text-align: center;
+    }
+    .done h2 { margin: 0 0 8px; color: var(--green); }
+    .loading { padding: 48px 16px; text-align: center; color: var(--muted); }
+    [hidden] { display: none !important; }
+    @media (max-width: 480px) {
+      header h1 { font-size: 21px; }
+      .meta { grid-template-columns: 78px minmax(0, 1fr); }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>機具設備異常處理回報</h1>
+    <p id="subtitle">讀取中...</p>
+  </header>
+  <main>
+    <div class="notice">同一次檢查的異常已整併在本頁。請逐項填寫處理狀態與說明；全部完成後會另產處理紀錄 PDF。</div>
+    <div id="loading" class="loading">正在驗證連結並讀取資料...</div>
+    <div id="errorBox" class="summary" hidden>
+      <h2>無法載入</h2>
+      <p id="errorText" class="error"></p>
+    </div>
+    <div id="content" hidden>
+      <section class="summary">
+        <h2>檢查摘要</h2>
+        <div class="meta">
+          <span>設備</span><strong id="equipmentText"></strong>
+          <span>表單</span><strong id="formText"></strong>
+          <span>檢查日期</span><strong id="dateText"></strong>
+          <span>處理人</span><strong id="actorText"></strong>
+          <span>異常項數</span><strong id="countText"></strong>
+        </div>
+        <a id="originalPdf" class="pdf-link" target="_blank" rel="noopener" hidden>查看原檢查 PDF</a>
+      </section>
+
+      <section id="doneBox" class="done" hidden>
+        <h2>本次異常已完成處理</h2>
+        <p>處理資料已留存在機具設備異常事件表。</p>
+        <a id="handlingPdf" class="pdf-link" target="_blank" rel="noopener" hidden>查看異常處理紀錄 PDF</a>
+      </section>
+
+      <section id="formBox">
+        <h2 class="section-title">逐項處理</h2>
+        <div id="items" class="items"></div>
+        <section class="summary">
+          <label for="completedDate">處理完成日期（有項目選擇「已完成」時必填）</label>
+          <input id="completedDate" type="date">
+        </section>
+        <div class="actions">
+          <button id="submitBtn" type="button">更新處理回報</button>
+          <p id="message" class="message"></p>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <script>
+    const INJECTED = {
+      recordId: <?!= recordIdJson ?>,
+      token: <?!= handlingTokenJson ?>,
+    };
+    const query = new URLSearchParams(location.search);
+    const recordId = query.get('recordId') || INJECTED.recordId || '';
+    const token = query.get('token') || INJECTED.token || '';
+    let current = null;
+
+    if (!recordId || !token) {
+      showError('處理回報連結缺少必要參數，請從最新 LINE 圖卡重新開啟。');
+    } else {
+      google.script.run
+        .withSuccessHandler(renderResponse)
+        .withFailureHandler(err => showError(errorMessage(err)))
+        .getMachineIncidentHandlingPageData(recordId, token);
+    }
+
+    function renderResponse(res) {
+      if (!res || !res.ok) return showError((res && res.error) || '讀取資料失敗');
+      current = res;
+      const group = res.group;
+      document.getElementById('subtitle').textContent = group.reportDate || '';
+      document.getElementById('equipmentText').textContent = group.equipmentName || '';
+      document.getElementById('formText').textContent = group.formType || '';
+      document.getElementById('dateText').textContent = group.reportDate || '';
+      document.getElementById('actorText').textContent = (res.actor && res.actor.name) || '';
+      document.getElementById('countText').textContent = `${(group.items || []).length} 項`;
+      setLink('originalPdf', group.originalPdfUrl);
+      document.getElementById('completedDate').value = latestCompletedDate(group.items) || todayIso();
+      renderItems(group.items || []);
+      document.getElementById('loading').hidden = true;
+      document.getElementById('content').hidden = false;
+      if (group.allCompleted) renderDone(group);
+    }
+
+    function renderItems(items) {
+      const root = document.getElementById('items');
+      root.textContent = '';
+      items.forEach(item => {
+        const card = document.createElement('article');
+        card.className = 'item';
+        card.dataset.incidentId = item.incidentId;
+        card.dataset.order = item.order || '';
+        const head = document.createElement('div');
+        head.className = 'item-head';
+        const order = document.createElement('span');
+        order.className = 'order';
+        order.textContent = item.order || '—';
+        const text = document.createElement('div');
+        const title = document.createElement('h3');
+        title.textContent = item.itemName || '未命名異常項目';
+        const desc = document.createElement('p');
+        desc.className = 'description';
+        desc.textContent = item.description || '未填異常說明';
+        text.appendChild(title);
+        text.appendChild(desc);
+        head.appendChild(order);
+        head.appendChild(text);
+        card.appendChild(head);
+        card.appendChild(fieldLabel('處理狀態'));
+        card.appendChild(statusSelect(item.status || '待處理'));
+        card.appendChild(fieldLabel('處理說明'));
+        const note = document.createElement('textarea');
+        note.className = 'note';
+        note.maxLength = 600;
+        note.placeholder = '例如：已完成充電並測試正常；已更換電池並確認可使用';
+        note.value = item.note || '';
+        card.appendChild(note);
+        root.appendChild(card);
+      });
+    }
+
+    function fieldLabel(text) {
+      const label = document.createElement('label');
+      label.textContent = text;
+      return label;
+    }
+
+    function statusSelect(selected) {
+      const select = document.createElement('select');
+      select.className = 'status';
+      ['待處理', '處理中', '待重檢', '已完成'].forEach(value => {
+        const option = document.createElement('option');
+        option.value = value;
+        option.textContent = value;
+        option.selected = value === selected;
+        select.appendChild(option);
+      });
+      return select;
+    }
+
+    document.getElementById('submitBtn').addEventListener('click', () => {
+      const items = Array.from(document.querySelectorAll('.item')).map(card => ({
+        incidentId: card.dataset.incidentId,
+        order: Number(card.dataset.order || 0),
+        status: card.querySelector('.status').value,
+        note: card.querySelector('.note').value.trim(),
+      }));
+      const missing = items.find(item => item.status === '已完成' && !item.note);
+      if (missing) return setMessage(`第 ${missing.order || '—'} 項標記完成前，請填寫處理說明。`, 'error');
+      setBusy(true);
+      google.script.run
+        .withSuccessHandler(res => {
+          setBusy(false);
+          if (!res || !res.ok) return setMessage((res && res.error) || '更新失敗', 'error');
+          current.group = res.group;
+          if (res.group && res.group.allCompleted) {
+            renderDone(res.group);
+          } else {
+            renderItems((res.group && res.group.items) || []);
+            setMessage('處理狀態已更新。', 'success');
+          }
+        })
+        .withFailureHandler(err => {
+          setBusy(false);
+          setMessage(errorMessage(err), 'error');
+        })
+        .submitMachineIncidentHandlingFromPage({
+          recordId,
+          token,
+          completedDate: document.getElementById('completedDate').value,
+          items,
+        });
+    });
+
+    function renderDone(group) {
+      document.getElementById('formBox').hidden = true;
+      document.getElementById('doneBox').hidden = false;
+      setLink('handlingPdf', group.handlingPdfUrl);
+    }
+
+    function setLink(id, url) {
+      const link = document.getElementById(id);
+      if (url && /^https?:\/\//.test(url)) {
+        link.href = url;
+        link.hidden = false;
+      } else {
+        link.hidden = true;
+      }
+    }
+
+    function latestCompletedDate(items) {
+      return (items || []).map(item => item.completedDate).filter(Boolean).sort().pop() || '';
+    }
+
+    function todayIso() {
+      const now = new Date();
+      return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    }
+
+    function setBusy(busy) {
+      const button = document.getElementById('submitBtn');
+      button.disabled = busy;
+      button.textContent = busy ? '更新中...' : '更新處理回報';
+      if (busy) setMessage('', '');
+    }
+
+    function setMessage(text, cls) {
+      const el = document.getElementById('message');
+      el.textContent = text || '';
+      el.className = 'message ' + (cls || '');
+    }
+
+    function showError(text) {
+      document.getElementById('loading').hidden = true;
+      document.getElementById('errorText').textContent = text || '未知錯誤';
+      document.getElementById('errorBox').hidden = false;
+    }
+
+    function errorMessage(err) {
+      return (err && err.message) ? err.message : String(err || '系統處理失敗');
+    }
+  </script>
+</body>
+</html>

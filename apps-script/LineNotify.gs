@@ -919,12 +919,9 @@ function buildReminderFlex_(category, equipments, webFrontendUrl, opts) {
 /**
  * 異常事件即時通報卡片
  *
- * pdfUrl:   該筆異常對應的填報 PDF（incident.fileUrl）
- * sheetUrl: 機具設備異常事件 Google Sheet（INCIDENT_SHEET_URL）
- *
- * footer 顯示：兩個按鈕（PDF + Sheet），都有就都顯示，否則只顯示有的
+ * pdfUrl: 該筆異常對應的填報 PDF（incident.fileUrl）
  */
-function buildIncidentFlex_(incident, pdfUrl, sheetUrl) {
+function buildIncidentFlex_(incident, pdfUrl) {
   // incident: { equipmentName, category, formType('每日'/'每月'), order, itemName, result, description, photoCount, status, reportTime }
   const displayDescription = machineIncidentDescriptionForDisplay_(incident);
   return {
@@ -970,15 +967,10 @@ function buildIncidentFlex_(incident, pdfUrl, sheetUrl) {
             color: '#D32F2F',
             action: { type: 'uri', label: '📄 查看此次 PDF', uri: pdfUrl },
           }] : []),
-          ...(sheetUrl ? [{
-            type: 'button',
-            style: 'secondary',
-            action: { type: 'uri', label: '📋 機具異常表', uri: sheetUrl },
-          }] : []),
           {
             type: 'button',
-            style: (pdfUrl || sheetUrl) ? 'secondary' : 'primary',
-            color: (pdfUrl || sheetUrl) ? undefined : '#D32F2F',
+            style: pdfUrl ? 'secondary' : 'primary',
+            color: pdfUrl ? undefined : '#D32F2F',
             action: { type: 'message', label: '🔎 查看全部待處理異常', text: '異常' },
           },
         ],
@@ -1017,7 +1009,7 @@ function incidentSummaryItemBox_(incident) {
  * 同一次設備檢查的多個異常項目彙整成一則 LINE 通知。
  * 資料表仍維持逐項建立機具設備異常事件，避免後續追蹤失去明細。
  */
-function buildIncidentSummaryFlex_(summary, pdfUrl, sheetUrl) {
+function buildIncidentSummaryFlex_(summary, pdfUrl) {
   const incidents = Array.isArray(summary.incidents) ? summary.incidents : [];
   const count = incidents.length;
   const shown = incidents.slice(0, 8);
@@ -1050,7 +1042,7 @@ function buildIncidentSummaryFlex_(summary, pdfUrl, sheetUrl) {
           ...(photoCount > 0 ? [dailyIncidentFlexField_('照片', `${photoCount} 張`)] : []),
           { type: 'separator', margin: 'md' },
           ...shown.map(incidentSummaryItemBox_),
-          ...(omitted > 0 ? [{ type: 'text', text: `另有 ${omitted} 項異常，請開啟 PDF、機具設備異常事件表或點擊查看全部待處理異常。`, size: 'xs', color: '#5F6368', wrap: true, margin: 'sm' }] : []),
+          ...(omitted > 0 ? [{ type: 'text', text: `另有 ${omitted} 項異常，請開啟 PDF 或點擊查看全部待處理異常。`, size: 'xs', color: '#5F6368', wrap: true, margin: 'sm' }] : []),
         ],
       },
       footer: {
@@ -1058,21 +1050,21 @@ function buildIncidentSummaryFlex_(summary, pdfUrl, sheetUrl) {
         layout: 'vertical',
         spacing: 'sm',
         contents: [
-          ...(pdfUrl ? [{
+          ...(summary.recordId ? [{
             type: 'button',
             style: 'primary',
             color: '#D32F2F',
-            action: { type: 'uri', label: '📄 查看此次 PDF', uri: pdfUrl },
+            action: { type: 'message', label: '🛠 處理回報', text: `/處理 ${summary.recordId}` },
           }] : []),
-          ...(sheetUrl ? [{
+          ...(pdfUrl ? [{
             type: 'button',
             style: 'secondary',
-            action: { type: 'uri', label: '📋 機具異常表', uri: sheetUrl },
+            action: { type: 'uri', label: '📄 查看此次 PDF', uri: pdfUrl },
           }] : []),
           {
             type: 'button',
-            style: (pdfUrl || sheetUrl) ? 'secondary' : 'primary',
-            color: (pdfUrl || sheetUrl) ? undefined : '#D32F2F',
+            style: summary.recordId || pdfUrl ? 'secondary' : 'primary',
+            color: summary.recordId || pdfUrl ? undefined : '#D32F2F',
             action: { type: 'message', label: '🔎 查看全部待處理異常', text: '異常' },
           },
         ],
@@ -1625,9 +1617,9 @@ function buildOpenIncidentBubble_(incident) {
   const shortId = incidentId ? incidentId.substring(0, 8) : '';
   const pdfUrl = incident.pdfUrl && /^https?:\/\//.test(incident.pdfUrl) ? incident.pdfUrl : '';
   const displayDescription = machineIncidentDescriptionForDisplay_(incident);
-  const completeAction = shortId
-    ? { type: 'message', label: '標記完成', text: `/完成 ${shortId}` }
-    : { type: 'message', label: '標記完成', text: '完成 ' };
+  const handlingAction = incidentId
+    ? { type: 'message', label: '處理回報', text: `/處理 ${incidentId}` }
+    : { type: 'message', label: '處理回報', text: '異常' };
   return {
     type: 'bubble',
     header: {
@@ -1672,7 +1664,7 @@ function buildOpenIncidentBubble_(incident) {
           type: 'button',
           style: 'primary',
           color: '#D32F2F',
-          action: completeAction,
+          action: handlingAction,
         },
       ],
     },
@@ -2322,8 +2314,18 @@ function buildDailyIncidentClosedFlex_(incident) {
  */
 function sendReminder_(category, equipments, webFrontendUrl, opts) {
   opts = opts || {};
+  // 未填提醒不得退回一般「是否訂閱」全體名單；若呼叫端漏傳欄位，
+  // 依這個 API 的唯一用途預設套用機具設備日檢未填通知欄位。
+  // 這是 fail-closed 防線，避免日檢提醒誤發給所有訂閱者。
+  const notificationColumn = resolveLineNotificationColumn_({
+    notificationColumn: opts.notificationColumn || LINE_NOTIFICATION_COLUMNS.MACHINE_DAILY_REMINDER,
+  });
+  if (!notificationColumn) {
+    Logger.log('[LINE] 未填提醒缺少通知欄位，拒絕推播');
+    return { ok: false, reason: 'missing_notification_column', targetCount: 0 };
+  }
   const flex = buildReminderFlex_(category, equipments, webFrontendUrl || '', opts);
-  return linePush_(withQuickReply_(flex), { notificationColumn: opts.notificationColumn });
+  return linePush_(withQuickReply_(flex), { notificationColumn });
 }
 
 function sendSupervisorReminder_(category, equipments, webFrontendUrl, opts) {
@@ -2357,14 +2359,12 @@ function buildSupervisorReminderLinkText_(equipments, webFrontendUrl, opts) {
 
 /**
  * 高層 API：寄異常即時通報
- * incident.fileUrl  → 該次填報 PDF（優先顯示）
- * INCIDENT_SHEET_URL → 機具設備異常事件 Sheet（備援/輔助）
+ * incident.fileUrl → 該次填報 PDF（優先顯示）
  * 自動加 Quick Reply 按鈕
  */
 function sendIncidentAlert_(incident) {
   const pdfUrl = incident.fileUrl || incident.pdfUrl || '';
-  const sheetUrl = PropertiesService.getScriptProperties().getProperty('INCIDENT_SHEET_URL') || '';
-  const flex = buildIncidentFlex_(incident, pdfUrl, sheetUrl);
+  const flex = buildIncidentFlex_(incident, pdfUrl);
   return linePush_(withQuickReply_(flex), {
     notificationColumn: LINE_NOTIFICATION_COLUMNS.MACHINE_INCIDENT,
   });
@@ -2372,11 +2372,159 @@ function sendIncidentAlert_(incident) {
 
 function sendIncidentSummaryAlert_(summary) {
   const pdfUrl = summary.fileUrl || summary.pdfUrl || '';
-  const sheetUrl = PropertiesService.getScriptProperties().getProperty('INCIDENT_SHEET_URL') || '';
-  const flex = buildIncidentSummaryFlex_(summary, pdfUrl, sheetUrl);
+  const flex = buildIncidentSummaryFlex_(summary, pdfUrl);
   return linePush_(withQuickReply_(flex), {
     notificationColumn: LINE_NOTIFICATION_COLUMNS.MACHINE_INCIDENT,
   });
+}
+
+/**
+ * 管理端單人補發最新設備異常圖卡。
+ * 收件人必須在「訂閱者清單」中唯一命名，且標記為主管。
+ */
+function resendLatestMachineIncidentCardToSupervisor_(recipientName, opts) {
+  opts = opts || {};
+  const name = String(recipientName || '').trim();
+  if (!name) return { ok: false, reason: 'missing_recipient_name', targetCount: 0 };
+
+  const target = findLineSubscriberTargetsByName_(name, { requireSupervisor: true });
+  if (target.ambiguous) {
+    return { ok: false, reason: 'ambiguous_recipient', recipientName: name, targetCount: 0 };
+  }
+  if (target.ids.length !== 1) {
+    return { ok: false, reason: 'supervisor_not_found', recipientName: name, targetCount: 0 };
+  }
+
+  const group = latestMachineIncidentGroupForResend_(opts);
+  if (!group || !group.incidents.length) {
+    return { ok: false, reason: 'incident_not_found', recipientName: name, targetCount: 0 };
+  }
+
+  const flex = buildIncidentSummaryFlex_(group, group.fileUrl || '');
+  const push = linePushTo_(target.ids[0], withQuickReply_(flex), 'push');
+  return Object.assign({
+    recipientName: name,
+    targetCount: push.ok ? 1 : 0,
+    equipmentName: group.equipmentName,
+    reportDate: group.reportDate,
+    incidentCount: group.incidents.length,
+  }, push);
+}
+
+/**
+ * 管理端把最新一組設備異常處理圖卡，精確補發給指定同仁/主管。
+ * 所有姓名會先完成驗證；任一姓名不存在或重複時，整批不發送。
+ */
+function resendLatestMachineIncidentHandlingCardToPeople_(recipientNames, opts) {
+  opts = opts || {};
+  const names = Array.from(new Set(
+    String(recipientNames || '')
+      .split(/[,，;；\n]+/)
+      .map(name => name.trim())
+      .filter(Boolean),
+  ));
+  if (!names.length) return { ok: false, reason: 'missing_recipient_names', targetCount: 0 };
+  if (names.length > 10) return { ok: false, reason: 'too_many_recipients', targetCount: 0 };
+
+  const targets = [];
+  for (const name of names) {
+    const target = findLineSubscriberTargetsByName_(name, { requireStaff: true });
+    if (target.ambiguous) {
+      return { ok: false, reason: 'ambiguous_recipient', recipientName: name, targetCount: 0 };
+    }
+    if (target.ids.length !== 1) {
+      return { ok: false, reason: 'staff_not_found', recipientName: name, targetCount: 0 };
+    }
+    targets.push({ name, userId: target.ids[0] });
+  }
+
+  const group = latestMachineIncidentGroupForResend_(opts);
+  if (!group || !group.recordId || !group.incidents.length) {
+    return { ok: false, reason: 'incident_not_found', targetCount: 0 };
+  }
+
+  const flex = buildIncidentSummaryFlex_(group, group.fileUrl || '');
+  const delivered = [];
+  const failed = [];
+  targets.forEach(target => {
+    const push = linePushTo_(target.userId, withQuickReply_(flex), 'push');
+    (push && push.ok ? delivered : failed).push(target.name);
+  });
+  return {
+    ok: failed.length === 0,
+    targetCount: delivered.length,
+    recipientNames: delivered,
+    failedRecipientNames: failed,
+    equipmentName: group.equipmentName,
+    reportDate: group.reportDate,
+    recordId: group.recordId,
+    incidentCount: group.incidents.length,
+  };
+}
+
+function latestMachineIncidentGroupForResend_(opts) {
+  opts = opts || {};
+  const equipmentFilter = String(opts.equipmentName || '').trim();
+  const reportDateFilter = String(opts.reportDate || '').trim();
+  const sheet = getMachineIncidentSheet_(SpreadsheetApp.openById(CONFIG.DB_SHEET_ID));
+  if (!sheet || sheet.getLastRow() < 2) return null;
+
+  const values = sheet.getDataRange().getValues();
+  const headers = values[0].map(value => String(value || '').trim());
+  const col = name => headers.indexOf(name);
+  const required = ['設備名稱', '設備類別', '表單類型', '通報日期', '項次', '項目名稱', '異常說明', 'PDF連結', '紀錄ID'];
+  if (required.some(name => col(name) < 0)) return null;
+
+  const toISO = value => value instanceof Date ? formatISODate_(value) : String(value || '').trim();
+  let anchor = null;
+  for (let rowIndex = values.length - 1; rowIndex >= 1; rowIndex--) {
+    const row = values[rowIndex];
+    const equipmentName = String(row[col('設備名稱')] || '').trim();
+    const reportDate = toISO(row[col('通報日期')]);
+    if (equipmentFilter && equipmentName !== equipmentFilter) continue;
+    if (reportDateFilter && reportDate !== reportDateFilter) continue;
+    anchor = {
+      recordId: String(row[col('紀錄ID')] || '').trim(),
+      pdfUrl: String(row[col('PDF連結')] || '').trim(),
+      equipmentName,
+      reportDate,
+    };
+    break;
+  }
+  if (!anchor) return null;
+
+  const incidents = [];
+  let category = '';
+  let formType = '';
+  values.slice(1).forEach(row => {
+    const recordId = String(row[col('紀錄ID')] || '').trim();
+    const pdfUrl = String(row[col('PDF連結')] || '').trim();
+    const sameRecord = anchor.recordId
+      ? recordId === anchor.recordId
+      : pdfUrl && pdfUrl === anchor.pdfUrl;
+    if (!sameRecord) return;
+    category = category || String(row[col('設備類別')] || '').trim();
+    formType = formType || String(row[col('表單類型')] || '').trim();
+    incidents.push({
+      order: row[col('項次')],
+      itemName: row[col('項目名稱')],
+      result: col('結果代號') >= 0 ? row[col('結果代號')] : '',
+      description: row[col('異常說明')],
+      photoCount: col('照片數') >= 0 ? Number(row[col('照片數')] || 0) : 0,
+      status: col('狀態') >= 0 ? row[col('狀態')] : '',
+      note: col('備註') >= 0 ? row[col('備註')] : '',
+    });
+  });
+
+  return {
+    recordId: anchor.recordId,
+    equipmentName: anchor.equipmentName,
+    category,
+    formType,
+    reportDate: anchor.reportDate,
+    fileUrl: anchor.pdfUrl,
+    incidents,
+  };
 }
 
 function sendApprovalRequest_(record) {
