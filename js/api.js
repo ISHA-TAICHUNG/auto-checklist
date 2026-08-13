@@ -109,7 +109,7 @@
     const timeout = controller ? setTimeout(() => controller.abort(), timeoutMs) : null;
     let res;
     try {
-      res = await fetch(C.API_BASE, {
+      res = await fetch(options.cacheBust ? buildUrl({}, true) : C.API_BASE, {
         method: 'POST',
         // 明示 text/plain 避免觸發 Apps Script 不支援的 CORS preflight
         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
@@ -139,10 +139,24 @@
     submit: (payload) => apiPost(payload),
     submitDailyIncident: (payload) => apiPost(Object.assign({ action: 'submitDailyIncident' }, payload)),
     submitDailyWorkCheck: (payload) => apiPost(Object.assign({ action: 'submitDailyWorkCheck' }, payload)),
-    adminDashboardStatus: (adminToken) => apiPost(
-      { action: 'adminDashboardStatus', adminToken },
-      { timeoutMs: 45000 }
-    ),
+    adminDashboardStatus: async (adminToken) => {
+      let lastError = null;
+      // This POST is read-only. Apps Script redirect URLs can intermittently
+      // return a cached 404, so only this dashboard query is safe to retry.
+      for (let attempt = 0; attempt < 3; attempt++) {
+        try {
+          return await apiPost(
+            { action: 'adminDashboardStatus', adminToken },
+            { timeoutMs: 45000, cacheBust: true }
+          );
+        } catch (error) {
+          lastError = error;
+          if (!/HTTP 404|連線逾時/.test(String(error && error.message))) throw error;
+        }
+        if (attempt < 2) await new Promise(resolve => setTimeout(resolve, 500 * (attempt + 1)));
+      }
+      throw lastError || new Error('資訊面板連線失敗');
+    },
     approveRecord: (payload) => apiPost(Object.assign({ action: 'approveRecord' }, payload)),
     health: () => apiGet({ api: 'health' }),
     branding: () => apiGet({ api: 'branding' }),
