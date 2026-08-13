@@ -139,14 +139,15 @@
     submit: (payload) => apiPost(payload),
     submitDailyIncident: (payload) => apiPost(Object.assign({ action: 'submitDailyIncident' }, payload)),
     submitDailyWorkCheck: (payload) => apiPost(Object.assign({ action: 'submitDailyWorkCheck' }, payload)),
-    adminDashboardStatus: async (adminToken) => {
+    adminDashboardStatus: async (adminToken, options) => {
+      options = options || {};
       let lastError = null;
       // This POST is read-only. Apps Script redirect URLs can intermittently
       // return a cached 404, so only this dashboard query is safe to retry.
       for (let attempt = 0; attempt < 3; attempt++) {
         try {
           return await apiPost(
-            { action: 'adminDashboardStatus', adminToken },
+            { action: 'adminDashboardStatus', adminToken, forceRefresh: options.forceRefresh === true },
             { timeoutMs: 45000, cacheBust: true }
           );
         } catch (error) {

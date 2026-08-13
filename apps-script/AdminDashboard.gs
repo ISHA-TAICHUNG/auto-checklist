@@ -7,17 +7,27 @@
 
 const ADMIN_DASHBOARD_CACHE_KEY = "admin_dashboard_status_v1";
 const ADMIN_DASHBOARD_CACHE_SECONDS = 120;
+const ADMIN_DASHBOARD_SNAPSHOT_PREFIX = "admin_dashboard_snapshot_v1_";
+// Script Properties 單值上限按位元組計算；中文可占 3 bytes，保守切小。
+const ADMIN_DASHBOARD_SNAPSHOT_CHUNK_SIZE = 2500;
+const ADMIN_DASHBOARD_REFRESH_SECONDS = 600;
 
 function getAdminDashboardStatus_(opts) {
   opts = opts || {};
+  const forceRefresh = opts.forceRefresh === true;
   const cache = CacheService.getScriptCache();
-  const cached = cache.get(ADMIN_DASHBOARD_CACHE_KEY);
+  const cached = forceRefresh ? "" : cache.get(ADMIN_DASHBOARD_CACHE_KEY);
   if (cached) {
     try {
-      const parsed = JSON.parse(cached);
-      parsed.cached = true;
-      return parsed;
+      return dashboardDecorateSnapshot_(JSON.parse(cached), "cache");
     } catch (_) {}
+  }
+
+  // 先回傳最近一次成功快照，避免使用者每次開啟都等待多個
+  // Sheets / Drive / LINE 來源依序查詢。完整更新由前端在畫面顯示後執行。
+  if (!forceRefresh) {
+    const persisted = dashboardReadPersistedSnapshot_();
+    if (persisted) return dashboardDecorateSnapshot_(persisted, "snapshot");
   }
 
   const now = new Date();
@@ -62,7 +72,7 @@ function getAdminDashboardStatus_(opts) {
     generatedAtLabel: Utilities.formatDate(now, tz_(), "yyyy/MM/dd HH:mm:ss"),
     date: formatISODate_(today),
     timeZone: tz_(),
-    refreshAfterSeconds: 60,
+    refreshAfterSeconds: ADMIN_DASHBOARD_REFRESH_SECONDS,
     cached: false,
     overall: dashboardOverallStatus_(sections, sectionErrors),
     summary: dashboardSummary_(sections),
@@ -71,13 +81,67 @@ function getAdminDashboardStatus_(opts) {
   };
 
   try {
+    const serialized = JSON.stringify(result);
     cache.put(
       ADMIN_DASHBOARD_CACHE_KEY,
-      JSON.stringify(result),
+      serialized,
       ADMIN_DASHBOARD_CACHE_SECONDS,
     );
+    dashboardPersistSnapshot_(serialized);
   } catch (_) {}
   return result;
+}
+
+function dashboardDecorateSnapshot_(snapshot, source) {
+  const result = Object.assign({}, snapshot || {});
+  const generatedAtMs = Date.parse(String(result.generatedAt || ""));
+  const ageSeconds = isNaN(generatedAtMs)
+    ? null
+    : Math.max(0, Math.floor((Date.now() - generatedAtMs) / 1000));
+  result.cached = true;
+  result.cacheSource = source;
+  result.snapshotAgeSeconds = ageSeconds;
+  result.snapshotStale = ageSeconds == null || ageSeconds > ADMIN_DASHBOARD_REFRESH_SECONDS;
+  result.refreshAfterSeconds = ADMIN_DASHBOARD_REFRESH_SECONDS;
+  return result;
+}
+
+function dashboardPersistSnapshot_(serialized) {
+  const text = String(serialized || "");
+  if (!text) return;
+  const chunks = [];
+  for (let offset = 0; offset < text.length; offset += ADMIN_DASHBOARD_SNAPSHOT_CHUNK_SIZE) {
+    chunks.push(text.slice(offset, offset + ADMIN_DASHBOARD_SNAPSHOT_CHUNK_SIZE));
+  }
+  const properties = PropertiesService.getScriptProperties();
+  const previousCount = Number(properties.getProperty(ADMIN_DASHBOARD_SNAPSHOT_PREFIX + "count") || 0);
+  const values = {};
+  values[ADMIN_DASHBOARD_SNAPSHOT_PREFIX + "count"] = String(chunks.length);
+  chunks.forEach((chunk, index) => {
+    values[ADMIN_DASHBOARD_SNAPSHOT_PREFIX + index] = chunk;
+  });
+  properties.setProperties(values, false);
+  for (let index = chunks.length; index < previousCount; index++) {
+    properties.deleteProperty(ADMIN_DASHBOARD_SNAPSHOT_PREFIX + index);
+  }
+}
+
+function dashboardReadPersistedSnapshot_() {
+  try {
+    const properties = PropertiesService.getScriptProperties();
+    const count = Number(properties.getProperty(ADMIN_DASHBOARD_SNAPSHOT_PREFIX + "count") || 0);
+    if (!count || count > 20) return null;
+    let serialized = "";
+    for (let index = 0; index < count; index++) {
+      const chunk = properties.getProperty(ADMIN_DASHBOARD_SNAPSHOT_PREFIX + index);
+      if (chunk == null) return null;
+      serialized += chunk;
+    }
+    const parsed = JSON.parse(serialized);
+    return parsed && parsed.ok === true ? parsed : null;
+  } catch (_) {
+    return null;
+  }
 }
 
 function dashboardCaptureSection_(name, getter, errors) {

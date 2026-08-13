@@ -6,7 +6,7 @@
     return;
   }
 
-  const state = { data: null, incidentTab: 'machine', timer: null, loading: false, adminToken: '' };
+  const state = { data: null, incidentTab: 'machine', timer: null, loading: false, adminToken: '', backgroundRefreshStarted: false };
   const $ = id => document.getElementById(id);
   const dialog = $('unlockDialog');
   const form = $('unlockForm');
@@ -30,7 +30,7 @@
     $('refreshButton').disabled = true;
     $('refreshButton').textContent = '載入中';
     try {
-      const result = await window.API.adminDashboardStatus(token);
+      const result = await window.API.adminDashboardStatus(token, { forceRefresh: opts.forceRefresh === true });
       if (!result || result.ok !== true) throw new Error((result && result.error) || '無法載入面板');
       state.adminToken = token;
       $('adminToken').value = '';
@@ -39,6 +39,13 @@
       if (dialog.open) dialog.close();
       $('unlockError').textContent = '';
       scheduleRefresh(result.refreshAfterSeconds || 60);
+      syncNavigation(window.location.hash || '#overview', { scroll: true });
+      if (result.snapshotStale && !opts.forceRefresh && !state.backgroundRefreshStarted) {
+        state.backgroundRefreshStarted = true;
+        window.setTimeout(() => loadDashboard(token, { forceRefresh: true, background: true }), 250);
+      } else if (!result.snapshotStale) {
+        state.backgroundRefreshStarted = false;
+      }
     } catch (error) {
       if (opts.initial || /未授權/.test(String(error && error.message))) {
         state.adminToken = '';
@@ -61,7 +68,7 @@
     if (state.timer) window.clearTimeout(state.timer);
     state.timer = window.setTimeout(() => {
       const token = state.adminToken;
-      if (token && !document.hidden) loadDashboard(token);
+      if (token && !document.hidden) loadDashboard(token, { forceRefresh: true, background: true });
       else scheduleRefresh(seconds);
     }, Math.max(30, Number(seconds || 60)) * 1000);
   }
@@ -80,7 +87,8 @@
   }
 
   function renderHeader(data) {
-    text('lastUpdated', data.generatedAtLabel + (data.cached ? '（快取）' : ''));
+    const sourceLabel = data.cacheSource === 'snapshot' ? '（最近快照）' : data.cached ? '（快取）' : '';
+    text('lastUpdated', data.generatedAtLabel + sourceLabel);
     const badge = $('overallHealth');
     badge.className = 'health-badge ' + ((data.overall && data.overall.level) || 'neutral');
     badge.innerHTML = '<span></span>' + escapeHtml((data.overall && data.overall.label) || '狀態未知');
@@ -211,6 +219,21 @@
     window.setTimeout(() => $('adminToken').focus(), 0);
   }
 
+  function syncNavigation(hash, options) {
+    options = options || {};
+    const normalized = /^#[a-z-]+$/i.test(String(hash || '')) ? hash : '#overview';
+    const target = document.querySelector(normalized);
+    if (!target) return;
+    document.querySelectorAll('.side-nav a[href^="#"], .mobile-nav a[href^="#"]').forEach(link => {
+      link.classList.toggle('active', link.getAttribute('href') === normalized);
+      if (link.getAttribute('href') === normalized) link.setAttribute('aria-current', 'page');
+      else link.removeAttribute('aria-current');
+    });
+    if (options.scroll) {
+      target.scrollIntoView({ behavior: options.instant ? 'auto' : 'smooth', block: 'start' });
+    }
+  }
+
   function clearDashboard() {
     ['lastUpdated', 'dailyCompleted', 'dailyRequired', 'monthlyPending', 'incidentOpen',
       'approvalPending', 'lineRemaining', 'monthlyCaption', 'checksTime', 'approvalsTime', 'incidentsTime',
@@ -235,7 +258,7 @@
   });
   $('refreshButton').addEventListener('click', () => {
     const token = state.adminToken;
-    if (token) loadDashboard(token); else openDialog();
+    if (token) loadDashboard(token, { forceRefresh: true }); else openDialog();
   });
   $('lockButton').addEventListener('click', () => {
     state.adminToken = '';
@@ -255,6 +278,24 @@
       renderIncidentTab();
     });
   });
+  document.querySelectorAll('.side-nav a[href^="#"], .mobile-nav a[href^="#"]').forEach(link => {
+    link.addEventListener('click', event => {
+      const hash = link.getAttribute('href');
+      if (!hash || !document.querySelector(hash)) return;
+      event.preventDefault();
+      window.history.replaceState(null, '', hash);
+      syncNavigation(hash, { scroll: true });
+    });
+  });
+  const observedSections = Array.from(document.querySelectorAll('main section[id]'));
+  if ('IntersectionObserver' in window) {
+    const navObserver = new IntersectionObserver(entries => {
+      const visible = entries.filter(entry => entry.isIntersecting)
+        .sort((a, b) => b.intersectionRatio - a.intersectionRatio)[0];
+      if (visible) syncNavigation('#' + visible.target.id);
+    }, { rootMargin: '-18% 0px -68% 0px', threshold: [0, 0.2, 0.6] });
+    observedSections.forEach(section => navObserver.observe(section));
+  }
   document.addEventListener('visibilitychange', () => {
     if (!document.hidden) {
       const token = state.adminToken;
