@@ -27,10 +27,17 @@
     opts = opts || {};
     if (state.loading) return;
     state.loading = true;
+    if (opts.initial && dialog.open) {
+      dialog.close();
+      showAlert('正在驗證管理權限並讀取最近狀態...');
+    }
     $('refreshButton').disabled = true;
     $('refreshButton').textContent = '載入中';
     try {
-      const result = await window.API.adminDashboardStatus(token, { forceRefresh: opts.forceRefresh === true });
+      const result = await window.API.adminDashboardStatus(token, {
+        forceRefresh: opts.forceRefresh === true,
+        snapshotOnly: opts.initial === true,
+      });
       if (!result || result.ok !== true) throw new Error((result && result.error) || '無法載入面板');
       state.adminToken = token;
       $('adminToken').value = '';
@@ -40,6 +47,9 @@
       $('unlockError').textContent = '';
       scheduleRefresh(result.refreshAfterSeconds || 60);
       syncNavigation(window.location.hash || '#overview', { scroll: true });
+      if (result.snapshotPending) {
+        showAlert('管理權限已驗證，正在背景建立最新狀態，完成後會自動更新。');
+      }
       if (result.snapshotStale && !opts.forceRefresh && !state.backgroundRefreshStarted) {
         state.backgroundRefreshStarted = true;
         window.setTimeout(() => loadDashboard(token, { forceRefresh: true, background: true }), 250);
@@ -88,7 +98,7 @@
 
   function renderHeader(data) {
     const sourceLabel = data.cacheSource === 'snapshot' ? '（最近快照）' : data.cached ? '（快取）' : '';
-    text('lastUpdated', data.generatedAtLabel + sourceLabel);
+    text('lastUpdated', (data.generatedAtLabel || '資料更新中') + sourceLabel);
     const badge = $('overallHealth');
     badge.className = 'health-badge ' + ((data.overall && data.overall.level) || 'neutral');
     badge.innerHTML = '<span></span>' + escapeHtml((data.overall && data.overall.label) || '狀態未知');
@@ -99,7 +109,11 @@
     text('dailyRequired', ' / ' + unavailable(summary.dailyRequired));
     text('dailyCaption', summary.dailyRequired === 0 ? '今日無需檢點' : '依場地使用狀態判定');
     text('monthlyPending', unavailable(summary.monthlyPending));
-    text('monthlyCaption', summary.monthlyVisible === false ? '目前非月檢顯示期間' : '尚待完成');
+    const monthlyCompleted = summary.monthlyCompleted;
+    const monthlyRequired = summary.monthlyRequired;
+    text('monthlyCaption', monthlyRequired == null
+      ? '等待載入'
+      : `本月完成 ${monthlyCompleted || 0} / ${monthlyRequired}`);
     text('incidentOpen', unavailable(summary.incidentOpen));
     text('approvalPending', unavailable(summary.approvalPending));
     text('lineRemaining', unavailable(summary.lineRemaining));
@@ -117,7 +131,7 @@
         <td><strong>${escapeHtml(row.category)}</strong></td>
         <td>${escapeHtml(row.cycle)}</td>
         <td><span class="status ${escapeHtml(row.status)}">${statusLabel(row.status)}</span></td>
-        <td>${escapeHtml(row.usage || (row.cycle === '每月' ? '本月進度' : '無使用紀錄'))}</td>
+        <td>${escapeHtml(row.usage || (row.cycle === '每月' ? (row.equipmentName || '本月進度') : '無使用紀錄'))}</td>
       </tr>`).join('') : '<tr><td colspan="4" class="empty">目前沒有檢點項目</td></tr>';
   }
 

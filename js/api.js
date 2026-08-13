@@ -142,19 +142,26 @@
     adminDashboardStatus: async (adminToken, options) => {
       options = options || {};
       let lastError = null;
+      const snapshotOnly = options.snapshotOnly === true;
+      const maxAttempts = snapshotOnly ? 2 : 3;
       // This POST is read-only. Apps Script redirect URLs can intermittently
       // return a cached 404, so only this dashboard query is safe to retry.
-      for (let attempt = 0; attempt < 3; attempt++) {
+      for (let attempt = 0; attempt < maxAttempts; attempt++) {
         try {
           return await apiPost(
-            { action: 'adminDashboardStatus', adminToken, forceRefresh: options.forceRefresh === true },
-            { timeoutMs: 45000, cacheBust: true }
+            {
+              action: 'adminDashboardStatus',
+              adminToken,
+              forceRefresh: options.forceRefresh === true,
+              snapshotOnly: options.snapshotOnly === true,
+            },
+            { timeoutMs: snapshotOnly ? 15000 : 45000, cacheBust: true }
           );
         } catch (error) {
           lastError = error;
           if (!/HTTP 404|連線逾時/.test(String(error && error.message))) throw error;
         }
-        if (attempt < 2) await new Promise(resolve => setTimeout(resolve, 500 * (attempt + 1)));
+        if (attempt < maxAttempts - 1) await new Promise(resolve => setTimeout(resolve, 350 * (attempt + 1)));
       }
       throw lastError || new Error('資訊面板連線失敗');
     },

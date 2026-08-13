@@ -5,9 +5,9 @@
  * API_TOKEN + ADMIN_TOKEN 驗證，且回傳內容不包含 LINE userId、token 或簽核網址。
  */
 
-const ADMIN_DASHBOARD_CACHE_KEY = "admin_dashboard_status_v1";
+const ADMIN_DASHBOARD_CACHE_KEY = "admin_dashboard_status_v2";
 const ADMIN_DASHBOARD_CACHE_SECONDS = 120;
-const ADMIN_DASHBOARD_SNAPSHOT_PREFIX = "admin_dashboard_snapshot_v1_";
+const ADMIN_DASHBOARD_SNAPSHOT_PREFIX = "admin_dashboard_snapshot_v2_";
 // Script Properties 單值上限按位元組計算；中文可占 3 bytes，保守切小。
 const ADMIN_DASHBOARD_SNAPSHOT_CHUNK_SIZE = 2500;
 const ADMIN_DASHBOARD_REFRESH_SECONDS = 600;
@@ -15,6 +15,7 @@ const ADMIN_DASHBOARD_REFRESH_SECONDS = 600;
 function getAdminDashboardStatus_(opts) {
   opts = opts || {};
   const forceRefresh = opts.forceRefresh === true;
+  const snapshotOnly = opts.snapshotOnly === true && !forceRefresh;
   const cache = CacheService.getScriptCache();
   const cached = forceRefresh ? "" : cache.get(ADMIN_DASHBOARD_CACHE_KEY);
   if (cached) {
@@ -29,6 +30,10 @@ function getAdminDashboardStatus_(opts) {
     const persisted = dashboardReadPersistedSnapshot_();
     if (persisted) return dashboardDecorateSnapshot_(persisted, "snapshot");
   }
+
+  // 首次開啟尚未建立快照時，先完成權限驗證並立即回傳空殼。
+  // 前端會在解鎖後於背景建立完整快照，避免使用者卡在驗證視窗。
+  if (snapshotOnly) return dashboardPendingSnapshot_();
 
   const now = new Date();
   const today = todayStart_();
@@ -90,6 +95,25 @@ function getAdminDashboardStatus_(opts) {
     dashboardPersistSnapshot_(serialized);
   } catch (_) {}
   return result;
+}
+
+function dashboardPendingSnapshot_() {
+  return {
+    ok: true,
+    generatedAt: "",
+    generatedAtLabel: "正在建立最新資料",
+    date: formatISODate_(todayStart_()),
+    timeZone: tz_(),
+    refreshAfterSeconds: ADMIN_DASHBOARD_REFRESH_SECONDS,
+    cached: false,
+    cacheSource: "none",
+    snapshotPending: true,
+    snapshotStale: true,
+    overall: { level: "neutral", label: "資料更新中" },
+    summary: {},
+    sections: {},
+    sectionErrors: {},
+  };
 }
 
 function dashboardDecorateSnapshot_(snapshot, source) {
@@ -233,9 +257,11 @@ function dashboardChecklistStatus_(today) {
   const checkWindow = getMonthlyCheckWindow_();
   const reminderStartDay = getMonthlyReminderStartDay_();
   const day = dateParts_(today).d;
-  const monthlyVisible =
+  const monthlyReminderActive =
     (day >= checkWindow.start && day <= checkWindow.end) || day >= reminderStartDay;
-  const monthly = (monthlyVisible ? Object.keys(monthlyByCategory) : [])
+  // 營運資訊面板需整月呈現月檢進度；提醒是否啟動仍另外保留，
+  // 不因面板顯示而改變 LINE 主動推播時段。
+  const monthly = Object.keys(monthlyByCategory)
     .sort((a, b) => a.localeCompare(b, "zh-Hant"))
     .map((category) => {
       const completed = dashboardHasChecklistRecord_(recordIndex, "每月", category, today);
@@ -261,7 +287,8 @@ function dashboardChecklistStatus_(today) {
       completed: monthlyCompleted,
       required: monthly.length,
       pending: Math.max(0, monthly.length - monthlyCompleted),
-      visible: monthlyVisible,
+      visible: true,
+      reminderActive: monthlyReminderActive,
       checkWindowStart: checkWindow.start,
       checkWindowEnd: checkWindow.end,
       reminderStartDay,
@@ -448,6 +475,8 @@ function dashboardSummary_(sections) {
     dailyCompleted: checks.daily ? checks.daily.completed : null,
     dailyRequired: checks.daily ? checks.daily.required : null,
     monthlyPending: checks.monthly ? checks.monthly.pending : null,
+    monthlyCompleted: checks.monthly ? checks.monthly.completed : null,
+    monthlyRequired: checks.monthly ? checks.monthly.required : null,
     monthlyVisible: checks.monthly ? Boolean(checks.monthly.visible) : null,
     incidentOpen:
       incidents.available && incidents.machine && incidents.daily
