@@ -221,18 +221,27 @@ function listLineSubscriberPeople_() {
     const supervisorCol = getLineSupervisorFlagColumnIndex_(headers);
     const staffCol = headers.indexOf('是否為同仁');
     const noteCol = headers.indexOf('備註');
+    const notificationColumns = typeof LINE_NOTIFICATION_COLUMNS !== 'undefined'
+      ? Object.keys(LINE_NOTIFICATION_COLUMNS).map(key => LINE_NOTIFICATION_COLUMNS[key])
+      : [];
     if (nameCol < 0 || idCol < 0) return people;
     data.slice(1).forEach((row, index) => {
       const name = String(row[nameCol] || '').trim();
       const userId = String(row[idCol] || '').trim();
       const active = activeCol < 0 ? true : isActiveValue_(row[activeCol]);
       if (!name || !userId || !active) return;
+      const notifications = {};
+      notificationColumns.forEach(column => {
+        const col = headers.indexOf(column);
+        notifications[column] = col >= 0 && isLineNotificationEnabled_(row[col]);
+      });
       people.push({
         name,
         userId,
         key: lineSubscriberPersonKey_(userId),
         isSupervisor: supervisorCol >= 0 ? isActiveValue_(row[supervisorCol]) : false,
         isStaff: staffCol >= 0 ? isActiveValue_(row[staffCol]) : false,
+        notifications,
         note: noteCol >= 0 ? String(row[noteCol] || '').trim() : '',
         rowNo: index + 2,
       });

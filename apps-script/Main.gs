@@ -1094,6 +1094,13 @@ function doPost(e) {
         delete payload.adminToken;
         result = getAdminDashboardStatus_(payload);
         break;
+      case "adminDashboardAction":
+        if (!checkAdminToken_(payload.adminToken)) {
+          throw new Error("未授權：管理存取密鑰不正確");
+        }
+        delete payload.adminToken;
+        result = handleAdminDashboardAction_(payload);
+        break;
       case "enqueueOfficialDocuments":
         if (!checkAdminToken_(payload.adminToken)) {
           throw new Error(
@@ -1205,6 +1212,20 @@ function friendlyError_(err) {
     "每日防護具確認",
     "每日場地防護具",
     "防護具確認連結",
+    "未知管理操作",
+    "管理操作",
+    "目前沒有可開啟",
+    "找不到可通知",
+    "找不到符合的機具設備異常",
+    "事件ID命中多筆檢查",
+    "歷史異常缺少紀錄ID",
+    "收件人姓名重複",
+    "這筆提醒剛剛已送出",
+    "這筆提醒剛剛已送給",
+    "這筆提醒正在發送",
+    "提醒請求編號",
+    "待處理項目",
+    "可能已由其他主管完成簽核",
     "公文待發文",
     "待發文佇列",
     "cleanupAll dryRun 需帶",

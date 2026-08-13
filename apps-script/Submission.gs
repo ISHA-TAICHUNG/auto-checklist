@@ -629,6 +629,7 @@ function listPendingApprovalRecords_(opts) {
   opts = opts || {};
   const includeApprovalUrl = opts.includeApprovalUrl !== false;
   const inspectorName = sanitizeText_(opts.inspectorName, 80);
+  const targetRecordId = sanitizeText_(opts.recordId, 100).trim();
   const minAgeHours = Math.max(0, Number(opts.minAgeHours || 0));
   const now = opts.now instanceof Date ? opts.now : new Date();
 
@@ -653,6 +654,8 @@ function listPendingApprovalRecords_(opts) {
     const row = data[i];
     const rec = parsedRows[i];
     const token = String(row[tokenIdx] || "").trim();
+    if (targetRecordId && String(rec.recordId || "").trim() !== targetRecordId)
+      continue;
     if (!token) continue;
     if (!approvalStatusIsPending_(rec.status)) continue;
     if (approvalHasArchivedSibling_(rec, archivedBatchMap)) continue;
@@ -691,6 +694,8 @@ function listPendingApprovalRecords_(opts) {
       submittedAtMs: submittedAt ? submittedAt.getTime() : 0,
       ageHours,
       ageDays: ageHours == null ? null : Math.floor(ageHours / 24),
+      fileUrl: rec.fileUrl,
+      draftDocUrl: rec.draftDocUrl,
       approvalUrl: includeApprovalUrl
         ? buildApprovalUrl_(rec.recordId, token)
         : "",
@@ -1047,7 +1052,7 @@ function approvalResendSafeFilters_(opts) {
 function handleApprovalSubmission_(payload) {
   if (!payload) throw new Error("缺少 approval payload");
   const recordId = sanitizeText_(payload.recordId, 80);
-  const token = sanitizeText_(payload.token, 160);
+  const token = sanitizeText_(payload.token, 500);
   const supervisorName = sanitizeText_(payload.supervisorName, 80);
   const supervisorSignature = payload.supervisorSignature;
   if (!recordId) throw new Error("缺少 recordId");
@@ -1159,7 +1164,11 @@ function getApprovalRecord_(recordId, token) {
     .getValues();
   for (let i = 0; i < data.length; i++) {
     if (String(data[i][idIdx] || "") !== recordId) continue;
-    if (String(data[i][tokenIdx] || "") !== token)
+    const storedToken = String(data[i][tokenIdx] || "");
+    const dashboardTokenValid =
+      typeof isValidAdminDashboardActionToken_ === "function" &&
+      isValidAdminDashboardActionToken_(token, "approval", recordId);
+    if (storedToken !== token && !dashboardTokenValid)
       throw new Error("簽核連結無效");
     return approvalRecordFromRow_(sheet, headers, data[i], i + 2);
   }

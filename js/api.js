@@ -165,6 +165,14 @@
       }
       throw lastError || new Error('資訊面板連線失敗');
     },
+    adminDashboardAction: (adminToken, payload) => apiPost(
+      Object.assign({
+        action: 'adminDashboardAction',
+        adminToken,
+      }, payload || {}),
+      // 發送操作不可自動重試，避免網路回應中斷時造成重複推播。
+      { timeoutMs: 120000, cacheBust: true }
+    ),
     approveRecord: (payload) => apiPost(Object.assign({ action: 'approveRecord' }, payload)),
     health: () => apiGet({ api: 'health' }),
     branding: () => apiGet({ api: 'branding' }),

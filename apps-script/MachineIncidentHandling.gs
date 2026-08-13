@@ -7,6 +7,7 @@
 
 const MACHINE_INCIDENT_HANDLING_STATUSES = ['待處理', '處理中', '待重檢', '已完成'];
 const MACHINE_INCIDENT_HANDLING_TOKEN_TTL_SECONDS = 30 * 24 * 60 * 60;
+const MACHINE_INCIDENT_ADMIN_TOKEN_TTL_SECONDS = 30 * 60;
 const MACHINE_INCIDENT_HANDLING_COLUMNS = [
   '處理更新時間',
   '處理紀錄PDF',
@@ -33,7 +34,7 @@ function getMachineIncidentHandlingPageData(recordId, token) {
     const group = getMachineIncidentGroupByRecordId_(recordId);
     return {
       ok: true,
-      actor: { name: auth.person.name },
+      actor: { name: auth.actorName || auth.person.name },
       group: publicMachineIncidentHandlingGroup_(group),
     };
   } catch (err) {
@@ -54,6 +55,7 @@ function submitMachineIncidentHandlingFromPage(payload) {
 function submitMachineIncidentHandling_(payload) {
   const recordId = sanitizeText_(payload.recordId, 100).trim();
   const auth = assertMachineIncidentHandlingToken_(recordId, payload.token);
+  const actorName = auth.actorName || auth.person.name;
   const updates = normalizeMachineIncidentHandlingUpdates_(payload.items);
   const completedDate = payload.completedDate
     ? formatISODate_(parseISODate_(String(payload.completedDate)))
@@ -64,7 +66,7 @@ function submitMachineIncidentHandling_(payload) {
     const group = getMachineIncidentGroupByRecordId_(recordId);
     if (group.allCompleted) {
       if (!group.handlingApprovalStatus && !group.handlingPdfUrl) {
-        const finalized = finalizeMachineIncidentHandling_(group, machineIncidentCompletionMeta_(group, auth.person.name));
+        const finalized = finalizeMachineIncidentHandling_(group, machineIncidentCompletionMeta_(group, actorName));
         persistMachineIncidentHandlingFinalization_(group, finalized);
       }
       return {
@@ -97,7 +99,11 @@ function submitMachineIncidentHandling_(payload) {
     group.items.forEach(item => {
       const update = updateById[item.incidentId];
       sheet.getRange(item.rowNo, col.status + 1).setValue(update.status);
-      sheet.getRange(item.rowNo, col.owner + 1).setValue(auth.person.name);
+      // 中控台代填只記錄本次操作人，不覆寫原負責人，
+      // 避免後續 LINE 提醒找不到原承辦同仁。
+      if (!auth.isAdmin) {
+        sheet.getRange(item.rowNo, col.owner + 1).setValue(auth.person.name);
+      }
       sheet.getRange(item.rowNo, col.note + 1).setValue(update.note);
       sheet.getRange(item.rowNo, col.completedDate + 1)
         .setValue(update.status === '已完成' ? completedDate : '');
@@ -115,7 +121,7 @@ function submitMachineIncidentHandling_(payload) {
     if (allCompleted) {
       const refreshed = getMachineIncidentGroupByRecordId_(recordId);
       const finalized = finalizeMachineIncidentHandling_(refreshed, {
-        actorName: auth.person.name,
+        actorName,
         completedDate,
         updatedAt: now,
       });
@@ -328,6 +334,40 @@ function createMachineIncidentHandlingLink_(recordId, userId) {
   };
 }
 
+/**
+ * 由已通過 ADMIN_TOKEN 驗證的營運中控台核發短效管理連結。
+ * 這個 token 不綁定 LINE 身分，本次操作人會記為「管理者代填」，
+ * 但不覆寫原異常負責人，且連結僅存活 30 分鐘。
+ */
+function createMachineIncidentHandlingAdminLink_(recordId) {
+  const target = sanitizeText_(recordId, 100).trim();
+  if (!target) throw new Error('缺少檢查紀錄ID');
+  // 先確認紀錄存在，避免替任意字串核發有效 token。
+  getMachineIncidentGroupByRecordId_(target);
+  const token = createMachineIncidentHandlingAdminToken_(target);
+  const base = getWebAppBaseUrl_();
+  if (!base) throw new Error('尚未設定 Web App 網址');
+  return {
+    url: `${base}?page=machine-incident-handle&recordId=${encodeURIComponent(target)}&token=${encodeURIComponent(token)}`,
+    actorName: '管理者代填',
+  };
+}
+
+function createMachineIncidentHandlingAdminToken_(recordId) {
+  const payload = {
+    v: 1,
+    r: String(recordId || ''),
+    p: '',
+    a: 1,
+    e: Math.floor(Date.now() / 1000) + MACHINE_INCIDENT_ADMIN_TOKEN_TTL_SECONDS,
+  };
+  const encoded = Utilities.base64EncodeWebSafe(
+    JSON.stringify(payload),
+    Utilities.Charset.UTF_8,
+  ).replace(/=+$/g, '');
+  return encoded + '.' + machineIncidentHandlingSignature_(encoded);
+}
+
 function createMachineIncidentHandlingToken_(recordId, personKey) {
   const payload = {
     v: 1,
@@ -361,9 +401,21 @@ function assertMachineIncidentHandlingToken_(recordId, token) {
   if (!payload.e || Number(payload.e) < Math.floor(Date.now() / 1000)) {
     throw new Error('處理回報連結已逾期，請從 LINE 重新開啟');
   }
+  if (Number(payload.a || 0) === 1) {
+    return {
+      payload,
+      isAdmin: true,
+      actorName: '管理者代填',
+      person: {
+        name: '',
+        isSupervisor: false,
+        isStaff: false,
+      },
+    };
+  }
   const person = findLineSubscriberPersonByKey_(payload.p, { requireStaff: true });
   if (!person) throw new Error('你目前沒有處理這筆設備異常的權限');
-  return { payload, person };
+  return { payload, person, isAdmin: false, actorName: person.name };
 }
 
 function machineIncidentHandlingSecret_() {

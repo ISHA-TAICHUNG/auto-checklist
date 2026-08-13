@@ -281,7 +281,7 @@ function handleDailyIncidentSubmission_(payload) {
 
 function updateDailyIncident_(payload) {
   const incidentId = normalizeDailyIncidentId_(payload.incidentId);
-  const token = sanitizeText_(payload.token, 120);
+  const token = sanitizeText_(payload.token, 500);
   const found = getDailyIncidentRecord_(incidentId);
   assertDailyIncidentUpdateToken_(found.data, token);
   if (found.data.reviewStatus === '已結案') throw new Error('此日常事件已結案，不能再更新');
@@ -346,7 +346,7 @@ function updateDailyIncident_(payload) {
 
 function submitDailyIncidentForApproval_(payload) {
   const incidentId = normalizeDailyIncidentId_(payload.incidentId);
-  const token = sanitizeText_(payload.token, 120);
+  const token = sanitizeText_(payload.token, 500);
   const found = getDailyIncidentRecord_(incidentId);
   if (token) assertDailyIncidentUpdateToken_(found.data, token);
   if (found.data.reviewStatus === '已結案') throw new Error('此日常事件已結案');
@@ -399,11 +399,11 @@ function submitDailyIncidentForApproval_(payload) {
 
 function approveDailyIncident_(payload) {
   const incidentId = normalizeDailyIncidentId_(payload.incidentId);
-  const token = sanitizeText_(payload.token, 120);
+  const token = sanitizeText_(payload.token, 500);
   const decision = sanitizeText_(payload.decision, 20) || 'approve';
   const comment = sanitizeText_(payload.reviewComment, 1000);
   const found = getDailyIncidentRecord_(incidentId);
-  assertDailyIncidentApprovalToken_(found.data, token);
+  assertDailyIncidentApprovalToken_(found.data, token, 'daily-approval');
   if (found.data.reviewStatus === '已結案') {
     return { ok: true, alreadyClosed: true, incident: publicDailyIncidentSummary_(found.data) };
   }
@@ -474,10 +474,10 @@ function approveDailyIncident_(payload) {
 
 function submitDailyIncidentSupervisorComment_(payload) {
   const incidentId = normalizeDailyIncidentId_(payload.incidentId);
-  const token = sanitizeText_(payload.token, 120);
+  const token = sanitizeText_(payload.token, 500);
   const comment = requiredText_(payload.comment || payload.reviewComment, '主管處理意見', 1000);
   const found = getDailyIncidentRecord_(incidentId);
-  assertDailyIncidentApprovalToken_(found.data, token);
+  assertDailyIncidentApprovalToken_(found.data, token, 'daily-comment');
   if (found.data.reviewStatus === '已結案') throw new Error('此日常事件已結案');
   if (found.data.reviewStatus === '待主管審核') throw new Error('此事件已送主管正式審核，請改用審核頁同意結案或退回補正');
   if (found.data.processStatus !== '處理中') throw new Error('只有處理中事件可填寫主管處理意見');
@@ -523,7 +523,7 @@ function submitDailyIncidentSupervisorComment_(payload) {
 function getDailyIncidentForUpdatePage(incidentId, token) {
   try {
     const found = getDailyIncidentRecord_(normalizeDailyIncidentId_(incidentId));
-    assertDailyIncidentUpdateToken_(found.data, sanitizeText_(token, 120));
+    assertDailyIncidentUpdateToken_(found.data, sanitizeText_(token, 500));
     return { ok: true, incident: publicDailyIncidentSummary_(found.data) };
   } catch (err) {
     Logger.log('getDailyIncidentForUpdatePage 失敗：' + err + '\n' + (err.stack || ''));
@@ -552,7 +552,7 @@ function submitDailyIncidentForApprovalFromPage(payload) {
 function getDailyIncidentForApprovalPage(incidentId, token) {
   try {
     const found = getDailyIncidentRecord_(normalizeDailyIncidentId_(incidentId));
-    assertDailyIncidentApprovalToken_(found.data, sanitizeText_(token, 120));
+    assertDailyIncidentApprovalToken_(found.data, sanitizeText_(token, 500), 'daily-approval');
     return { ok: true, incident: publicDailyIncidentSummary_(found.data) };
   } catch (err) {
     Logger.log('getDailyIncidentForApprovalPage 失敗：' + err + '\n' + (err.stack || ''));
@@ -572,7 +572,7 @@ function approveDailyIncidentFromPage(payload) {
 function getDailyIncidentForSupervisorCommentPage(incidentId, token) {
   try {
     const found = getDailyIncidentRecord_(normalizeDailyIncidentId_(incidentId));
-    assertDailyIncidentApprovalToken_(found.data, sanitizeText_(token, 120));
+    assertDailyIncidentApprovalToken_(found.data, sanitizeText_(token, 500), 'daily-comment');
     return { ok: true, incident: publicDailyIncidentSummary_(found.data) };
   } catch (err) {
     Logger.log('getDailyIncidentForSupervisorCommentPage 失敗：' + err + '\n' + (err.stack || ''));
@@ -901,11 +901,22 @@ function buildDailyIncidentFlowRows_(data, stage) {
 }
 
 function assertDailyIncidentUpdateToken_(data, token) {
-  if (!token || token.length < 32 || token !== data.updateToken) throw new Error('日常事件更新連結已失效或不正確');
+  const dashboardTokenValid =
+    typeof isValidAdminDashboardActionToken_ === 'function' &&
+    isValidAdminDashboardActionToken_(token, 'daily-update', data.incidentId);
+  if (!token || token.length < 32 || (token !== data.updateToken && !dashboardTokenValid)) {
+    throw new Error('日常事件更新連結已失效或不正確');
+  }
 }
 
-function assertDailyIncidentApprovalToken_(data, token) {
-  if (!token || token.length < 32 || token !== data.approvalToken) throw new Error('日常事件審核連結已失效或不正確');
+function assertDailyIncidentApprovalToken_(data, token, dashboardScope) {
+  const dashboardTokenValid =
+    Boolean(dashboardScope) &&
+    typeof isValidAdminDashboardActionToken_ === 'function' &&
+    isValidAdminDashboardActionToken_(token, dashboardScope, data.incidentId);
+  if (!token || token.length < 32 || (token !== data.approvalToken && !dashboardTokenValid)) {
+    throw new Error('日常事件審核連結已失效或不正確');
+  }
 }
 
 function normalizeDailyIncidentPhotos_(photos) {

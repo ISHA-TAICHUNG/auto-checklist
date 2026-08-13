@@ -6,10 +6,24 @@
     return;
   }
 
-  const state = { data: null, incidentTab: 'machine', timer: null, loading: false, adminToken: '', backgroundRefreshStarted: false };
+  const state = {
+    data: null,
+    incidentTab: 'machine',
+    timer: null,
+    loading: false,
+    actionLoading: false,
+    adminToken: '',
+    backgroundRefreshStarted: false,
+    pendingNotification: null,
+    notificationRequests: {},
+    stickyAlert: false,
+    alertTimer: null,
+  };
   const $ = id => document.getElementById(id);
   const dialog = $('unlockDialog');
   const form = $('unlockForm');
+  const notificationDialog = $('notificationDialog');
+  const notificationForm = $('notificationForm');
 
   function escapeHtml(value) {
     return String(value == null ? '' : value)
@@ -22,6 +36,17 @@
     return status === 'completed' ? '已完成' : status === 'pending' ? '待完成' : '今日未使用';
   }
   function unavailable(value) { return value == null ? '--' : value; }
+
+  function actionButton(label, config) {
+    config = config || {};
+    const classes = ['row-action', config.variant || 'secondary', config.compact ? 'compact' : '']
+      .filter(Boolean).join(' ');
+    const title = config.title ? ` title="${escapeHtml(config.title)}"` : '';
+    return `<button class="${classes}" type="button" data-dashboard-action="${escapeHtml(config.action || '')}"
+      data-record-type="${escapeHtml(config.recordType || '')}"
+      data-record-id="${escapeHtml(config.recordId || '')}"
+      data-link-type="${escapeHtml(config.linkType || '')}"${title}>${escapeHtml(label)}</button>`;
+  }
 
   async function loadDashboard(token, opts) {
     opts = opts || {};
@@ -93,7 +118,7 @@
     renderSystem(data.sections && data.sections.system);
     const errors = Object.keys(data.sectionErrors || {});
     if (errors.length) showAlert('部分狀態暫時無法取得：' + errors.join('、'));
-    else $('alertBar').hidden = true;
+    else if (!state.stickyAlert) $('alertBar').hidden = true;
   }
 
   function renderHeader(data) {
@@ -120,7 +145,7 @@
   }
 
   function renderChecks(section) {
-    if (!section || !section.available) return renderUnavailable('checkRows', 4);
+    if (!section || !section.available) return renderUnavailable('checkRows', 5);
     text('checksTime', '來源 ' + section.capturedAt);
     const daily = (section.daily && section.daily.items) || [];
     const monthly = (section.monthly && section.monthly.items) || [];
@@ -132,7 +157,27 @@
         <td>${escapeHtml(row.cycle)}</td>
         <td><span class="status ${escapeHtml(row.status)}">${statusLabel(row.status)}</span></td>
         <td>${escapeHtml(row.usage || (row.cycle === '每月' ? (row.equipmentName || '本月進度') : '無使用紀錄'))}</td>
-      </tr>`).join('') : '<tr><td colspan="4" class="empty">目前沒有檢點項目</td></tr>';
+        <td>${checklistRecordActions(row.records)}</td>
+      </tr>`).join('') : '<tr><td colspan="5" class="empty">目前沒有檢點項目</td></tr>';
+  }
+
+  function checklistRecordActions(records) {
+    const available = (records || []).filter(row => row && row.recordId && row.hasDocument);
+    if (!available.length) return '<span class="record-empty">--</span>';
+    const multiple = available.length > 1;
+    return `<div class="check-record-actions">${available.map((row, index) => {
+      const label = multiple
+        ? (row.equipmentName || `紀錄 ${index + 1}`)
+        : (row.documentLabel || '查看紀錄');
+      return actionButton(label, {
+        action: 'open-link',
+        recordType: 'checklist',
+        recordId: row.recordId,
+        linkType: 'document',
+        compact: true,
+        title: `${row.equipmentName || '檢點紀錄'}：${row.documentLabel || '查看紀錄'}`,
+      });
+    }).join('')}</div>`;
   }
 
   function renderApprovals(section) {
@@ -140,10 +185,15 @@
     text('approvalsTime', '來源 ' + section.capturedAt);
     const rows = section.items || [];
     $('approvalRows').innerHTML = rows.length ? rows.map(row => `
-      <article class="queue-item">
-        <div><strong>${escapeHtml(row.equipmentName || row.category || '未命名設備')}</strong>
+      <article class="queue-item has-actions">
+        <div class="queue-main"><strong>${escapeHtml(row.equipmentName || row.category || '未命名設備')}</strong>
           <p>${escapeHtml(row.formType || '')} · ${escapeHtml(row.inspector || '未標示檢查人')} · ${escapeHtml(row.checkDate || '')}</p></div>
         <span class="tag ${Number(row.ageHours || 0) >= 24 ? 'critical' : 'warning'}">${row.ageHours == null ? '待簽核' : escapeHtml(row.ageHours + ' 小時')}</span>
+        <div class="queue-actions">
+          ${row.hasDocument ? actionButton(row.documentLabel || '查看檢查表', { action: 'open-link', recordType: 'approval', recordId: row.recordId, linkType: 'document' }) : ''}
+          ${actionButton('主管簽核', { action: 'open-link', recordType: 'approval', recordId: row.recordId, linkType: 'review', variant: 'primary' })}
+          ${actionButton('提醒主管', { action: 'preview-notification', recordType: 'approval', recordId: row.recordId })}
+        </div>
       </article>`).join('') : '<p class="empty">目前沒有待主管簽核</p>';
   }
 
@@ -166,8 +216,196 @@
         ? [row.itemName, row.assignee, row.reportDate].filter(Boolean).join(' · ')
         : [row.subject, row.handler, row.reportDate].filter(Boolean).join(' · ');
       const tag = machine ? row.status : (row.reviewStatus || row.processStatus);
-      return `<article class="queue-item"><div><strong>${escapeHtml(title || '未命名事件')}</strong><p>${escapeHtml(subtitle)}</p></div><span class="tag warning">${escapeHtml(tag || '待處理')}</span></article>`;
+      const buttons = machine
+        ? [
+            row.hasPdf ? actionButton('查看 PDF', { action: 'open-link', recordType: 'machineIncident', recordId: row.recordId, linkType: 'pdf' }) : '',
+            row.canManage
+              ? actionButton('處理回報', { action: 'open-link', recordType: 'machineIncident', recordId: row.recordId, linkType: 'handle', variant: 'primary' })
+              : '',
+            row.canManage
+              ? actionButton('提醒負責人', { action: 'preview-notification', recordType: 'machineIncident', recordId: row.recordId })
+              : '',
+          ]
+        : [
+            row.hasPdf ? actionButton('查看 PDF', { action: 'open-link', recordType: 'dailyIncident', recordId: row.incidentId, linkType: 'pdf' }) : '',
+            row.reviewStatus !== '待主管審核'
+              ? actionButton('處理回報', { action: 'open-link', recordType: 'dailyIncident', recordId: row.incidentId, linkType: 'handle', variant: 'primary' })
+              : '',
+            row.reviewStatus === '待主管審核'
+              ? actionButton('主管審核', { action: 'open-link', recordType: 'dailyIncident', recordId: row.incidentId, linkType: 'review', variant: 'primary' })
+              : (row.processStatus === '處理中' && row.supervisor
+                ? actionButton('主管意見', { action: 'open-link', recordType: 'dailyIncident', recordId: row.incidentId, linkType: 'review' })
+                : ''),
+            actionButton(row.reviewStatus === '待主管審核' ? '提醒主管' : '提醒相關人員', {
+              action: 'preview-notification', recordType: 'dailyIncident', recordId: row.incidentId,
+            }),
+          ];
+      return `<article class="queue-item has-actions"><div class="queue-main"><strong>${escapeHtml(title || '未命名事件')}</strong><p>${escapeHtml(subtitle)}</p></div><span class="tag warning">${escapeHtml(tag || '待處理')}</span><div class="queue-actions">${buttons.join('')}</div></article>`;
     }).join('') : '<p class="empty">目前沒有未結案件</p>';
+  }
+
+  async function openDashboardLink(button) {
+    if (!state.adminToken || state.actionLoading) return;
+    const newWindow = window.open('', '_blank');
+    if (!newWindow) {
+      showAlert('瀏覽器已阻擋新分頁，請允許這個網站開啟彈出視窗後再試。');
+      return;
+    }
+    if (newWindow) {
+      newWindow.opener = null;
+      newWindow.document.title = '正在開啟';
+      if (newWindow.document.body) {
+        newWindow.document.body.textContent = '正在取得安全連結...';
+      }
+    }
+    setActionButtonBusy(button, true, '開啟中');
+    try {
+      const result = await window.API.adminDashboardAction(state.adminToken, {
+        mode: 'resolveLink',
+        recordType: button.dataset.recordType,
+        recordId: button.dataset.recordId,
+        linkType: button.dataset.linkType,
+      });
+      if (!result || result.ok !== true || !/^https:\/\//.test(String(result.url || ''))) {
+        throw new Error((result && result.error) || '目前沒有可開啟的連結');
+      }
+      newWindow.location.replace(result.url);
+    } catch (error) {
+      if (newWindow) newWindow.close();
+      showAlert('開啟失敗：' + (error && error.message ? error.message : error));
+    } finally {
+      setActionButtonBusy(button, false);
+    }
+  }
+
+  async function previewDashboardNotification(button) {
+    if (!state.adminToken || state.actionLoading) return;
+    setActionButtonBusy(button, true, '查詢收件人');
+    try {
+      const result = await window.API.adminDashboardAction(state.adminToken, {
+        mode: 'previewNotification',
+        recordType: button.dataset.recordType,
+        recordId: button.dataset.recordId,
+      });
+      if (!result || result.ok !== true) {
+        throw new Error((result && result.error) || '無法取得提醒對象');
+      }
+      state.pendingNotification = {
+        recordType: button.dataset.recordType,
+        recordId: button.dataset.recordId,
+        requestId: notificationRequestId_(button.dataset.recordType, button.dataset.recordId),
+      };
+      text('notificationDialogTitle', result.title || '確認發送 LINE 提醒');
+      text('notificationDescription', result.description || '');
+      $('notificationRecipients').innerHTML = (result.recipientNames || [])
+        .map(name => `<li>${escapeHtml(name)}</li>`).join('');
+      const skippedNames = result.skippedNames || [];
+      const skipped = $('notificationSkipped');
+      skipped.textContent = skippedNames.length
+        ? `未列入：${skippedNames.join('、')}（未啟用通知、尚未綁定 LINE，或身分不符）`
+        : '';
+      skipped.hidden = skippedNames.length === 0;
+      text('notificationEstimate', `共 ${result.recipientCount || 0} 人，預估使用 ${result.estimatedMessages || 0} 則 LINE 主動訊息額度`);
+      $('notificationDialogError').textContent = '';
+      if (typeof notificationDialog.showModal === 'function') notificationDialog.showModal();
+      else notificationDialog.setAttribute('open', '');
+    } catch (error) {
+      showAlert('無法準備提醒：' + (error && error.message ? error.message : error));
+    } finally {
+      setActionButtonBusy(button, false);
+    }
+  }
+
+  async function sendDashboardNotification() {
+    if (!state.pendingNotification || state.actionLoading) return;
+    const submit = $('notificationConfirmButton');
+    state.actionLoading = true;
+    submit.disabled = true;
+    $('notificationCancelButton').disabled = true;
+    submit.textContent = '發送中';
+    $('notificationDialogError').textContent = '';
+    try {
+      const result = await window.API.adminDashboardAction(state.adminToken, {
+        mode: 'sendNotification',
+        recordType: state.pendingNotification.recordType,
+        recordId: state.pendingNotification.recordId,
+        requestId: state.pendingNotification.requestId,
+      });
+      if (!result || result.ok !== true) {
+        // 後端已記住成功收件人；新請求編號才能只重試未送達對象。
+        if (result) rotateNotificationRequestId_(state.pendingNotification);
+        const sent = result && result.sentNames && result.sentNames.length
+          ? `已送出：${result.sentNames.join('、')}。`
+          : '';
+        const alreadySent = result && result.alreadySentNames && result.alreadySentNames.length
+          ? `之前已送出：${result.alreadySentNames.join('、')}。`
+          : '';
+        const failed = result && result.failedNames && result.failedNames.length
+          ? `失敗：${result.failedNames.join('、')}。`
+          : '';
+        throw new Error(`${sent}${alreadySent}${failed}${(result && result.error) || '提醒未能完整送出，可再按一次只重試未送達對象。'}`);
+      }
+      const names = (result.sentNames || []).join('、') || '相關人員';
+      clearNotificationRequestId_(state.pendingNotification);
+      if (notificationDialog.open) notificationDialog.close();
+      state.pendingNotification = null;
+      showAlert(`已發送給 ${names}；本次使用 ${result.estimatedMessages || 0} 則 LINE 主動訊息額度。`, { sticky: true });
+    } catch (error) {
+      $('notificationDialogError').textContent = error && error.message ? error.message : String(error);
+    } finally {
+      state.actionLoading = false;
+      submit.disabled = false;
+      $('notificationCancelButton').disabled = false;
+      submit.textContent = '確認發送';
+    }
+  }
+
+  function notificationRequestKey_(recordType, recordId) {
+    return `${String(recordType || '')}:${String(recordId || '')}`;
+  }
+
+  function notificationRequestId_(recordType, recordId) {
+    const key = notificationRequestKey_(recordType, recordId);
+    const current = state.notificationRequests[key];
+    if (current && Date.now() - current.createdAt < 9 * 60 * 1000) return current.id;
+    const next = { id: createRequestId(), createdAt: Date.now() };
+    state.notificationRequests[key] = next;
+    return next.id;
+  }
+
+  function rotateNotificationRequestId_(pending) {
+    if (!pending) return;
+    const key = notificationRequestKey_(pending.recordType, pending.recordId);
+    const next = { id: createRequestId(), createdAt: Date.now() };
+    state.notificationRequests[key] = next;
+    pending.requestId = next.id;
+  }
+
+  function clearNotificationRequestId_(pending) {
+    if (!pending) return;
+    delete state.notificationRequests[notificationRequestKey_(pending.recordType, pending.recordId)];
+  }
+
+  function createRequestId() {
+    if (window.crypto && typeof window.crypto.randomUUID === 'function') {
+      return window.crypto.randomUUID();
+    }
+    return `${Date.now()}_${Math.random().toString(36).slice(2)}_${Math.random().toString(36).slice(2)}`;
+  }
+
+  function setActionButtonBusy(button, busy, busyLabel) {
+    if (!button) return;
+    if (busy) {
+      state.actionLoading = true;
+      button.dataset.originalLabel = button.textContent;
+      button.textContent = busyLabel || '處理中';
+      button.disabled = true;
+    } else {
+      state.actionLoading = false;
+      button.textContent = button.dataset.originalLabel || button.textContent;
+      button.disabled = false;
+      delete button.dataset.originalLabel;
+    }
   }
 
   function renderNotifications(section, documents) {
@@ -224,7 +462,21 @@
     $(tbodyId).innerHTML = `<tr><td colspan="${columns}" class="empty">此資料來源暫時無法取得</td></tr>`;
   }
   function renderQueueUnavailable(id) { $(id).innerHTML = '<p class="empty">此資料來源暫時無法取得</p>'; }
-  function showAlert(message) { $('alertBar').textContent = message; $('alertBar').hidden = false; }
+  function showAlert(message, options) {
+    if (state.alertTimer) window.clearTimeout(state.alertTimer);
+    state.alertTimer = null;
+    state.stickyAlert = !!(options && options.sticky);
+    const alertBar = $('alertBar');
+    alertBar.textContent = message;
+    alertBar.hidden = false;
+    if (state.stickyAlert) {
+      state.alertTimer = window.setTimeout(() => {
+        state.stickyAlert = false;
+        state.alertTimer = null;
+        if (alertBar.textContent === message) alertBar.hidden = true;
+      }, 60000);
+    }
+  }
   function openDialog() {
     if (!dialog.open) {
       if (typeof dialog.showModal === 'function') dialog.showModal();
@@ -253,13 +505,14 @@
       'approvalPending', 'lineRemaining', 'monthlyCaption', 'checksTime', 'approvalsTime', 'incidentsTime',
       'notificationTime', 'systemTime', 'quotaUsage', 'documentSlot', 'documentCount']
       .forEach(id => text(id, '--'));
-    $('checkRows').innerHTML = '<tr><td colspan="4" class="empty">請先解鎖面板</td></tr>';
+    $('checkRows').innerHTML = '<tr><td colspan="5" class="empty">請先解鎖面板</td></tr>';
     ['approvalRows', 'incidentRows', 'recipientCounts', 'healthRows'].forEach(id => {
       $(id).innerHTML = '<p class="empty">請先解鎖面板</p>';
     });
     $('documentHandlers').innerHTML = '';
     $('quotaProgress').value = 0;
     $('alertBar').hidden = true;
+    state.stickyAlert = false;
     $('overallHealth').className = 'health-badge neutral';
     $('overallHealth').innerHTML = '<span></span>尚未連線';
     setResourceLink('archiveLink', '');
@@ -280,10 +533,35 @@
     if (state.timer) window.clearTimeout(state.timer);
     $('adminToken').value = '';
     clearDashboard();
+    state.pendingNotification = null;
+    state.notificationRequests = {};
+    if (notificationDialog.open) notificationDialog.close();
     openDialog();
   });
   dialog.addEventListener('cancel', event => {
     if (!state.adminToken) event.preventDefault();
+  });
+  notificationForm.addEventListener('submit', event => {
+    event.preventDefault();
+    sendDashboardNotification();
+  });
+  $('notificationCancelButton').addEventListener('click', () => {
+    if (state.actionLoading) return;
+    state.pendingNotification = null;
+    if (notificationDialog.open) notificationDialog.close();
+  });
+  notificationDialog.addEventListener('cancel', event => {
+    if (state.actionLoading) {
+      event.preventDefault();
+      return;
+    }
+    state.pendingNotification = null;
+  });
+  document.addEventListener('click', event => {
+    const button = event.target.closest('[data-dashboard-action]');
+    if (!button) return;
+    if (button.dataset.dashboardAction === 'open-link') openDashboardLink(button);
+    if (button.dataset.dashboardAction === 'preview-notification') previewDashboardNotification(button);
   });
   document.querySelectorAll('[data-incident-tab]').forEach(button => {
     button.addEventListener('click', () => {

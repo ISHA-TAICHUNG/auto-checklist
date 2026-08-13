@@ -1587,6 +1587,7 @@ function listOpenIncidents_() {
     if (closedStates.has(status)) continue;
     incidents.push({
       incidentId: data[i][idx("事件ID")],
+      recordId: data[i][idx("紀錄ID")],
       reportDate: toISO(data[i][idx("通報日期")]),
       equipmentId: data[i][idx("設備代號")],
       equipmentName: data[i][idx("設備名稱")],

@@ -50,7 +50,7 @@
         <a href="#system">健康</a>
       </nav>
 
-      <div id="alertBar" class="alert-bar" hidden></div>
+      <div id="alertBar" class="alert-bar" role="status" aria-live="polite" aria-atomic="true" hidden></div>
 
       <section id="overview" class="kpi-grid" aria-label="關鍵指標">
         <article class="kpi blue">
@@ -84,12 +84,15 @@
         <section id="checks" class="panel span-7">
           <div class="panel-head">
             <div><p class="eyebrow">每日與每月</p><h2>檢點狀態</h2></div>
-            <span id="checksTime" class="source-time">--</span>
+            <div class="panel-head-actions">
+              <a class="panel-link" href="index.html" target="_blank" rel="noopener noreferrer">開啟填報工作台</a>
+              <span id="checksTime" class="source-time">--</span>
+            </div>
           </div>
           <div class="table-wrap">
             <table class="check-table">
-              <thead><tr><th>類別</th><th>檢查週期</th><th>狀態</th><th>場地資訊</th></tr></thead>
-              <tbody id="checkRows"><tr><td colspan="4" class="empty">等待載入</td></tr></tbody>
+              <thead><tr><th>類別</th><th>檢查週期</th><th>狀態</th><th>場地資訊</th><th>填報紀錄</th></tr></thead>
+              <tbody id="checkRows"><tr><td colspan="5" class="empty">等待載入</td></tr></tbody>
             </table>
           </div>
         </section>
@@ -155,6 +158,26 @@
       <div class="dialog-actions">
         <a class="button quiet" href="index.html">取消</a>
         <button class="button primary" type="submit">驗證並載入</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="notificationDialog" class="action-dialog" aria-labelledby="notificationDialogTitle">
+    <form id="notificationForm" method="dialog">
+      <p class="eyebrow">LINE 主動推播</p>
+      <h2 id="notificationDialogTitle">確認發送提醒</h2>
+      <p id="notificationDescription" class="notification-description"></p>
+      <section class="notification-preview" aria-labelledby="notificationRecipientTitle">
+        <h3 id="notificationRecipientTitle">實際收件人</h3>
+        <ul id="notificationRecipients"></ul>
+      </section>
+      <p id="notificationSkipped" class="notification-skipped" hidden></p>
+      <p id="notificationEstimate" class="quota-warning"></p>
+      <p class="dialog-note">開啟 PDF、處理表或簽核頁不扣 LINE 額度；只有按下「確認發送」才會主動推播。</p>
+      <p id="notificationDialogError" class="form-error" role="alert"></p>
+      <div class="dialog-actions">
+        <button id="notificationCancelButton" class="button quiet" type="button">取消</button>
+        <button id="notificationConfirmButton" class="button primary" type="submit">確認發送</button>
       </div>
     </form>
   </dialog>
