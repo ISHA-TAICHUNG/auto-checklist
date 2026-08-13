@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="robots" content="noindex, nofollow, noarchive">
+  <meta name="referrer" content="no-referrer">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self' https://script.google.com https://script.googleusercontent.com; img-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'">
+  <title>ISHA 營運中心</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="css/dashboard.css">
+</head>
+<body>
+  <div class="dashboard-shell">
+    <aside class="sidebar" aria-label="面板導覽">
+      <a class="brand" href="index.html" aria-label="回 ISHA 工作台">
+        <span class="brand-mark">IS</span>
+        <span>ISHA<br><small>營運中心</small></span>
+      </a>
+      <nav class="side-nav">
+        <a class="active" href="#overview">總覽</a>
+        <a href="#checks">今日檢點</a>
+        <a href="#incidents">異常事件</a>
+        <a href="#approvals">待主管簽核</a>
+        <a href="#notifications">通知與排程</a>
+        <a href="#system">系統健康</a>
+      </nav>
+      <a class="back-link" href="index.html">回工作台</a>
+    </aside>
+
+    <main class="dashboard-main">
+      <header class="command-bar">
+        <div>
+          <p class="eyebrow">主管營運監控</p>
+          <h1>ISHA 營運中心</h1>
+        </div>
+        <div class="command-actions">
+          <span id="overallHealth" class="health-badge neutral"><span></span>尚未連線</span>
+          <span class="updated">最後更新 <strong id="lastUpdated">--</strong></span>
+          <button id="refreshButton" class="button secondary" type="button">重新整理</button>
+          <button id="lockButton" class="button quiet" type="button">登出</button>
+        </div>
+      </header>
+
+      <nav class="mobile-nav" aria-label="行動版面板導覽">
+        <a href="#overview">總覽</a>
+        <a href="#checks">檢點</a>
+        <a href="#incidents">異常</a>
+        <a href="#approvals">簽核</a>
+        <a href="#system">健康</a>
+      </nav>
+
+      <div id="alertBar" class="alert-bar" hidden></div>
+
+      <section id="overview" class="kpi-grid" aria-label="關鍵指標">
+        <article class="kpi blue">
+          <span>今日檢點</span>
+          <strong><b id="dailyCompleted">--</b><small id="dailyRequired"> / --</small></strong>
+          <p id="dailyCaption">等待載入</p>
+        </article>
+        <article class="kpi teal">
+          <span>月檢進度</span>
+          <strong><b id="monthlyPending">--</b></strong>
+          <p id="monthlyCaption">尚待完成</p>
+        </article>
+        <article class="kpi red">
+          <span>未結異常</span>
+          <strong><b id="incidentOpen">--</b></strong>
+          <p>機具與日常事件</p>
+        </article>
+        <article class="kpi amber">
+          <span>待主管簽核</span>
+          <strong><b id="approvalPending">--</b></strong>
+          <p>等待主管處理</p>
+        </article>
+        <article class="kpi green">
+          <span>LINE 剩餘額度</span>
+          <strong><b id="lineRemaining">--</b></strong>
+          <p id="lineCaption">等待 LINE 回應</p>
+        </article>
+      </section>
+
+      <div class="dashboard-grid">
+        <section id="checks" class="panel span-7">
+          <div class="panel-head">
+            <div><p class="eyebrow">今日</p><h2>檢點狀態</h2></div>
+            <span id="checksTime" class="source-time">--</span>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>類別</th><th>檢查週期</th><th>狀態</th><th>場地資訊</th></tr></thead>
+              <tbody id="checkRows"><tr><td colspan="4" class="empty">等待載入</td></tr></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section id="approvals" class="panel span-5">
+          <div class="panel-head">
+            <div><p class="eyebrow">主管</p><h2>待簽核佇列</h2></div>
+            <span id="approvalsTime" class="source-time">--</span>
+          </div>
+          <div id="approvalRows" class="queue-list"><p class="empty">等待載入</p></div>
+        </section>
+
+        <section id="incidents" class="panel span-7">
+          <div class="panel-head">
+            <div><p class="eyebrow">追蹤</p><h2>未結異常事件</h2></div>
+            <span id="incidentsTime" class="source-time">--</span>
+          </div>
+          <div class="incident-tabs" role="tablist">
+            <button class="tab active" type="button" data-incident-tab="machine">機具設備 <b id="machineCount">0</b></button>
+            <button class="tab" type="button" data-incident-tab="daily">日常事件 <b id="dailyIncidentCount">0</b></button>
+          </div>
+          <div id="incidentRows" class="queue-list"><p class="empty">等待載入</p></div>
+        </section>
+
+        <section id="notifications" class="panel span-5">
+          <div class="panel-head">
+            <div><p class="eyebrow">訊息</p><h2>通知與公文快照</h2></div>
+            <span id="notificationTime" class="source-time">--</span>
+          </div>
+          <div class="quota-block">
+            <div><span>LINE 使用量</span><strong id="quotaUsage">-- / --</strong></div>
+            <progress id="quotaProgress" max="100" value="0">0%</progress>
+          </div>
+          <div id="recipientCounts" class="metric-list"></div>
+          <div class="document-snapshot">
+            <div><span>最新公文快照</span><strong id="documentSlot">尚無快照</strong></div>
+            <b id="documentCount">0 件</b>
+          </div>
+          <div id="documentHandlers" class="handler-list"></div>
+        </section>
+
+        <section id="system" class="panel span-12">
+          <div class="panel-head">
+            <div><p class="eyebrow">基礎服務</p><h2>系統健康</h2></div>
+            <span id="systemTime" class="source-time">--</span>
+          </div>
+          <div id="healthRows" class="health-grid"><p class="empty">等待載入</p></div>
+          <div class="resource-links">
+            <a id="archiveLink" href="#" target="_blank" rel="noopener noreferrer">開啟歸檔資料夾</a>
+          </div>
+        </section>
+      </div>
+    </main>
+  </div>
+
+  <dialog id="unlockDialog" class="unlock-dialog">
+    <form id="unlockForm" method="dialog">
+      <p class="eyebrow">管理者驗證</p>
+      <h2>開啟營運資訊面板</h2>
+      <label for="adminToken">管理存取密鑰</label>
+      <input id="adminToken" name="adminToken" type="password" autocomplete="current-password" required>
+      <p id="unlockError" class="form-error" role="alert"></p>
+      <div class="dialog-actions">
+        <a class="button quiet" href="index.html">取消</a>
+        <button class="button primary" type="submit">驗證並載入</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script src="js/config.js"></script>
+  <script src="js/api.js"></script>
+  <script src="js/dashboard.js"></script>
+</body>
+</html>

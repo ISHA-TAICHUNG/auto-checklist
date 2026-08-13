@@ -96,19 +96,32 @@
     throw lastError || new Error('GET 失敗');
   }
 
-  async function apiPost(payload) {
+  async function apiPost(payload, options) {
+    options = options || {};
     ensureConfigured(true);
     const body = JSON.stringify(Object.assign({ apiToken: C.API_TOKEN }, payload));
     // 5MB 上限（含多張異常照片）；和後端 Config.gs MAX_PAYLOAD_BYTES 一致
     if (body.length > 5 * 1024 * 1024) {
       throw new Error('資料太大（>5MB），請減少照片張數或縮小簽名');
     }
-    const res = await fetch(C.API_BASE, {
-      method: 'POST',
-      // 明示 text/plain 避免觸發 Apps Script 不支援的 CORS preflight
-      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-      body,
-    });
+    const timeoutMs = Number(options.timeoutMs || 0);
+    const controller = timeoutMs > 0 && typeof AbortController !== 'undefined' ? new AbortController() : null;
+    const timeout = controller ? setTimeout(() => controller.abort(), timeoutMs) : null;
+    let res;
+    try {
+      res = await fetch(C.API_BASE, {
+        method: 'POST',
+        // 明示 text/plain 避免觸發 Apps Script 不支援的 CORS preflight
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body,
+        signal: controller ? controller.signal : undefined,
+      });
+    } catch (error) {
+      if (error && error.name === 'AbortError') throw new Error('連線逾時，請稍後重試');
+      throw error;
+    } finally {
+      if (timeout) clearTimeout(timeout);
+    }
     if (!res.ok) throw new Error('HTTP ' + res.status);
     return res.json();
   }
@@ -126,6 +139,10 @@
     submit: (payload) => apiPost(payload),
     submitDailyIncident: (payload) => apiPost(Object.assign({ action: 'submitDailyIncident' }, payload)),
     submitDailyWorkCheck: (payload) => apiPost(Object.assign({ action: 'submitDailyWorkCheck' }, payload)),
+    adminDashboardStatus: (adminToken) => apiPost(
+      { action: 'adminDashboardStatus', adminToken },
+      { timeoutMs: 45000 }
+    ),
     approveRecord: (payload) => apiPost(Object.assign({ action: 'approveRecord' }, payload)),
     health: () => apiGet({ api: 'health' }),
     branding: () => apiGet({ api: 'branding' }),

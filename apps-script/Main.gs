@@ -1087,6 +1087,13 @@ function doPost(e) {
 
     let result;
     switch (payload.action || "") {
+      case "adminDashboardStatus":
+        if (!checkAdminToken_(payload.adminToken)) {
+          throw new Error("未授權：管理存取密鑰不正確");
+        }
+        delete payload.adminToken;
+        result = getAdminDashboardStatus_(payload);
+        break;
       case "enqueueOfficialDocuments":
         if (!checkAdminToken_(payload.adminToken)) {
           throw new Error(
