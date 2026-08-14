@@ -8,13 +8,31 @@ const vm = require('vm');
 const source = fs.readFileSync('apps-script/AdminDashboard.gs', 'utf8');
 const mirrorPath = 'apps-script/AdminDashboard.js';
 const mirrorSource = fs.existsSync(mirrorPath) ? fs.readFileSync(mirrorPath, 'utf8') : '';
-const start = source.indexOf('function dashboardMonthlyEquipmentLabel_');
+const start = source.indexOf('function dashboardMonthlyCategoryRank_');
 const end = source.indexOf('\nfunction dashboardIncidentStatus_', start);
-assert(start >= 0 && end > start, 'dashboardMonthlyEquipmentLabel_ source not found');
+assert(start >= 0 && end > start, 'dashboard monthly helper source not found');
 
 const context = {};
 vm.createContext(context);
 vm.runInContext(source.slice(start, end), context);
+
+assert.deepStrictEqual(
+  [
+    '忠明教室安全衛生量測設備及個人防護具',
+    '堆高機',
+    '復興教室安全衛生量測設備及個人防護具',
+    '固定式起重機',
+    '龍井教室安全衛生量測設備及個人防護具',
+  ].sort(context.dashboardCompareMonthlyCategories_),
+  [
+    '固定式起重機',
+    '堆高機',
+    '龍井教室安全衛生量測設備及個人防護具',
+    '復興教室安全衛生量測設備及個人防護具',
+    '忠明教室安全衛生量測設備及個人防護具',
+  ],
+  'monthly categories should follow the operational order',
+);
 
 assert.strictEqual(
   context.dashboardMonthlyEquipmentLabel_({
@@ -92,7 +110,7 @@ if (mirrorSource) {
     'generated mirror must not contain a hard-coded database tab gid',
   );
 
-  const mirrorStart = mirrorSource.indexOf('function dashboardMonthlyEquipmentLabel_');
+  const mirrorStart = mirrorSource.indexOf('function dashboardMonthlyCategoryRank_');
   const mirrorEnd = mirrorSource.indexOf('\nfunction dashboardIncidentStatus_', mirrorStart);
   assert.strictEqual(
     mirrorSource.slice(mirrorStart, mirrorEnd),

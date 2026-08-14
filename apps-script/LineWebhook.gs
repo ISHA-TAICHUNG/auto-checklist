@@ -77,7 +77,9 @@ function dispatchLineEvent_(ev) {
   }
 
   // 指令路由
-  if (/^(狀態|status)$/i.test(cmd))    return cmdStatus_(replyToken, userId);
+  if (/^(狀態|status)$/i.test(cmd)) {
+    return cmdStatus_(replyToken, userId, { isDirectChat: source.type === 'user' });
+  }
   if (/^(每日作業|作業|work|dailywork)$/i.test(cmd)) return cmdDailyWorkCheck_(replyToken);
   if (/^(待發文|公文待發文|dispatch|documents)$/i.test(cmd)) return cmdOfficialDocumentDispatch_(replyToken, userId);
   if (/^(待簽核|待簽|簽核|approval|approvals)$/i.test(cmd)) return cmdPendingApprovals_(replyToken, userId);
@@ -266,19 +268,27 @@ function cmdQRList_(replyToken) {
   return lineReply_(replyToken, buildQrMenuFlex_());
 }
 
-function cmdStatus_(replyToken, userId) {
+function cmdStatus_(replyToken, userId, opts) {
+  opts = opts || {};
   // 跑 dryRun 的 dailyReminderJob 拿狀態（含 monthlyReminderJob_ 已過濾的月檢結果）
   // 月檢設備：非應檢期(1-5)且非補填提醒期(25+)時，monthlyReminderJob_ 已完全不 push，狀態不會列
   const results = dailyReminderJob({ dryRun: true });
-  const messages = [buildChecklistStatusFlex_(results)];
+  const profile = (typeof getLineSubscriberProfileByUserId_ === 'function')
+    ? getLineSubscriberProfileByUserId_(userId)
+    : null;
+  const viewerIsSupervisor = !!(profile && profile.isSupervisor && opts.isDirectChat);
+  const dashboardUrl = viewerIsSupervisor && typeof buildOperationsDashboardUrl_ === 'function'
+    ? buildOperationsDashboardUrl_()
+    : '';
+  const messages = [buildChecklistStatusFlex_(results, {
+    viewerIsSupervisor,
+    dashboardUrl,
+  })];
   if (typeof dailyPpeListRecentUnconfirmedForLine_ === 'function' &&
       typeof buildDailyPpeAssignmentStatusFlex_ === 'function') {
-    const profile = (typeof getLineSubscriberProfileByUserId_ === 'function')
-      ? getLineSubscriberProfileByUserId_(userId)
-      : null;
     const ppeStatus = dailyPpeListRecentUnconfirmedForLine_({
       viewerId: userId,
-      viewerIsSupervisor: !!(profile && profile.isSupervisor),
+      viewerIsSupervisor,
     });
     if (ppeStatus && ppeStatus.count > 0) {
       messages.push(buildDailyPpeAssignmentStatusFlex_(ppeStatus));
@@ -288,7 +298,10 @@ function cmdStatus_(replyToken, userId) {
       typeof getDailyWorkCheckStatus_ === 'function' && typeof buildDailyWorkStatusFlex_ === 'function') {
     messages.push(buildDailyWorkStatusFlex_(getDailyWorkCheckStatus_({ userId })));
   }
-  return lineReply_(replyToken, withQuickReply_(messages));
+  return lineReply_(replyToken, withQuickReply_(messages, {
+    viewerIsSupervisor,
+    dashboardUrl,
+  }));
 }
 
 // 舊版每日作業檢核已停用；此指令只保留停用提示，避免舊 quick reply 或舊截圖入口失效無回應。

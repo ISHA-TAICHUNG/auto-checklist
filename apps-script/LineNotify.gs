@@ -657,17 +657,40 @@ function startLoadingAnimation_(chatId, seconds) {
 /**
  * 常用指令 Quick Reply 按鈕（每個回覆訊息都附）
  */
-function defaultQuickReply_() {
-  return {
-    items: [
-      { type: 'action', action: { type: 'message', label: '📊 填表狀態',   text: '狀態' } },
-      { type: 'action', action: { type: 'message', label: '📝 日常通報',   text: '通報' } },
-      { type: 'action', action: { type: 'message', label: '🚨 設備異常',   text: '異常' } },
-      { type: 'action', action: { type: 'message', label: '📌 日常待處理', text: '待處理' } },
-      { type: 'action', action: { type: 'message', label: '🖊 待簽核',     text: '待簽核' } },
-      { type: 'action', action: { type: 'message', label: '❓ 幫助',       text: '幫助' } },
-    ],
-  };
+function buildOperationsDashboardUrl_() {
+  const configured = String(
+    getSetting_('webFrontendUrl', '') || CONFIG.DEFAULT_WEB_FRONTEND_URL || '',
+  ).trim();
+  if (!/^https:\/\/[^\s]+$/i.test(configured)) return '';
+
+  const withoutQuery = configured.replace(/[?#].*$/, '');
+  if (/\/dashboard\.html$/i.test(withoutQuery)) return withoutQuery;
+  const root = withoutQuery.replace(/\/[^/]+\.html$/i, '').replace(/\/$/, '');
+  return root + '/dashboard.html';
+}
+
+function defaultQuickReply_(opts) {
+  opts = opts || {};
+  const items = [
+    { type: 'action', action: { type: 'message', label: '📊 填表狀態',   text: '狀態' } },
+    { type: 'action', action: { type: 'message', label: '📝 日常通報',   text: '通報' } },
+    { type: 'action', action: { type: 'message', label: '🚨 設備異常',   text: '異常' } },
+    { type: 'action', action: { type: 'message', label: '📌 日常待處理', text: '待處理' } },
+    { type: 'action', action: { type: 'message', label: '🖊 待簽核',     text: '待簽核' } },
+    { type: 'action', action: { type: 'message', label: '❓ 幫助',       text: '幫助' } },
+  ];
+  const dashboardUrl = String(opts.dashboardUrl || '');
+  if (opts.viewerIsSupervisor && /^https:\/\/[^\s]+$/i.test(dashboardUrl)) {
+    items.splice(items.length - 1, 0, {
+      type: 'action',
+      action: {
+        type: 'uri',
+        label: '📊 營運中控台',
+        uri: dashboardUrl,
+      },
+    });
+  }
+  return { items };
 }
 
 /**
@@ -761,12 +784,12 @@ function buildQrMenuFlex_() {
 /**
  * 包裝訊息加上 Quick Reply（如果還沒有的話）
  */
-function withQuickReply_(messages) {
+function withQuickReply_(messages, opts) {
   if (!Array.isArray(messages)) messages = [messages];
   // 只有最後一則才需要 quickReply（LINE 規範）
   const last = messages[messages.length - 1];
   if (last && !last.quickReply) {
-    last.quickReply = defaultQuickReply_();
+    last.quickReply = defaultQuickReply_(opts);
   }
   return messages;
 }
@@ -1202,6 +1225,9 @@ function buildChecklistStatusFlex_(results, opts) {
     color: '#8a4b00',
     margin: 'sm',
   }] : [];
+  const dashboardUrl = opts.viewerIsSupervisor && /^https:\/\/[^\s]+$/i.test(String(opts.dashboardUrl || ''))
+    ? String(opts.dashboardUrl)
+    : '';
   return {
     type: 'flex',
     altText: `📅 ${dateLabel} 填表狀態`,
@@ -1229,6 +1255,20 @@ function buildChecklistStatusFlex_(results, opts) {
             { type: 'text', text: '待確認項目', size: 'sm', color: '#666666', margin: 'md' },
             ...pendingRows,
             ...morePending,
+          ] : []),
+          ...(dashboardUrl ? [
+            { type: 'separator', margin: 'md' },
+            {
+              type: 'button',
+              style: 'primary',
+              height: 'sm',
+              color: '#1A73E8',
+              action: {
+                type: 'uri',
+                label: '開啟營運中控台',
+                uri: dashboardUrl,
+              },
+            },
           ] : []),
         ],
       },

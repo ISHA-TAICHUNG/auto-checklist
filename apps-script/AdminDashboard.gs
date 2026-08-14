@@ -425,7 +425,7 @@ function dashboardChecklistStatus_(today) {
   // 營運資訊面板需整月呈現月檢進度；提醒是否啟動仍另外保留，
   // 不因面板顯示而改變 LINE 主動推播時段。
   const monthly = Object.keys(monthlyByCategory)
-    .sort((a, b) => a.localeCompare(b, "zh-Hant"))
+    .sort(dashboardCompareMonthlyCategories_)
     .map((category) => {
       const completed = dashboardHasChecklistRecord_(recordIndex, "每月", category, today);
       return {
@@ -460,6 +460,22 @@ function dashboardChecklistStatus_(today) {
       items: monthly,
     },
   };
+}
+
+function dashboardMonthlyCategoryRank_(category) {
+  const text = String(category || "").replace(/\s+/g, "");
+  if (text === "固定式起重機") return 10;
+  if (text === "堆高機") return 20;
+  if (text.indexOf("龍井教室") >= 0) return 30;
+  if (text.indexOf("復興教室") >= 0) return 40;
+  if (text.indexOf("忠明教室") >= 0) return 50;
+  return 900;
+}
+
+function dashboardCompareMonthlyCategories_(a, b) {
+  const rankDiff = dashboardMonthlyCategoryRank_(a) - dashboardMonthlyCategoryRank_(b);
+  if (rankDiff !== 0) return rankDiff;
+  return String(a || "").localeCompare(String(b || ""), "zh-Hant");
 }
 
 function dashboardMonthlyEquipmentLabel_(group) {
