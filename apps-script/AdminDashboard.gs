@@ -5,9 +5,9 @@
  * ADMIN_TOKEN 驗證，且回傳內容不包含 LINE userId、token 或簽核網址。
  */
 
-const ADMIN_DASHBOARD_CACHE_KEY = "admin_dashboard_status_v3";
+const ADMIN_DASHBOARD_CACHE_KEY = "admin_dashboard_status_v4";
 const ADMIN_DASHBOARD_CACHE_SECONDS = 120;
-const ADMIN_DASHBOARD_SNAPSHOT_PREFIX = "admin_dashboard_snapshot_v3_";
+const ADMIN_DASHBOARD_SNAPSHOT_PREFIX = "admin_dashboard_snapshot_v4_";
 // Script Properties 單值上限按位元組計算；中文可占 3 bytes，保守切小。
 const ADMIN_DASHBOARD_SNAPSHOT_CHUNK_SIZE = 2500;
 const ADMIN_DASHBOARD_SNAPSHOT_MAX_CHUNKS = 60;
@@ -23,7 +23,10 @@ const ADMIN_DASHBOARD_RECORD_TYPES = [
 const ADMIN_DASHBOARD_NOTIFICATION_DEDUPE_SECONDS = 10 * 60;
 const ADMIN_DASHBOARD_NOTIFICATION_IN_FLIGHT_SECONDS = 3 * 60;
 const ADMIN_DASHBOARD_ACTION_TOKEN_TTL_SECONDS = 30 * 60;
-const ADMIN_DASHBOARD_LEGACY_SNAPSHOT_PREFIXES = ["admin_dashboard_snapshot_v2_"];
+const ADMIN_DASHBOARD_LEGACY_SNAPSHOT_PREFIXES = [
+  "admin_dashboard_snapshot_v2_",
+  "admin_dashboard_snapshot_v3_",
+];
 
 /**
  * 營運中控台核發的短效操作權杖。權杖只能用於指定的
@@ -366,8 +369,14 @@ function dashboardChecklistStatus_(today) {
       if (!monthlyByCategory[equipment.category]) {
         monthlyByCategory[equipment.category] = {
           category: equipment.category,
-          equipmentName: equipment.equipmentName,
+          equipmentNames: [],
+          equipmentCount: 0,
         };
+      }
+      monthlyByCategory[equipment.category].equipmentCount += 1;
+      const equipmentName = String(equipment.equipmentName || "").trim();
+      if (equipmentName) {
+        monthlyByCategory[equipment.category].equipmentNames.push(equipmentName);
       }
     }
   });
@@ -421,7 +430,8 @@ function dashboardChecklistStatus_(today) {
       const completed = dashboardHasChecklistRecord_(recordIndex, "每月", category, today);
       return {
         category,
-        equipmentName: monthlyByCategory[category].equipmentName,
+        equipmentName: dashboardMonthlyEquipmentLabel_(monthlyByCategory[category]),
+        equipmentCount: monthlyByCategory[category].equipmentCount,
         completed,
         status: completed ? "completed" : "pending",
         records: dashboardChecklistRecords_(recordIndex, "每月", category, today),
@@ -450,6 +460,42 @@ function dashboardChecklistStatus_(today) {
       items: monthly,
     },
   };
+}
+
+function dashboardMonthlyEquipmentLabel_(group) {
+  group = group || {};
+  const names = [];
+  (group.equipmentNames || []).forEach((value) => {
+    const name = String(value || "").trim();
+    if (name && names.indexOf(name) < 0) names.push(name);
+  });
+  const equipmentCount = Math.max(
+    Number(group.equipmentCount || 0),
+    names.length,
+  );
+  const shared = equipmentCount > 1;
+  if (!names.length) {
+    const fallback = String(group.category || "本月進度");
+    return fallback + (shared ? "（共用月檢）" : "");
+  }
+  if (!shared) return names[0];
+
+  if (String(group.category || "").trim() === "堆高機") {
+    const labels = [];
+    let matchedNameCount = 0;
+    names.forEach((name) => {
+      const match = name.match(/^堆高機\s*([A-Z])\s*號?$/i);
+      const label = match ? match[1].toUpperCase() : "";
+      if (match) matchedNameCount += 1;
+      if (label && labels.indexOf(label) < 0) labels.push(label);
+    });
+    if (labels.length && matchedNameCount === names.length) {
+      labels.sort();
+      return "堆高機 " + labels.join("、") + " 號（共用月檢）";
+    }
+  }
+  names.sort((a, b) => a.localeCompare(b, "zh-Hant"));
+  return names.join("、") + "（共用月檢）";
 }
 
 function dashboardIncidentStatus_() {
@@ -1259,8 +1305,25 @@ function dashboardSystemHealth_() {
       archive: CONFIG.ARCHIVE_ROOT_FOLDER_ID
         ? "https://drive.google.com/drive/folders/" + CONFIG.ARCHIVE_ROOT_FOLDER_ID
         : "",
+      database: dashboardDatabaseUrl_(),
     },
   };
+}
+
+function dashboardDatabaseUrl_() {
+  if (!CONFIG.DB_SHEET_ID || String(CONFIG.DB_SHEET_ID).startsWith("REPLACE_")) return "";
+  // 資安前提：資料庫試算表必須維持「僅限指定 Google 帳號」，不可開放知道連結者。
+  const baseUrl = "https://docs.google.com/spreadsheets/d/" + CONFIG.DB_SHEET_ID + "/edit";
+  try {
+    const ss = SpreadsheetApp.openById(CONFIG.DB_SHEET_ID);
+    const incidentSheet = getMachineIncidentSheet_(ss);
+    if (!incidentSheet) return baseUrl;
+    const gid = String(incidentSheet.getSheetId());
+    return baseUrl + "?gid=" + gid + "#gid=" + gid;
+  } catch (err) {
+    Logger.log("中控台無法取得資料庫分頁連結：" + err);
+    return baseUrl;
+  }
 }
 
 function dashboardSummary_(sections) {

@@ -449,13 +449,14 @@
       { label: '場地資料來源', ok: section.venueOk, value: section.venueOk ? (section.venueTitle || '可存取') : '異常' },
     ].concat((section.triggers || []).map(row => ({ label: row.handler, ok: row.ok, value: row.count + ' 個觸發器' })));
     $('healthRows').innerHTML = items.map(row => `<div class="health-item"><span>${escapeHtml(row.label)}</span><strong class="status ${row.ok ? 'completed' : 'critical'}">${escapeHtml(row.value)}</strong></div>`).join('');
+    setResourceLink('databaseLink', section.links && section.links.database);
     setResourceLink('archiveLink', section.links && section.links.archive);
   }
 
   function setResourceLink(id, href) {
     const link = $(id);
     if (href && /^https:\/\//.test(href)) { link.href = href; link.hidden = false; }
-    else { link.hidden = true; }
+    else { link.removeAttribute('href'); link.hidden = true; }
   }
 
   function renderUnavailable(tbodyId, columns) {
@@ -515,6 +516,7 @@
     state.stickyAlert = false;
     $('overallHealth').className = 'health-badge neutral';
     $('overallHealth').innerHTML = '<span></span>尚未連線';
+    setResourceLink('databaseLink', '');
     setResourceLink('archiveLink', '');
   }
 
