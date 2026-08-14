@@ -1,5 +1,7 @@
 # 自動檢查表電子化系統 — 給 codex 的審查 brief
 
+> **歷史審閱資料：** 本文件保留早期架構脈絡，其中「GitHub Pages 保存半公開 API_TOKEN」的描述已於 2026-08-14 淘汰。現行公開前端不保存共享密鑰，改用後端核發的短效、動作綁定、一次性操作票證；安全現況以 `docs/security-notes.md` 為準。
+
 > 目的：讓 codex 接手審視整體架構決策、找出潛在 bug、評估 trade-offs
 >
 > **更新狀態（最新 commit v3.0）**：codex 已 review 並指出 3 個 P1/P2 安全問題，全部已修正：
@@ -31,7 +33,7 @@ GitHub Pages (靜態前端)            Apps Script Web App (後端 API)
   monthly.html                        Config.gs     — 全域設定 + runtime helpers
   css/style.css                       Utils.gs      — 日期/字串/dataURL utils
   js/                                 Templates.gs  — 讀檢查表模板 from DB
-   ├─ config.js (API_BASE, API_TOKEN) Submission.gs — 接收填表流程
+   ├─ config.js (API_BASE)            Submission.gs — 接收填表流程
    ├─ api.js   (fetch + branding)     Pdf.gs        — DocumentApp 產 PDF
    └─ signature.js (canvas + trim)    Drive.gs      — 按年月歸檔
                                       Calendar.gs   — 場地表使用判斷
@@ -39,10 +41,10 @@ GitHub Pages (靜態前端)            Apps Script Web App (後端 API)
         │ fetch JSON                  Setup.gs      — DB 初始化 / OAuth helper
         │ (text/plain content-type)   appsscript.json (Asia/Taipei + 6 scopes)
         ▼
-  POST { apiToken, formType, equipmentId, checkDate,
+  POST { publicSessionToken, formType, equipmentId, checkDate,
          inspector, items[], signature(dataURL) }
         ▼
-  doPost: token 驗證 → handleSubmission_
+  doPost: 短效、動作綁定票證驗證 → handleSubmission_
                           ├─ validateSignature_ (regex 白名單)
                           ├─ sanitize result/risk/methods (白名單)
                           ├─ LockService.tryLock(30s)
@@ -71,7 +73,7 @@ GitHub Pages (靜態前端)            Apps Script Web App (後端 API)
 
 | # | 決策 | 替代方案 | 為什麼選 | 風險 |
 |---|---|---|---|---|
-| A | GitHub Pages 公開 + API_TOKEN 半公開 | OAuth Google Sign-In / Private repo with paid GitHub Pages | 零成本、上線快 | token 可被看見，依賴後端 size/format/whitelist 防護 |
+| A | GitHub Pages 公開 + 後端短效動作票證 | OAuth Google Sign-In / LIFF | 公開表單可直接使用，前端不保存共享密鑰 | 仍屬匿名表單，需依賴後端 size/format/whitelist 與 idempotency 防護 |
 | B | PDF 用 DocumentApp | HtmlService.getAs(PDF) / Slides / 第三方 lib | HtmlService 對 inline image 支援不穩；Slides 過度設計 | 版面控制不如 HTML 細緻；Doc 自動分頁可能 break 表格 |
 | C | 機構名稱 runtime fetch `/branding` | 寫死前端 / build-time injection | source code 乾淨、可重用 | 首屏載入有閃爍 |
 | D | 簽名 `trimmedDataURL()` 裁切空白 | 直接送整張 / fixed crop | 解決 fullscreen canvas 大量留白問題 | trim 用 alpha=0 偵測，PNG 必須是透明背景 |
@@ -112,7 +114,7 @@ GitHub Pages (靜態前端)            Apps Script Web App (後端 API)
 - ⏳ 場地表 116 年新表（明年）結構若略變的相容性
 
 ### 5.3 已知 limitation
-1. `API_TOKEN` 寫在 GitHub Pages 的 `js/config.js`，等同半公開
+1. 公開表單不驗證使用者身分；若要驗證本人，需導入 LIFF 或 Google Workspace 登入
 2. PDF 大小 = DocumentApp 產出 ~95KB（含簽名 PNG embed）
 3. Apps Script 單次 execution 上限 6 分鐘
 4. Apps Script Web App 不支援 CORS preflight，前端必須用 `text/plain` content-type
@@ -150,7 +152,7 @@ GitHub Pages (靜態前端)            Apps Script Web App (後端 API)
 ├─ monthly.html        ← 每月檢查表
 ├─ css/style.css       ← 老花友善版 UI
 ├─ js/
-│  ├─ config.js        ← API_BASE + API_TOKEN
+│  ├─ config.js        ← 僅公開 API_BASE
 │  ├─ api.js           ← fetch wrapper + 自動 fetch branding
 │  └─ signature.js     ← SignaturePad class + orientation hint + trimmedDataURL
 └─ docs/
@@ -176,10 +178,8 @@ d40d901  feat: 移除送出後的「在 Drive 開啟 PDF」按鈕
 
 如果 codex 有 Apps Script Web App 呼叫能力：
 1. `GET ...exec?api=status` — 不需 token，看整個系統狀態
-2. `GET ...exec?api=admin&action=testSubmit&token=<API_TOKEN>` — 全流程測試（1x1 base64 簽名）
-3. `GET ...exec?api=admin&action=fetchPdf&token=<API_TOKEN>&fileId=<ID>` — 下載 PDF base64
-
-API_TOKEN 在本機 `.env`（git ignored），可從 `js/config.js` 讀到（半公開）。
+2. 早期 `GET ...exec?api=admin&...&token=<API_TOKEN>` 指令已停用，請勿複製使用。
+3. 現行管理操作使用未公開的 `ADMIN_TOKEN`，優先由營運中控台以 POST 呼叫；伺服器 `API_TOKEN` 只供 Cloud Run。
 
 ## 10. 已知 architectural debt
 

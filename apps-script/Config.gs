@@ -10,10 +10,9 @@ const CONFIG = {
   // 新建 Apps Script 預設可能是 GMT，會讓民國年月日差一天
   TIMEZONE: 'Asia/Taipei',
 
-  // ------ API 共享 token（防匿名濫用 POST）------
-  // 部署時改成隨機字串（建議 32+ 字元）。前端 web/js/config.js 要設定相同的值。
-  // 注意：因為前端是公開的 GitHub Pages，這個 token 等於是「半公開」，
-  // 主要目的是擋掉不知道網址直接打 API 的機器人。要更嚴的話需要登入機制。
+  // ------ 伺服器間 API token ------
+  // 僅供 Cloud Run 與 Apps Script 間通訊，不得寫入 GitHub Pages 或公開 URL。
+  // 公開前端改用後端簽發的短效、動作綁定、一次性票證。
   API_TOKEN: 'REPLACE_WITH_RANDOM_TOKEN_AT_LEAST_32_CHARS',
 
   // ------ Admin token verifier（選填）------
@@ -170,9 +169,10 @@ function getReminderEmail_() {
 /**
  * 取得 admin token（從 Script Properties 讀，與 API_TOKEN 隔離）
  *
- * 安全分層（codex review 2026-05-26）：
- *   - API_TOKEN     寫在 js/config.js → 任何 GitHub Pages 訪客都能拿到，只能用在唯讀類 endpoint
- *   - ADMIN_TOKEN   存在 Apps Script Script Properties → 只有 admin 知道，用於寫入/破壞性 endpoint
+ * 安全分層：
+ *   - API_TOKEN     僅供 Cloud Run／Apps Script 伺服器間通訊
+ *   - ADMIN_TOKEN   存在 Apps Script Script Properties，用於管理操作
+ *   - 公開瀏覽器   使用 PublicSession.gs 核發的短效一次性操作票證
  *
  * 若 Script Properties ADMIN_TOKEN 未設置，仍可用 production Config.js 內的
  * ADMIN_TOKEN_SHA256 verifier 驗證 GCP Secret Manager 內的 admin token。

@@ -54,6 +54,7 @@
 |---|---|---|---|
 | Config.gs | 指令碼 | `Config` | `apps-script/Config.gs` |
 | Utils.gs | 指令碼 | `Utils` | `apps-script/Utils.gs` |
+| PublicSession.gs | 指令碼 | `PublicSession` | `apps-script/PublicSession.gs` |
 | Main.gs | 指令碼 | `Main` | `apps-script/Main.gs` |
 | Templates.gs | 指令碼 | `Templates` | `apps-script/Templates.gs` |
 | Submission.gs | 指令碼 | `Submission` | `apps-script/Submission.gs` |
@@ -74,7 +75,7 @@
 
 ### A-5. 填入 Config
 
-#### A-5-1. 產生 API_TOKEN
+#### A-5-1. 產生伺服器 API_TOKEN
 
 開 Mac 終端機跑這個指令，產一段隨機字串：
 
@@ -82,7 +83,7 @@
 node -e "console.log(require('crypto').randomBytes(24).toString('hex'))"
 ```
 
-或在線上工具（[random.org](https://www.random.org/strings/)）產 32 字以上的英數字串。**這個 token 等等前後端要設定成完全一樣的值**。
+或在線上工具（[random.org](https://www.random.org/strings/)）產 32 字以上的英數字串。這個 token **只供 Cloud Run 與 Apps Script 伺服器間通訊**，不得放入 GitHub Pages、URL、README、Issue 或聊天室。
 
 #### A-5-2. 改 Config.gs
 
@@ -94,7 +95,9 @@ ARCHIVE_ROOT_FOLDER_ID: 'REPLACE_WITH_YOUR_DRIVE_FOLDER_ID', // ← A-2 的 ID
 API_TOKEN:              'REPLACE_WITH_RANDOM_TOKEN_...',     // ← A-5-1 產的 token
 ```
 
-儲存（`⌘+S`）。**記得 token 是要保密的**，不要分享、不要貼到對話、不要寫進說明文件。
+儲存（`⌘+S`）。正式專案使用 git ignored 的 `apps-script/Config.js` 部署實值，`Config.gs` 保持 placeholder。若啟用公文監控，Cloud Run 的 `APPS_SCRIPT_API_TOKEN` Secret Manager 值需相同。
+
+公開網頁不保存這個 token。瀏覽器送出資料前，會由 Apps Script 核發 10 分鐘內有效、綁定單一動作且只能使用一次的操作票證。
 
 ### A-6. 初始化 DB
 
@@ -138,16 +141,15 @@ API_TOKEN:              'REPLACE_WITH_RANDOM_TOKEN_...',     // ← A-5-1 產的
 - 名稱建議：`auto-checklist`（或你想要的名稱）
 - 公開（GitHub Pages 必須公開）
 
-### B-2. 設定 API 位址與 Token
+### B-2. 設定 API 位址
 
-編輯本地 `js/config.js`，把兩個 PASTE_YOUR 換成實際值：
+編輯本地 `js/config.js`，只設定 Apps Script Web App 位址：
 
 ```js
 API_BASE:  '<A-7 的 Apps Script exec URL>',
-API_TOKEN: '<A-5-1 產的 token，必須與 Config.gs 完全一致>',
 ```
 
-⚠ **重要**：API_TOKEN 是「半公開」的（前端會看得到），但仍應該保留至少這層防護。不要把這個 token 公開貼到 README、Issues、聊天室。
+`js/config.js` 不得包含 `API_TOKEN`、`ADMIN_TOKEN`、LINE access token、密碼或其他共享密鑰。
 
 ### B-2-1. 把前端 URL 寫回 DB
 
@@ -157,7 +159,7 @@ GitHub Pages 啟用後（B-4），記得回到 DB 試算表「系統設定」工
 
 ### B-3. 推上去
 
-⚠ **推送前確認**：`js/config.js` 的 `API_TOKEN` 已填，`Config.gs` 已不在 staging 區（這個檔含敏感 token）— 但 `Config.gs` 是部署到 Apps Script 才有實際值，git 上的版本是 `REPLACE_...`，所以可以 push。
+⚠ **推送前確認**：`js/config.js` 只有公開的 `API_BASE`；`Config.gs` 僅含 `REPLACE_...` placeholder；正式 `apps-script/Config.js` 與 `.env` 都保持 git ignored。
 
 在 `/Users/hao/Desktop/自動檢查表_電子化` 執行：
 
@@ -169,10 +171,7 @@ git commit -m "chore: 部署設定"   # 若沒新變更可省略
 git push -u origin main
 ```
 
-> ⚠ **token 進 git 怎麼辦？** 若不小心把含真實 token 的 `config.js` push 上去，立刻：
-> 1. 到 Apps Script Config.gs 改 API_TOKEN（馬上失效）
-> 2. 改 js/config.js 為新 token
-> 3. 重 commit、push（舊 token 已沒用）
+> ⚠ **token 進 git 怎麼辦？** 立刻旋轉 Apps Script 的伺服器 API_TOKEN；若 Cloud Run 有使用，也新增 Secret Manager 版本並重新部署 Job。公開 `js/config.js` 移除 token 後再 commit、push，最後用 gitleaks 掃描完整 Git 歷史。
 
 ### B-4. 啟用 GitHub Pages
 

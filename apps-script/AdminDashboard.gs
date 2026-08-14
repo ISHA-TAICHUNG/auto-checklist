@@ -2,7 +2,7 @@
  * ===== 主管營運資訊面板 =====
  *
  * 僅由 doPost 的 adminDashboardStatus 呼叫。所有資料都先通過
- * API_TOKEN + ADMIN_TOKEN 驗證，且回傳內容不包含 LINE userId、token 或簽核網址。
+ * ADMIN_TOKEN 驗證，且回傳內容不包含 LINE userId、token 或簽核網址。
  */
 
 const ADMIN_DASHBOARD_CACHE_KEY = "admin_dashboard_status_v3";
@@ -565,7 +565,7 @@ function dashboardApprovalStatus_() {
 }
 
 /**
- * 營運中控台的操作入口。doPost 會先驗證 API_TOKEN + ADMIN_TOKEN；
+ * 營運中控台的操作入口。doPost 會先驗證 ADMIN_TOKEN；
  * 此處再以白名單限制模式與紀錄類型，前端不能傳網址、LINE userId 或任意姓名。
  */
 function handleAdminDashboardAction_(payload) {

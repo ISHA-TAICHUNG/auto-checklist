@@ -8,16 +8,18 @@
  *   GET  ...exec?api=equipments               — 設備清單
  *   GET  ...exec?api=meta&form=...&eqp=...    — 檢查表模板
  *   GET  ...exec?api=branding                  — 機構名稱（前端啟動載入）
- *   GET  ...exec?api=dailyIncidentPeople&token=API_TOKEN — 日常事件人員下拉選項（不含 LINE ID）
+ *   GET  ...exec?api=publicSession&scope=... — 核發短效、一次性公開操作票證
+ *   GET  ...exec?api=dailyIncidentPeople&publicSessionToken=... — 日常事件人員選項
  *   GET  ...exec?api=dailyWorkMeta             — 每日作業檢核填寫頁設定
  *   GET  ...exec?api=approval&recordId=...&token=... — 主管簽核頁讀取待簽資料
  *   GET  ...exec?api=status                    — 系統狀態（不含 secret）
- *   GET  ...exec?api=admin&action=...&token=...  — 管理用，需 token
+ *   GET  ...exec?api=admin&action=...&adminToken=... — 舊版管理入口，需 ADMIN_TOKEN
  *
- *   POST ...exec   body={ apiToken, formType, equipmentId, ... }
- *   POST ...exec   body={ apiToken, action:'approveRecord', recordId, token, ... }
+ *   POST ...exec   body={ publicSessionToken, formType, equipmentId, ... }
+ *   POST ...exec   body={ publicSessionToken, action:'approveRecord', recordId, token, ... }
  *
- * doPost 強制驗證 apiToken；body 必須是 JSON 字串（前端用 fetch + Content-Type
+ * 公開 POST 強制驗證短效一次性票證；管理與 Cloud Run 路徑另驗證各自密鑰。
+ * body 必須是 JSON 字串（前端用 fetch + Content-Type
  * text/plain 送出，避開 Apps Script 對 application/json preflight 的限制）。
  */
 
@@ -91,8 +93,14 @@ function doGet(e) {
         result = getDailyWorkMeta_();
         break;
 
+      case "publicSession":
+        result = issuePublicSession_(e.parameter.scope);
+        break;
+
       case "dailyIncidentPeople":
-        if (e.parameter.token !== CONFIG.API_TOKEN) throw new Error("未授權");
+        if (!consumePublicSession_(e.parameter.publicSessionToken, "dailyIncidentPeople")) {
+          throw new Error("操作票證無效或已逾時，請重新載入");
+        }
         result = getDailyIncidentPeopleOptions_();
         break;
 
@@ -105,11 +113,9 @@ function doGet(e) {
       }
 
       case "admin": {
-        // 維護動作 — 兩層 token：
-        //   - admin 入口先過 API_TOKEN 外層檢查，再依 action 要求 ADMIN_TOKEN
-        //   - 公開前端 API_TOKEN 不能單獨授權 admin diagnostics
-        // 安全分層由 codex review 2026-05-26 觸發加入
-        if (e.parameter.token !== CONFIG.API_TOKEN) throw new Error("未授權");
+        // 維護動作只接受未公開的 ADMIN_TOKEN。歷史上曾放在公開前端的
+        // API_TOKEN 不再參與管理授權，避免形成可重放的外層憑證。
+        if (!checkAdminToken_(e.parameter.adminToken)) throw new Error("未授權");
         const action = e.parameter.action;
         // 寫入類 actions 白名單 — 這些必須額外用 ADMIN_TOKEN
         // codex 2026-05-26 round 2 P1.2: fetchPdf 雖唯讀但回 PDF binary（含簽名/姓名）→ 升級成需 ADMIN_TOKEN
@@ -1075,14 +1081,7 @@ function doPost(e) {
       throw new Error("payload 不是合法 JSON");
     }
 
-    if (!CONFIG.API_TOKEN || CONFIG.API_TOKEN.indexOf("REPLACE_") === 0) {
-      throw new Error("系統未設定 API_TOKEN");
-    }
-    if (payload.apiToken !== CONFIG.API_TOKEN) {
-      throw new Error("未授權");
-    }
-    delete payload.apiToken;
-    // 移除 payload._debug stack 回傳（codex 2026-05-26 P1）— 避免任何拿到 API_TOKEN 的人能拉到 stack
+    // 移除 payload._debug stack 回傳，避免任何錯誤路徑外洩 stack。
     delete payload._debug;
 
     let result;
@@ -1091,6 +1090,7 @@ function doPost(e) {
         if (!checkAdminToken_(payload.adminToken)) {
           throw new Error("未授權：管理存取密鑰不正確");
         }
+        delete payload.apiToken;
         delete payload.adminToken;
         result = getAdminDashboardStatus_(payload);
         break;
@@ -1098,10 +1098,19 @@ function doPost(e) {
         if (!checkAdminToken_(payload.adminToken)) {
           throw new Error("未授權：管理存取密鑰不正確");
         }
+        delete payload.apiToken;
         delete payload.adminToken;
         result = handleAdminDashboardAction_(payload);
         break;
       case "enqueueOfficialDocuments":
+        if (
+          !CONFIG.API_TOKEN ||
+          CONFIG.API_TOKEN.indexOf("REPLACE_") === 0 ||
+          payload.apiToken !== CONFIG.API_TOKEN
+        ) {
+          throw new Error("未授權：伺服器憑證不正確");
+        }
+        delete payload.apiToken;
         if (!checkAdminToken_(payload.adminToken)) {
           throw new Error(
             "未授權：此 action 需 adminToken（Script Properties ADMIN_TOKEN）",
@@ -1111,6 +1120,14 @@ function doPost(e) {
         result = enqueueOfficialDocumentDispatches_(payload);
         break;
       case "processOfficialDocumentQueue":
+        if (
+          !CONFIG.API_TOKEN ||
+          CONFIG.API_TOKEN.indexOf("REPLACE_") === 0 ||
+          payload.apiToken !== CONFIG.API_TOKEN
+        ) {
+          throw new Error("未授權：伺服器憑證不正確");
+        }
+        delete payload.apiToken;
         if (!checkAdminToken_(payload.adminToken)) {
           throw new Error(
             "未授權：此 action 需 adminToken（Script Properties ADMIN_TOKEN）",
@@ -1120,27 +1137,35 @@ function doPost(e) {
         result = processOfficialDocumentQueue_(payload);
         break;
       case "approveRecord":
+        requirePublicSession_(payload);
         result = handleApprovalSubmission_(payload);
         break;
       case "submitDailyIncident":
+        requirePublicSession_(payload);
         result = handleDailyIncidentSubmission_(payload);
         break;
       case "updateDailyIncident":
+        requirePublicSession_(payload);
         result = updateDailyIncident_(payload);
         break;
       case "submitDailyIncidentForApproval":
+        requirePublicSession_(payload);
         result = submitDailyIncidentForApproval_(payload);
         break;
       case "approveDailyIncident":
+        requirePublicSession_(payload);
         result = approveDailyIncident_(payload);
         break;
       case "commentDailyIncident":
+        requirePublicSession_(payload);
         result = submitDailyIncidentSupervisorComment_(payload);
         break;
       case "submitDailyWorkCheck":
+        requirePublicSession_(payload);
         result = submitDailyWorkCheck_(payload);
         break;
       default:
+        requirePublicSession_(payload);
         result = handleSubmission_(payload);
     }
     return jsonResponse_(result);
@@ -1167,6 +1192,8 @@ function friendlyError_(err) {
   const msg = String((err && err.message) || err);
   const businessErrors = [
     "未授權",
+    "操作票證",
+    "不支援的公開操作",
     "payload 過大",
     "payload 不是合法 JSON",
     "簽名格式錯誤",

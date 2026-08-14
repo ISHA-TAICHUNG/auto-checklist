@@ -4,9 +4,10 @@
 
 | 層級 | 防護 |
 |---|---|
-| 前端 → 後端 | API_TOKEN 共享 secret（半公開，在 `js/config.js`）|
+| 前端 → 後端 | 後端核發 10 分鐘短效、動作綁定、一次性操作票證；公開前端不保存共享密鑰 |
 | 後端 doPost | size limit 5MB + signature regex + result/risk/methods whitelist + LockService |
-| 後端 admin endpoints | 先需 `API_TOKEN` 進入 admin 入口；診斷、維護、PDF 讀取與會觸發外部 API 的動作另需 `ADMIN_TOKEN` |
+| 後端 admin endpoints | 僅接受未公開的 `ADMIN_TOKEN`；公開操作票證不能授權管理功能 |
+| Cloud Run → Apps Script | Secret Manager 中的伺服器 `API_TOKEN` + `ADMIN_TOKEN` 雙重驗證 |
 | `fetchPdf` | 範圍限制：必須在 ARCHIVE_ROOT_FOLDER_ID 下 + mimeType=application/pdf |
 | Drive 歸檔 | 結構化權限：由部署者擁有，僅共用對象可看 |
 | Sheets DB | 部署者擁有，僅共用對象可看 |
@@ -15,19 +16,11 @@
 
 ## 已知 trade-off
 
-**`API_BASE` 與 `API_TOKEN` 在 `js/config.js` 中明文存在 git 與 GitHub Pages**
+短效票證可撤銷曾公開的長效共享 token，限制重放時間、使用次數與動作範圍，但它不是使用者身分驗證。票證採伺服器簽章，核發時不寫入共用 Cache；只有成功使用後才暫存 nonce 以阻擋重放，避免匿名核發請求把合法票證逐出 Cache。CacheService 屬 best-effort，因此極端提前逐出時，一次性重放防護可能退化；票證仍受簽章、10 分鐘效期及 action 範圍限制。
 
-原因：GitHub Pages 是靜態託管、沒有 server-side template，前端 JS 必須能直接讀到值才能呼叫後端。
+因公開表單允許匿名開啟，具意圖的自動化程式仍可先取得新票證再嘗試送件；後端 payload 上限、欄位白名單、格式驗證、idempotency 與 LockService 仍是必要防線。若需辨識填表者身分，必須導入 LINE LIFF、Google Workspace 登入或其他登入機制。
 
-實質風險（中等）：
-- 假填檢查表（被 size / regex / whitelist 擋掉明顯偽造，但精心偽造能通過）
-- 攻擊者拿到 API_TOKEN 後，仍可對公開表單 API 做試探或送出偽造資料
-
-實質風險（低）：
-- 不會洩漏機構身分（source code 都 placeholder 化）
-- 不會洩漏個人 email（已移至 DB 系統設定）
-- 不會直接暴露 Drive / Sheets ID（只在 Apps Script 內部，沒 push 到 git）
-- 不會只靠 API_TOKEN 呼叫 admin diagnostics、讀取歸檔 PDF 或觸發 LINE/Drive 維護動作；這些需額外提供 `ADMIN_TOKEN`
+舊版 `GET ?api=admin&adminToken=...` 只保留臨時診斷相容性；query string 可能進入瀏覽器歷史或執行紀錄，日常管理應使用營運中控台的 POST 流程。
 
 ## 升級到「方案 A: Private repo」的時機
 
@@ -42,24 +35,7 @@
 升級步驟：
 1. GitHub repo → Settings → General → 滑到底 → Change visibility → Make private
 2. 確認 Pages 仍可用（個人 Pro 帳號 / Organization）
-3. （可選）regenerate API_TOKEN 同步更新 Config.gs + js/config.js；`ADMIN_TOKEN` 只存在 Script Properties，不放進前端
-
-## 升級到「方案 B: GitHub Actions 注入」的時機
-
-不改 visibility，但用 GitHub Actions 在 build 時把 token 從 Secrets 注入
-
-升級條件：
-- [ ] 不想付費但要 token 不在 git history
-- [ ] 系統規模擴大、多人協作開發
-
-升級步驟（約 30 分鐘工程）：
-1. GitHub repo → Settings → Secrets → Actions → 新增 `API_BASE`、`API_TOKEN`
-2. 加 `.github/workflows/pages.yml` 在 deploy 前替換 `js/config.js` 內 placeholder
-3. 把 `js/config.js` 內 real value 改回 `PASTE_YOUR_...` 並 commit
-4. push 後 Actions 自動跑，產出含真實值的 `js/config.js` 並 deploy 到 Pages
-5. （Bonus）`js/config.js` 加入 `.gitignore` 改用 `.template` 模板
-
-需要時找我做。
+3. 視需要旋轉伺服器 API_TOKEN；只更新 ignored Apps Script production config 與 Cloud Run Secret Manager，不放進前端
 
 ## 立即可用的監測（不用升級）
 
@@ -77,4 +53,5 @@
 - ❌ 把 DB Sheet 設成「任何人可看」（即使是 read-only 也不行）
 - ❌ 把 ARCHIVE_ROOT_FOLDER_ID 設成 public
 - ❌ 在 source code 寫真實 email / 機構名稱（已 placeholder 化）
-- ❌ 跨機構共用同一個 API_TOKEN（每個部署應該獨立）
+- ❌ 把伺服器 API_TOKEN、ADMIN_TOKEN、LINE token 或密碼放進 GitHub Pages
+- ❌ 跨機構共用同一個伺服器 API_TOKEN（每個部署應該獨立）

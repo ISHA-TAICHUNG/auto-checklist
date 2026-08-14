@@ -36,18 +36,17 @@
  *   - 沒有 CORS 限制（不像一般 web server）— fetch 直接呼叫即可
  *
  * 安全：
- *   - POST 一律帶 apiToken（後端會驗證）
+ *   - 公開 POST 每次先取得動作綁定、短效且一次性使用的票證
+ *   - 管理操作只帶使用者當次輸入、且不持久保存的 admin token
  *   - 不傳大於 500KB 的 payload
  */
 (function () {
   const C = window.SYSTEM_CONFIG;
+  const publicSessionCache = Object.create(null);
 
-  function ensureConfigured(needToken) {
+  function ensureConfigured() {
     if (!C.API_BASE || C.API_BASE.indexOf('PASTE_YOUR') === 0) {
       throw new Error('尚未設定 API_BASE（請編輯 js/config.js）');
-    }
-    if (needToken && (!C.API_TOKEN || C.API_TOKEN.indexOf('PASTE_YOUR') === 0)) {
-      throw new Error('尚未設定 API_TOKEN（請編輯 js/config.js）');
     }
   }
 
@@ -66,13 +65,14 @@
   }
 
   async function apiGet(params) {
-    ensureConfigured(false);
+    ensureConfigured();
     let lastError = null;
     // Apps Script occasionally returns a cached redirect/404 or an HTML error
     // page even though the endpoint is healthy. Retry with a fresh URL.
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
-        const res = await fetch(buildUrl(params, true), {
+        const attemptParams = typeof params === 'function' ? await params(attempt) : params;
+        const res = await fetch(buildUrl(attemptParams, true), {
           method: 'GET',
           cache: 'no-store',
         });
@@ -96,34 +96,92 @@
     throw lastError || new Error('GET 失敗');
   }
 
+  async function requestPublicSession(scope) {
+    const response = await apiGet({ api: 'publicSession', scope });
+    if (!response || !response.ok || !response.publicSessionToken) {
+      throw new Error((response && response.error) || '無法取得操作票證');
+    }
+    return {
+      token: response.publicSessionToken,
+      expiresAt: Date.parse(response.expiresAt || '') || (Date.now() + 5 * 60 * 1000),
+    };
+  }
+
+  async function preloadPublicSession(scope) {
+    const cached = publicSessionCache[scope];
+    if (cached && ((cached.token && cached.expiresAt - 30000 > Date.now()) || cached.promise)) return;
+
+    const promise = requestPublicSession(scope).then(session => {
+      publicSessionCache[scope] = session;
+    }).catch(error => {
+      delete publicSessionCache[scope];
+      throw error;
+    });
+    publicSessionCache[scope] = { promise };
+    await promise;
+  }
+
+  async function takePublicSession(scope) {
+    const cached = publicSessionCache[scope];
+    if (cached && cached.promise) {
+      await cached.promise;
+      return takePublicSession(scope);
+    }
+    if (cached && cached.token && cached.expiresAt - 30000 > Date.now()) {
+      delete publicSessionCache[scope];
+      return cached.token;
+    }
+    return (await requestPublicSession(scope)).token;
+  }
+
+  function isPrivilegedAction(action) {
+    return action === 'adminDashboardStatus' || action === 'adminDashboardAction';
+  }
+
   async function apiPost(payload, options) {
     options = options || {};
-    ensureConfigured(true);
-    const body = JSON.stringify(Object.assign({ apiToken: C.API_TOKEN }, payload));
-    // 5MB 上限（含多張異常照片）；和後端 Config.gs MAX_PAYLOAD_BYTES 一致
-    if (body.length > 5 * 1024 * 1024) {
-      throw new Error('資料太大（>5MB），請減少照片張數或縮小簽名');
+    ensureConfigured();
+    const action = String((payload && payload.action) || 'submitChecklist');
+    const privileged = isPrivilegedAction(action);
+    for (let authAttempt = 0; authAttempt < (privileged ? 1 : 2); authAttempt++) {
+      const requestPayload = Object.assign({}, payload);
+      if (!privileged) requestPayload.publicSessionToken = await takePublicSession(action);
+      const body = JSON.stringify(requestPayload);
+      // 5MB 上限（含多張異常照片）；和後端 Config.gs MAX_PAYLOAD_BYTES 一致
+      if (body.length > 5 * 1024 * 1024) {
+        throw new Error('資料太大（>5MB），請減少照片張數或縮小簽名');
+      }
+      const timeoutMs = Number(options.timeoutMs || 0);
+      const controller = timeoutMs > 0 && typeof AbortController !== 'undefined' ? new AbortController() : null;
+      const timeout = controller ? setTimeout(() => controller.abort(), timeoutMs) : null;
+      let res;
+      try {
+        res = await fetch(options.cacheBust ? buildUrl({}, true) : C.API_BASE, {
+          method: 'POST',
+          // 明示 text/plain 避免觸發 Apps Script 不支援的 CORS preflight
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body,
+          signal: controller ? controller.signal : undefined,
+        });
+      } catch (error) {
+        if (error && error.name === 'AbortError') throw new Error('連線逾時，請稍後重試');
+        throw error;
+      } finally {
+        if (timeout) clearTimeout(timeout);
+      }
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const result = await res.json();
+      if (
+        !privileged &&
+        authAttempt === 0 &&
+        result &&
+        result.ok === false &&
+        /操作票證/.test(String(result.error || ''))
+      ) {
+        continue;
+      }
+      return result;
     }
-    const timeoutMs = Number(options.timeoutMs || 0);
-    const controller = timeoutMs > 0 && typeof AbortController !== 'undefined' ? new AbortController() : null;
-    const timeout = controller ? setTimeout(() => controller.abort(), timeoutMs) : null;
-    let res;
-    try {
-      res = await fetch(options.cacheBust ? buildUrl({}, true) : C.API_BASE, {
-        method: 'POST',
-        // 明示 text/plain 避免觸發 Apps Script 不支援的 CORS preflight
-        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body,
-        signal: controller ? controller.signal : undefined,
-      });
-    } catch (error) {
-      if (error && error.name === 'AbortError') throw new Error('連線逾時，請稍後重試');
-      throw error;
-    } finally {
-      if (timeout) clearTimeout(timeout);
-    }
-    if (!res.ok) throw new Error('HTTP ' + res.status);
-    return res.json();
   }
 
   window.API = {
@@ -133,8 +191,10 @@
     getApproval: (recordId, token) => apiGet({ api: 'approval', recordId, token }),
     getDailyWorkMeta: () => apiGet({ api: 'dailyWorkMeta' }),
     dailyIncidentPeople: () => {
-      ensureConfigured(true);
-      return apiGet({ api: 'dailyIncidentPeople', token: C.API_TOKEN });
+      return apiGet(async () => ({
+        api: 'dailyIncidentPeople',
+        publicSessionToken: (await requestPublicSession('dailyIncidentPeople')).token,
+      }));
     },
     submit: (payload) => apiPost(payload),
     submitDailyIncident: (payload) => apiPost(Object.assign({ action: 'submitDailyIncident' }, payload)),
@@ -205,9 +265,22 @@
       }
     } catch (e) { /* 無 branding 不致命 */ }
   }
+
+  function preloadPublicSessionForPage() {
+    const path = String(window.location && window.location.pathname || '').toLowerCase();
+    let scope = '';
+    if (/\/(daily|monthly)\.html$/.test(path)) scope = 'submitChecklist';
+    else if (/\/incident\.html$/.test(path)) scope = 'submitDailyIncident';
+    else if (/\/work-check\.html$/.test(path)) scope = 'submitDailyWorkCheck';
+    if (scope) preloadPublicSession(scope).catch(() => {});
+  }
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', loadBranding);
+    document.addEventListener('DOMContentLoaded', () => {
+      loadBranding();
+      preloadPublicSessionForPage();
+    });
   } else {
     loadBranding();
+    preloadPublicSessionForPage();
   }
 })();

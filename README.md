@@ -59,7 +59,8 @@ GitHub Pages (repo root)       Apps Script (apps-script/)
 .
 ├─ apps-script/                # Google Apps Script 後端
 │  ├─ appsscript.json          # 專案資訊清單（強制 Asia/Taipei 時區）
-│  ├─ Config.gs                # 全域設定（API_TOKEN, TIMEZONE, 上限）
+│  ├─ Config.gs                # 全域設定（伺服器 token placeholder、TIMEZONE、上限）
+│  ├─ PublicSession.gs         # 公開前端短效、動作綁定、一次性票證
 │  ├─ Utils.gs                 # 日期、字串工具
 │  ├─ Main.gs                  # Web App 入口（doGet/doPost）
 │  ├─ Templates.gs             # 檢查表模板讀取
@@ -74,7 +75,7 @@ GitHub Pages (repo root)       Apps Script (apps-script/)
 ├─ monthly.html                # 每月檢查紀錄
 ├─ css/style.css
 ├─ js/
-│  ├─ config.js                # ⚠ 部署後要填 API_BASE + API_TOKEN
+│  ├─ config.js                # 公開設定（只含 API_BASE，不含共享密鑰）
 │  ├─ api.js                   # 與 Apps Script 溝通
 │  └─ signature.js             # 手寫簽名 canvas
 └─ docs/
