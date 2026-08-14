@@ -208,14 +208,15 @@ function checkAdminToken_(provided) {
   const candidate = String(provided || '');
   if (!candidate || candidate === CONFIG.API_TOKEN) return false;
 
-  const adminToken = getAdminToken_();
-  if (adminToken && adminToken.length >= 32 && adminToken !== CONFIG.API_TOKEN) {
-    if (candidate === adminToken) return true;
-  }
-
+  // Production verifier 優先：一旦設定新雜湊，舊 Script Property 密鑰即失效。
   const expectedHash = String(CONFIG.ADMIN_TOKEN_SHA256 || '').trim().toLowerCase();
   if (expectedHash && /^[0-9a-f]{64}$/.test(expectedHash)) {
     return sha256Hex_(candidate) === expectedHash;
+  }
+
+  const adminToken = getAdminToken_();
+  if (adminToken && adminToken.length >= 32 && adminToken !== CONFIG.API_TOKEN) {
+    if (candidate === adminToken) return true;
   }
   return false;
 }
