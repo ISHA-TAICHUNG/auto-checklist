@@ -79,11 +79,20 @@ vm.runInContext(fs.readFileSync('js/api.js', 'utf8'), context, { filename: 'js/a
   assert.equal(JSON.parse(posts[1].options.body).publicSessionToken, 'session-2', '第二次送出必須取得新票證');
 
   const sessionsBeforeAdmin = sessionCounter;
-  await context.window.API.adminDashboardStatus('admin-secret', { snapshotOnly: true });
+  const loginResult = await context.window.API.adminDashboardLogin('dashboard-password');
+  assert.equal(loginResult.ok, true);
+  const loginPost = requests.filter(request => request.options.method === 'POST').pop();
+  const loginBody = JSON.parse(loginPost.options.body);
+  assert.equal(loginBody.password, 'dashboard-password');
+  assert.equal(Object.prototype.hasOwnProperty.call(loginBody, 'publicSessionToken'), false);
+
+  await context.window.API.adminDashboardStatus('dashboard-session', { snapshotOnly: true });
   assert.equal(sessionCounter, sessionsBeforeAdmin, '管理查詢不得取得公開票證');
   const adminPost = requests.filter(request => request.options.method === 'POST').pop();
   const adminBody = JSON.parse(adminPost.options.body);
-  assert.equal(adminBody.adminToken, 'admin-secret');
+  assert.equal(adminBody.adminSessionToken, 'dashboard-session');
+  assert.equal(Object.prototype.hasOwnProperty.call(adminBody, 'adminToken'), false);
+  assert.equal(Object.prototype.hasOwnProperty.call(adminBody, 'password'), false);
   assert.equal(Object.prototype.hasOwnProperty.call(adminBody, 'publicSessionToken'), false);
 
   const sessionsBeforeRetry = sessionCounter;

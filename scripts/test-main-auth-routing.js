@@ -59,6 +59,15 @@ const context = {
   sha256Hex_: value => `hash:${value}`,
   tz_: () => 'Asia/Taipei',
   checkAdminToken_: value => value === 'admin-secret',
+  handleAdminDashboardLogin_: password => {
+    if (password !== 'dashboard-password') throw new Error('未授權：中控台登入密碼不正確');
+    return { ok: true, adminSessionToken: 'dashboard-session' };
+  },
+  assertAdminDashboardCredential_: payload => {
+    if (payload.adminSessionToken === 'dashboard-session') return 'session';
+    if (payload.adminToken === 'admin-secret') return 'adminToken';
+    throw new Error('未授權：中控台驗證已失效');
+  },
   getAdminDashboardStatus_: () => ({ ok: true, route: 'admin' }),
   handleAdminDashboardAction_: () => ({ ok: true, route: 'admin-action' }),
   enqueueOfficialDocumentDispatches_: () => ({ ok: true, route: 'server' }),
@@ -103,7 +112,15 @@ const legacy = post({ apiToken: SERVER_SECRET });
 assert.equal(legacy.ok, false, '舊共享 token 不得再授權公開寫入');
 assert.match(legacy.error, /操作票證/);
 
-assert.deepEqual(post({ action: 'adminDashboardStatus', adminToken: 'admin-secret' }), { ok: true, route: 'admin' });
+const dashboardLogin = post({ action: 'adminDashboardLogin', password: 'dashboard-password' });
+assert.equal(dashboardLogin.ok, true);
+assert.equal(dashboardLogin.adminSessionToken, 'dashboard-session');
+assert.equal(post({ action: 'adminDashboardLogin', password: 'wrong' }).ok, false);
+assert.deepEqual(post({
+  action: 'adminDashboardStatus',
+  adminSessionToken: dashboardLogin.adminSessionToken,
+}), { ok: true, route: 'admin' });
+assert.deepEqual(post({ action: 'adminDashboardStatus', adminToken: 'admin-secret' }), { ok: true, route: 'admin' }, '保留伺服器長密鑰相容性');
 assert.equal(post({ action: 'adminDashboardStatus', adminToken: 'wrong' }).ok, false);
 
 const peopleTicket = get({ api: 'publicSession', scope: 'dailyIncidentPeople' });

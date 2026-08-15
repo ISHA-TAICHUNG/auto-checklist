@@ -12,7 +12,7 @@
     timer: null,
     loading: false,
     actionLoading: false,
-    adminToken: '',
+    adminSessionToken: '',
     backgroundRefreshStarted: false,
     pendingNotification: null,
     notificationRequests: {},
@@ -48,7 +48,7 @@
       data-link-type="${escapeHtml(config.linkType || '')}"${title}>${escapeHtml(label)}</button>`;
   }
 
-  async function loadDashboard(token, opts) {
+  async function loadDashboard(sessionToken, opts) {
     opts = opts || {};
     if (state.loading) return;
     state.loading = true;
@@ -59,13 +59,13 @@
     $('refreshButton').disabled = true;
     $('refreshButton').textContent = '載入中';
     try {
-      const result = await window.API.adminDashboardStatus(token, {
+      const result = await window.API.adminDashboardStatus(sessionToken, {
         forceRefresh: opts.forceRefresh === true,
         snapshotOnly: opts.initial === true,
       });
       if (!result || result.ok !== true) throw new Error((result && result.error) || '無法載入面板');
-      state.adminToken = token;
-      $('adminToken').value = '';
+      state.adminSessionToken = sessionToken;
+      $('adminPassword').value = '';
       state.data = result;
       render(result);
       if (dialog.open) dialog.close();
@@ -77,15 +77,15 @@
       }
       if (result.snapshotStale && !opts.forceRefresh && !state.backgroundRefreshStarted) {
         state.backgroundRefreshStarted = true;
-        window.setTimeout(() => loadDashboard(token, { forceRefresh: true, background: true }), 250);
+        window.setTimeout(() => loadDashboard(sessionToken, { forceRefresh: true, background: true }), 250);
       } else if (!result.snapshotStale) {
         state.backgroundRefreshStarted = false;
       }
     } catch (error) {
       if (opts.initial || /未授權/.test(String(error && error.message))) {
-        state.adminToken = '';
+        state.adminSessionToken = '';
         $('unlockError').textContent = /未授權/.test(String(error && error.message))
-          ? '管理存取密鑰不正確'
+          ? '中控台登入已失效，請重新輸入密碼'
           : '目前無法連線，請稍後再試';
         openDialog();
       } else {
@@ -102,8 +102,8 @@
   function scheduleRefresh(seconds) {
     if (state.timer) window.clearTimeout(state.timer);
     state.timer = window.setTimeout(() => {
-      const token = state.adminToken;
-      if (token && !document.hidden) loadDashboard(token, { forceRefresh: true, background: true });
+      const sessionToken = state.adminSessionToken;
+      if (sessionToken && !document.hidden) loadDashboard(sessionToken, { forceRefresh: true, background: true });
       else scheduleRefresh(seconds);
     }, Math.max(30, Number(seconds || 60)) * 1000);
   }
@@ -245,7 +245,7 @@
   }
 
   async function openDashboardLink(button) {
-    if (!state.adminToken || state.actionLoading) return;
+    if (!state.adminSessionToken || state.actionLoading) return;
     const newWindow = window.open('', '_blank');
     if (!newWindow) {
       showAlert('瀏覽器已阻擋新分頁，請允許這個網站開啟彈出視窗後再試。');
@@ -260,7 +260,7 @@
     }
     setActionButtonBusy(button, true, '開啟中');
     try {
-      const result = await window.API.adminDashboardAction(state.adminToken, {
+      const result = await window.API.adminDashboardAction(state.adminSessionToken, {
         mode: 'resolveLink',
         recordType: button.dataset.recordType,
         recordId: button.dataset.recordId,
@@ -279,10 +279,10 @@
   }
 
   async function previewDashboardNotification(button) {
-    if (!state.adminToken || state.actionLoading) return;
+    if (!state.adminSessionToken || state.actionLoading) return;
     setActionButtonBusy(button, true, '查詢收件人');
     try {
-      const result = await window.API.adminDashboardAction(state.adminToken, {
+      const result = await window.API.adminDashboardAction(state.adminSessionToken, {
         mode: 'previewNotification',
         recordType: button.dataset.recordType,
         recordId: button.dataset.recordId,
@@ -325,7 +325,7 @@
     submit.textContent = '發送中';
     $('notificationDialogError').textContent = '';
     try {
-      const result = await window.API.adminDashboardAction(state.adminToken, {
+      const result = await window.API.adminDashboardAction(state.adminSessionToken, {
         mode: 'sendNotification',
         recordType: state.pendingNotification.recordType,
         recordId: state.pendingNotification.recordId,
@@ -483,7 +483,7 @@
       if (typeof dialog.showModal === 'function') dialog.showModal();
       else dialog.setAttribute('open', '');
     }
-    window.setTimeout(() => $('adminToken').focus(), 0);
+    window.setTimeout(() => $('adminPassword').focus(), 0);
   }
 
   function syncNavigation(hash, options) {
@@ -522,18 +522,43 @@
 
   form.addEventListener('submit', event => {
     event.preventDefault();
-    const token = $('adminToken').value.trim();
-    if (token) loadDashboard(token, { initial: true });
+    const password = $('adminPassword').value;
+    if (!password || state.loading) return;
+    state.loading = true;
+    $('unlockError').textContent = '';
+    const submit = form.querySelector('button[type="submit"]');
+    submit.disabled = true;
+    submit.textContent = '驗證中';
+    window.API.adminDashboardLogin(password).then(login => {
+      $('adminPassword').value = '';
+      if (!login || login.ok !== true || !login.adminSessionToken) {
+        throw new Error((login && login.error) || '登入失敗');
+      }
+      state.loading = false;
+      return loadDashboard(login.adminSessionToken, { initial: true });
+    }).catch(error => {
+      state.loading = false;
+      state.adminSessionToken = '';
+      $('adminPassword').value = '';
+      const loginErrorMessage = String((error && error.message) || '');
+      $('unlockError').textContent = /未授權|密碼/.test(loginErrorMessage)
+        ? '中控台登入密碼不正確或嘗試過多'
+        : '目前無法連線，請稍後再試';
+      openDialog();
+    }).finally(() => {
+      submit.disabled = false;
+      submit.textContent = '驗證並載入';
+    });
   });
   $('refreshButton').addEventListener('click', () => {
-    const token = state.adminToken;
-    if (token) loadDashboard(token, { forceRefresh: true }); else openDialog();
+    const sessionToken = state.adminSessionToken;
+    if (sessionToken) loadDashboard(sessionToken, { forceRefresh: true }); else openDialog();
   });
   $('lockButton').addEventListener('click', () => {
-    state.adminToken = '';
+    state.adminSessionToken = '';
     state.data = null;
     if (state.timer) window.clearTimeout(state.timer);
-    $('adminToken').value = '';
+    $('adminPassword').value = '';
     clearDashboard();
     state.pendingNotification = null;
     state.notificationRequests = {};
@@ -541,7 +566,7 @@
     openDialog();
   });
   dialog.addEventListener('cancel', event => {
-    if (!state.adminToken) event.preventDefault();
+    if (!state.adminSessionToken) event.preventDefault();
   });
   notificationForm.addEventListener('submit', event => {
     event.preventDefault();
@@ -592,8 +617,8 @@
   }
   document.addEventListener('visibilitychange', () => {
     if (!document.hidden) {
-      const token = state.adminToken;
-      if (token) loadDashboard(token);
+      const sessionToken = state.adminSessionToken;
+      if (sessionToken) loadDashboard(sessionToken);
     }
   });
 

@@ -20,6 +20,11 @@ const CONFIG = {
   // source 版本保持空值，避免把 production verifier 推上 GitHub。
   ADMIN_TOKEN_SHA256: '',
 
+  // ------ 中控台登入密碼 verifier（選填）------
+  // 與 Cloud Run 使用的 ADMIN_TOKEN 完全分離。正式雜湊僅存在 ignored
+  // Config.js；公開 source 不放密碼、雜湊或可逆資料。
+  ADMIN_DASHBOARD_PASSWORD_SHA256: '',
+
   // ------ 防 DoS：payload 大小與圖片上限 ------
   MAX_PAYLOAD_BYTES: 5 * 1024 * 1024, // 整個 JSON 上限 5MB（含多張異常照片）
   MAX_SIGNATURE_BYTES: 300 * 1024,    // 簽名 base64 上限 300KB

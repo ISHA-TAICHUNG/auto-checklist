@@ -1,8 +1,9 @@
 /**
  * ===== 主管營運資訊面板 =====
  *
- * 僅由 doPost 的 adminDashboardStatus 呼叫。所有資料都先通過
- * ADMIN_TOKEN 驗證，且回傳內容不包含 LINE userId、token 或簽核網址。
+ * 僅由 doPost 的中控台路由呼叫。人工登入密碼驗證後只核發
+ * 30 分鐘短效 session；伺服器 ADMIN_TOKEN 只保留給雲端整合。
+ * 回傳內容不包含 LINE userId、密碼、token verifier 或簽核網址。
  */
 
 const ADMIN_DASHBOARD_CACHE_KEY = "admin_dashboard_status_v4";
@@ -23,10 +24,185 @@ const ADMIN_DASHBOARD_RECORD_TYPES = [
 const ADMIN_DASHBOARD_NOTIFICATION_DEDUPE_SECONDS = 10 * 60;
 const ADMIN_DASHBOARD_NOTIFICATION_IN_FLIGHT_SECONDS = 3 * 60;
 const ADMIN_DASHBOARD_ACTION_TOKEN_TTL_SECONDS = 30 * 60;
+const ADMIN_DASHBOARD_SESSION_TTL_SECONDS = 30 * 60;
+const ADMIN_DASHBOARD_LOGIN_FAILURE_PROPERTY = "ADMIN_DASHBOARD_LOGIN_FAILURES_V1";
+const ADMIN_DASHBOARD_LOGIN_FAILURE_WINDOW_SECONDS = 5 * 60;
+const ADMIN_DASHBOARD_LOGIN_MAX_FAILURES = 10;
 const ADMIN_DASHBOARD_LEGACY_SNAPSHOT_PREFIXES = [
   "admin_dashboard_snapshot_v2_",
   "admin_dashboard_snapshot_v3_",
 ];
+
+/**
+ * 以專用短密碼解鎖中控台，不曝露伺服器 ADMIN_TOKEN。
+ */
+function handleAdminDashboardLogin_(password) {
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(5000)) {
+    throw new Error("未授權：中控台登入失敗，請稍後再試");
+  }
+  try {
+    const now = Math.floor(Date.now() / 1000);
+    const failures = readAdminDashboardLoginFailures_();
+    const activeFailures = Number(failures.expiresAt || 0) > now
+      ? Number(failures.count || 0)
+      : 0;
+    if (activeFailures >= ADMIN_DASHBOARD_LOGIN_MAX_FAILURES) {
+      throw new Error("未授權：中控台登入失敗，請稍後再試");
+    }
+    if (!checkAdminDashboardPassword_(password)) {
+      registerAdminDashboardLoginFailure_(activeFailures + 1, now);
+      throw new Error("未授權：中控台登入失敗，請稍後再試");
+    }
+    clearAdminDashboardLoginFailures_();
+  } finally {
+    lock.releaseLock();
+  }
+  const issued = createAdminDashboardSessionToken_();
+  return {
+    ok: true,
+    adminSessionToken: issued.token,
+    expiresAt: new Date(issued.expiresAtEpochSeconds * 1000).toISOString(),
+  };
+}
+
+function checkAdminDashboardPassword_(provided) {
+  const candidate = String(provided || "");
+  const expectedHash = String(
+    (typeof CONFIG !== "undefined" && CONFIG.ADMIN_DASHBOARD_PASSWORD_SHA256) || "",
+  ).trim().toLowerCase();
+  if (!candidate || !/^[0-9a-f]{64}$/.test(expectedHash)) return false;
+  return adminDashboardConstantTimeEqual_(sha256Hex_(candidate), expectedHash);
+}
+
+function readAdminDashboardLoginFailures_() {
+  const raw = PropertiesService.getScriptProperties().getProperty(
+    ADMIN_DASHBOARD_LOGIN_FAILURE_PROPERTY,
+  );
+  if (!raw) return { count: 0, expiresAt: 0 };
+  try {
+    const parsed = JSON.parse(raw);
+    return {
+      count: Math.max(0, Number(parsed.count || 0)),
+      expiresAt: Math.max(0, Number(parsed.expiresAt || 0)),
+    };
+  } catch (_) {
+    return { count: ADMIN_DASHBOARD_LOGIN_MAX_FAILURES, expiresAt: Math.floor(Date.now() / 1000) + 60 };
+  }
+}
+
+function registerAdminDashboardLoginFailure_(count, nowEpochSeconds) {
+  PropertiesService.getScriptProperties().setProperty(
+    ADMIN_DASHBOARD_LOGIN_FAILURE_PROPERTY,
+    JSON.stringify({
+      count: Math.min(ADMIN_DASHBOARD_LOGIN_MAX_FAILURES, Math.max(1, Number(count || 1))),
+      expiresAt: Number(nowEpochSeconds || Math.floor(Date.now() / 1000))
+        + ADMIN_DASHBOARD_LOGIN_FAILURE_WINDOW_SECONDS,
+    }),
+  );
+}
+
+function clearAdminDashboardLoginFailures_() {
+  try {
+    PropertiesService.getScriptProperties().deleteProperty(
+      ADMIN_DASHBOARD_LOGIN_FAILURE_PROPERTY,
+    );
+  } catch (_) {}
+}
+
+function createAdminDashboardSessionToken_() {
+  const payload = {
+    v: 1,
+    t: "dashboard-session",
+    e: Math.floor(Date.now() / 1000) + ADMIN_DASHBOARD_SESSION_TTL_SECONDS,
+    n: uuid_(),
+  };
+  const encoded = Utilities.base64EncodeWebSafe(
+    JSON.stringify(payload),
+    Utilities.Charset.UTF_8,
+  ).replace(/=+$/g, "");
+  return {
+    token: encoded + "." + adminDashboardSessionSignature_(encoded),
+    expiresAtEpochSeconds: payload.e,
+  };
+}
+
+function assertAdminDashboardSessionToken_(token) {
+  const parts = String(token || "").split(".");
+  if (
+    parts.length !== 2 ||
+    !adminDashboardConstantTimeEqual_(
+      parts[1],
+      adminDashboardSessionSignature_(parts[0]),
+    )
+  ) {
+    throw new Error("未授權：中控台工作階段無效");
+  }
+  let payload;
+  try {
+    let encoded = parts[0];
+    while (encoded.length % 4) encoded += "=";
+    payload = JSON.parse(
+      Utilities.newBlob(Utilities.base64DecodeWebSafe(encoded))
+        .getDataAsString("UTF-8"),
+    );
+  } catch (_) {
+    throw new Error("未授權：中控台工作階段格式錯誤");
+  }
+  if (
+    payload.v !== 1 ||
+    payload.t !== "dashboard-session" ||
+    !payload.n ||
+    !payload.e ||
+    Number(payload.e) <= Math.floor(Date.now() / 1000)
+  ) {
+    throw new Error("未授權：中控台工作階段已過期");
+  }
+  return payload;
+}
+
+function assertAdminDashboardCredential_(payload) {
+  payload = payload || {};
+  if (payload.adminSessionToken) {
+    assertAdminDashboardSessionToken_(payload.adminSessionToken);
+    return "session";
+  }
+  // 保留長密鑰相容性，供現有的伺服器診斷工具使用。
+  if (checkAdminToken_(payload.adminToken)) return "adminToken";
+  throw new Error("未授權：中控台驗證已失效");
+}
+
+function adminDashboardSessionSecret_() {
+  const properties = PropertiesService.getScriptProperties();
+  let secret = properties.getProperty("ADMIN_DASHBOARD_SESSION_SECRET") || "";
+  if (secret) return secret;
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(5000)) throw new Error("系統忙碌，請稍後再試");
+  try {
+    secret = properties.getProperty("ADMIN_DASHBOARD_SESSION_SECRET") || "";
+    if (!secret) {
+      secret = uuid_() + "-" + uuid_();
+      properties.setProperty("ADMIN_DASHBOARD_SESSION_SECRET", secret);
+    }
+    return secret;
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function adminDashboardSessionSignature_(encoded) {
+  const passwordVerifier = String(
+    (typeof CONFIG !== "undefined" && CONFIG.ADMIN_DASHBOARD_PASSWORD_SHA256) || "",
+  ).trim().toLowerCase();
+  const bytes = Utilities.computeHmacSha256Signature(
+    String(encoded || ""),
+    adminDashboardSessionSecret_() + ":" + passwordVerifier.slice(0, 16),
+    Utilities.Charset.UTF_8,
+  );
+  return bytes
+    .map((value) => ((value + 256) % 256).toString(16).padStart(2, "0"))
+    .join("");
+}
 
 /**
  * 營運中控台核發的短效操作權杖。權杖只能用於指定的

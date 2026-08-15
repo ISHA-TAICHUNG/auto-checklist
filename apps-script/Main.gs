@@ -1086,20 +1086,24 @@ function doPost(e) {
 
     let result;
     switch (payload.action || "") {
+      case "adminDashboardLogin": {
+        const dashboardPassword = payload.password;
+        delete payload.password;
+        result = handleAdminDashboardLogin_(dashboardPassword);
+        break;
+      }
       case "adminDashboardStatus":
-        if (!checkAdminToken_(payload.adminToken)) {
-          throw new Error("未授權：管理存取密鑰不正確");
-        }
+        assertAdminDashboardCredential_(payload);
         delete payload.apiToken;
         delete payload.adminToken;
+        delete payload.adminSessionToken;
         result = getAdminDashboardStatus_(payload);
         break;
       case "adminDashboardAction":
-        if (!checkAdminToken_(payload.adminToken)) {
-          throw new Error("未授權：管理存取密鑰不正確");
-        }
+        assertAdminDashboardCredential_(payload);
         delete payload.apiToken;
         delete payload.adminToken;
+        delete payload.adminSessionToken;
         result = handleAdminDashboardAction_(payload);
         break;
       case "enqueueOfficialDocuments":

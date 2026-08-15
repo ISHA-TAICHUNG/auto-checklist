@@ -37,7 +37,7 @@
  *
  * 安全：
  *   - 公開 POST 每次先取得動作綁定、短效且一次性使用的票證
- *   - 管理操作只帶使用者當次輸入、且不持久保存的 admin token
+ *   - 中控台密碼只在登入時送出，後續只使用記憶體內的短效 session
  *   - 不傳大於 500KB 的 payload
  */
 (function () {
@@ -135,7 +135,7 @@
   }
 
   function isPrivilegedAction(action) {
-    return action === 'adminDashboardStatus' || action === 'adminDashboardAction';
+    return action === 'adminDashboardLogin' || action === 'adminDashboardStatus' || action === 'adminDashboardAction';
   }
 
   async function apiPost(payload, options) {
@@ -199,7 +199,11 @@
     submit: (payload) => apiPost(payload),
     submitDailyIncident: (payload) => apiPost(Object.assign({ action: 'submitDailyIncident' }, payload)),
     submitDailyWorkCheck: (payload) => apiPost(Object.assign({ action: 'submitDailyWorkCheck' }, payload)),
-    adminDashboardStatus: async (adminToken, options) => {
+    adminDashboardLogin: (password) => apiPost(
+      { action: 'adminDashboardLogin', password },
+      { timeoutMs: 15000, cacheBust: true }
+    ),
+    adminDashboardStatus: async (adminSessionToken, options) => {
       options = options || {};
       let lastError = null;
       const snapshotOnly = options.snapshotOnly === true;
@@ -211,7 +215,7 @@
           return await apiPost(
             {
               action: 'adminDashboardStatus',
-              adminToken,
+              adminSessionToken,
               forceRefresh: options.forceRefresh === true,
               snapshotOnly: options.snapshotOnly === true,
             },
@@ -225,10 +229,10 @@
       }
       throw lastError || new Error('資訊面板連線失敗');
     },
-    adminDashboardAction: (adminToken, payload) => apiPost(
+    adminDashboardAction: (adminSessionToken, payload) => apiPost(
       Object.assign({
         action: 'adminDashboardAction',
-        adminToken,
+        adminSessionToken,
       }, payload || {}),
       // 發送操作不可自動重試，避免網路回應中斷時造成重複推播。
       { timeoutMs: 120000, cacheBust: true }
