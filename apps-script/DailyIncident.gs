@@ -468,7 +468,12 @@ function approveDailyIncident_(payload) {
   });
   SpreadsheetApp.flush();
   const refreshed = getDailyIncidentRecord_(incidentId);
-  const closeNotice = maybeNotifyDailyIncidentClosed_(refreshed.data);
+  // Sheets may parse the written wall-clock string in its own timezone. Keep the
+  // just-approved Taipei timestamp for the immediate LINE closure card only.
+  const closeNoticeData = Object.assign({}, refreshed.data, {
+    reviewTime: formatDisplayDateTime_(reviewTime),
+  });
+  const closeNotice = maybeNotifyDailyIncidentClosed_(closeNoticeData);
   return { ok: true, fileUrl: pdf.fileUrl, incident: publicDailyIncidentSummary_(refreshed.data), closeNotice };
 }
 
