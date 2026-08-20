@@ -2,13 +2,28 @@
  * ===== 一鍵初始化資料庫 Sheets =====
  *
  * 部署時，在 Apps Script 編輯器手動執行 `initializeDatabase` 一次即可。
- * 會自動建立 6 個工作表並填入初始資料（含「固定式起重機」的 7 項日檢、9 項月檢）。
+ * 會自動建立工作表並填入初始資料（含「固定式起重機」的 8 項日檢、16 項月檢）。
  *
  * 重複執行時：已存在的工作表不會被覆蓋（只補欄位 / 補缺少的列）。
  */
 
-// 固定式起重機月檢依據「固定式起重機每月自動檢查紀錄表」維護；
-// 網頁、既有資料表遷移與初始資料共用這份定義，避免內容漂移。
+// 固定式起重機每日／每月檢點由單一來源維護；網頁、既有資料表遷移
+// 與初始資料共用同一份定義，避免內容漂移。
+const FIXED_CRANE_DAILY_ITEMS_ = [
+  ["F-CRANE-D", 1, "過捲預防裝置作動狀況", "目視+操作", true],
+  ["F-CRANE-D", 2, "過負荷預防裝置作動狀況", "目視+操作", true],
+  ["F-CRANE-D", 3, "制動器及離合器作動", "操作", true],
+  ["F-CRANE-D", 4, "鋼索運行", "目視", true],
+  ["F-CRANE-D", 5, "吊鉤機能", "目視+操作", true],
+  ["F-CRANE-D", 6, "控制裝置性能", "操作", true],
+  ["F-CRANE-D", 7, "直、橫行軌道", "目視", true],
+  ["F-CRANE-D", 8, "緊急停止裝置正常作動", "操作", true],
+];
+
+function getFixedCraneDailySourceDefinition_() {
+  return { items: FIXED_CRANE_DAILY_ITEMS_ };
+}
+
 const FIXED_CRANE_MONTHLY_TEMPLATE_ROW_ = [
   "F-CRANE-M",
   "固定式起重機",
@@ -103,6 +118,13 @@ const FIXED_CRANE_MONTHLY_ITEMS_ = [
     true,
   ],
   ["F-CRANE-M", 15, "其他", "", true],
+  [
+    "F-CRANE-M",
+    16,
+    "緊急停止裝置正常作動",
+    "按下緊急停止裝置時，各動作應立即停止；復歸後方可重新操作。",
+    true,
+  ],
 ];
 
 function getFixedCraneMonthlySourceDefinition_() {
@@ -421,19 +443,13 @@ function initializeDatabase() {
     ],
   );
 
-  // 日檢 7 項、月檢 9 項
+  // 固定式起重機日檢 8 項、月檢 16 項
   setupSheet_(
     ss,
     "檢查項目",
     ["表單ID", "項目順序", "項目名稱", "檢查方法", "啟用"],
     [
-      ["F-CRANE-D", 1, "過捲預防裝置作動狀況", "目視+操作", true],
-      ["F-CRANE-D", 2, "過負荷預防裝置作動狀況", "目視+操作", true],
-      ["F-CRANE-D", 3, "制動器及離合器作動", "操作", true],
-      ["F-CRANE-D", 4, "鋼索運行", "目視", true],
-      ["F-CRANE-D", 5, "吊鉤機能", "目視+操作", true],
-      ["F-CRANE-D", 6, "控制裝置性能", "操作", true],
-      ["F-CRANE-D", 7, "直、橫行軌道", "目視", true],
+      ...FIXED_CRANE_DAILY_ITEMS_,
 
       ...FIXED_CRANE_MONTHLY_ITEMS_,
 
@@ -668,8 +684,8 @@ function initializeDatabase() {
     setupDailyIncidentSheet_(ss);
   }
 
-  // setupSheet_ 不覆寫既有列；固定式起重機月檢改版需明確同步既有模板與項目。
-  migrateFixedCraneMonthlyChecklistToSource_();
+  // setupSheet_ 不覆寫既有列；固定式起重機題目改版需明確同步既有項目。
+  migrateFixedCraneChecklistsToSource_();
 
   // 套用欄寬與文字換行（讓 Sheet 視覺更舒適）
   try {
@@ -2232,6 +2248,51 @@ function applyChineseSettingsAndDropdowns() {
 }
 
 /**
+ * 將既有資料庫的固定式起重機日檢項目同步為目前程式定義。
+ * 僅更新「檢查項目」設定，不會修改既有填報紀錄或歷史 PDF。
+ */
+function migrateFixedCraneDailyChecklistToSource_() {
+  const ss = SpreadsheetApp.openById(CONFIG.DB_SHEET_ID);
+  const itemSheet = ss.getSheetByName("檢查項目");
+  if (!itemSheet) throw new Error("找不到固定式起重機日檢所需資料表");
+
+  const itemHeaders = itemSheet
+    .getRange(1, 1, 1, itemSheet.getLastColumn())
+    .getValues()[0];
+  const itemIdx = (name) => itemHeaders.indexOf(name);
+  const itemColumns = ["表單ID", "項目順序", "項目名稱", "檢查方法", "啟用"];
+  itemColumns.forEach((name) => {
+    if (itemIdx(name) < 0) throw new Error("檢查項目缺欄位：" + name);
+  });
+
+  const itemData = itemSheet.getDataRange().getValues();
+  const rowsToDelete = [];
+  for (let r = 1; r < itemData.length; r++) {
+    if (String(itemData[r][itemIdx("表單ID")] || "").trim() === "F-CRANE-D")
+      rowsToDelete.push(r + 1);
+  }
+  for (let i = rowsToDelete.length - 1; i >= 0; i--)
+    itemSheet.deleteRow(rowsToDelete[i]);
+
+  const newRows = FIXED_CRANE_DAILY_ITEMS_.map((item) => {
+    const row = new Array(itemHeaders.length).fill("");
+    itemColumns.forEach((name, index) => {
+      row[itemIdx(name)] = item[index];
+    });
+    return row;
+  });
+  itemSheet
+    .getRange(itemSheet.getLastRow() + 1, 1, newRows.length, itemHeaders.length)
+    .setValues(newRows);
+
+  return {
+    ok: true,
+    replacedItemRows: rowsToDelete.length,
+    itemCount: newRows.length,
+  };
+}
+
+/**
  * 將既有資料庫的固定式起重機月檢模板回復為原始月檢表內容。
  * 僅更新模板設定與「檢查項目」設定，不會修改既有填報紀錄或歷史 PDF。
  */
@@ -2318,6 +2379,19 @@ function migrateFixedCraneMonthlyChecklistToSource_() {
     replacedItemRows: rowsToDelete.length,
     itemCount: newRows.length,
   };
+}
+
+/** 同步固定式起重機每日與每月檢點題目；不碰歷史填報資料。 */
+function migrateFixedCraneChecklistsToSource_() {
+  return {
+    ok: true,
+    daily: migrateFixedCraneDailyChecklistToSource_(),
+    monthly: migrateFixedCraneMonthlyChecklistToSource_(),
+  };
+}
+
+function migrateFixedCraneChecklists() {
+  return migrateFixedCraneChecklistsToSource_();
 }
 
 /**

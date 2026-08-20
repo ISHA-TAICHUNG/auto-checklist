@@ -123,6 +123,7 @@ function doGet(e) {
           "formatSheets",
           "runInit",
           "applyDropdowns",
+          "migrateFixedCraneChecklists",
           "migrateFixedCraneMonthlyChecklist",
           "setEquipmentField",
           "addPpe",
@@ -233,6 +234,13 @@ function doGet(e) {
               ok: true,
               action,
               ...migrateFixedCraneMonthlyChecklistToSource_(),
+            };
+            break;
+          }
+          case "migrateFixedCraneChecklists": {
+            result = {
+              action,
+              ...migrateFixedCraneChecklistsToSource_(),
             };
             break;
           }

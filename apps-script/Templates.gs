@@ -329,8 +329,23 @@ function getFormMeta_(formType, equipmentId) {
   }
   items.sort((a, b) => a.order - b.order);
 
+  // 固定式起重機日檢同樣使用程式內的單一來源，避免既有資料表尚未遷移時
+  // 前端漏掉新增項目。既有填報與歷史 PDF 不受影響。
+  if (template.templateId === 'F-CRANE-D') {
+    const source = getFixedCraneDailySourceDefinition_();
+    return {
+      equipment,
+      template,
+      items: source.items.map((item) => ({
+        order: item[1],
+        name: item[2],
+        method: item[3],
+      })),
+    };
+  }
+
   // 固定式起重機月檢的既有資料表曾保留舊版 9 項設定。前端與送出流程
-  // 一律使用原始 Word 已核對的 15 項定義；歷史填報與 PDF 不受影響。
+  // 一律使用原始 Word 已核對並持續維護的 16 項定義；歷史填報與 PDF 不受影響。
   if (template.templateId === 'F-CRANE-M') {
     const source = getFixedCraneMonthlySourceDefinition_();
     const sourceTemplate = source.templateRow;
