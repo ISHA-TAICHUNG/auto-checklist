@@ -75,5 +75,10 @@ assert.doesNotMatch(
   /\.deleteRow\s*\(/,
   'fixed-crane checklist migration must not delete existing sheet rows',
 );
+assert.match(
+  migrationSource,
+  /name === "啟用" \? \(item\[index\] \? "是" : "否"\)/,
+  'sheet migration must persist enabled values using the existing Chinese dropdown values',
+);
 
 console.log('fixed-crane daily/monthly checklist item test passed');

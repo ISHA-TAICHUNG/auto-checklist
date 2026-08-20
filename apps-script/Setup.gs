@@ -2281,7 +2281,7 @@ function upsertChecklistItemsToSource_(itemSheet, sourceItems) {
     if (!sheetRow) {
       const row = new Array(itemHeaders.length).fill("");
       itemColumns.forEach((name, index) => {
-        row[itemIdx(name)] = item[index];
+        row[itemIdx(name)] = name === "啟用" ? (item[index] ? "是" : "否") : item[index];
       });
       rowsToAppend.push(row);
       return;
@@ -2291,8 +2291,9 @@ function upsertChecklistItemsToSource_(itemSheet, sourceItems) {
     let changed = false;
     itemColumns.forEach((name, index) => {
       const column = itemIdx(name);
-      if (String(row[column]) !== String(item[index])) changed = true;
-      row[column] = item[index];
+      const value = name === "啟用" ? (item[index] ? "是" : "否") : item[index];
+      if (String(row[column]) !== String(value)) changed = true;
+      row[column] = value;
     });
     if (changed) {
       itemSheet
@@ -2377,15 +2378,17 @@ function migrateFixedCraneMonthlyChecklistToSource_() {
   if (templateRow < 0) {
     const row = new Array(tplHeaders.length).fill("");
     templateColumns.forEach((name, index) => {
-      row[tplIdx(name)] = FIXED_CRANE_MONTHLY_TEMPLATE_ROW_[index];
+      const sourceValue = FIXED_CRANE_MONTHLY_TEMPLATE_ROW_[index];
+      row[tplIdx(name)] = name === "啟用" ? (sourceValue ? "是" : "否") : sourceValue;
     });
     tplSheet.appendRow(row);
     templateRow = tplSheet.getLastRow();
   } else {
     templateColumns.forEach((name, index) => {
+      const sourceValue = FIXED_CRANE_MONTHLY_TEMPLATE_ROW_[index];
       tplSheet
         .getRange(templateRow, tplIdx(name) + 1)
-        .setValue(FIXED_CRANE_MONTHLY_TEMPLATE_ROW_[index]);
+        .setValue(name === "啟用" ? (sourceValue ? "是" : "否") : sourceValue);
     });
   }
 
