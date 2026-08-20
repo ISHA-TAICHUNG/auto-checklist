@@ -238,10 +238,21 @@ function doGet(e) {
             break;
           }
           case "migrateFixedCraneChecklists": {
-            result = {
-              action,
-              ...migrateFixedCraneChecklistsToSource_(),
-            };
+            try {
+              result = {
+                action,
+                ...migrateFixedCraneChecklistsToSource_(),
+              };
+            } catch (migrationError) {
+              result = {
+                ok: false,
+                action,
+                error: "fixed_crane_checklist_migration_failed",
+                detail: String(
+                  (migrationError && migrationError.message) || migrationError,
+                ).slice(0, 300),
+              };
+            }
             break;
           }
           case "setEquipmentField": {
