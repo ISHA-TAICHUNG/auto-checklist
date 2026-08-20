@@ -2248,14 +2248,10 @@ function applyChineseSettingsAndDropdowns() {
 }
 
 /**
- * 將既有資料庫的固定式起重機日檢項目同步為目前程式定義。
- * 僅更新「檢查項目」設定，不會修改既有填報紀錄或歷史 PDF。
+ * 依「表單ID＋項目順序」將題庫定義原地更新或補列。
+ * 不刪除任何既有列，避免維護題目時影響其他表單或試算表結構。
  */
-function migrateFixedCraneDailyChecklistToSource_() {
-  const ss = SpreadsheetApp.openById(CONFIG.DB_SHEET_ID);
-  const itemSheet = ss.getSheetByName("檢查項目");
-  if (!itemSheet) throw new Error("找不到固定式起重機日檢所需資料表");
-
+function upsertChecklistItemsToSource_(itemSheet, sourceItems) {
   const itemHeaders = itemSheet
     .getRange(1, 1, 1, itemSheet.getLastColumn())
     .getValues()[0];
@@ -2266,29 +2262,77 @@ function migrateFixedCraneDailyChecklistToSource_() {
   });
 
   const itemData = itemSheet.getDataRange().getValues();
-  const rowsToDelete = [];
+  const rowByKey = {};
+  let duplicateRows = 0;
   for (let r = 1; r < itemData.length; r++) {
-    if (String(itemData[r][itemIdx("表單ID")] || "").trim() === "F-CRANE-D")
-      rowsToDelete.push(r + 1);
+    const formId = String(itemData[r][itemIdx("表單ID")] || "").trim();
+    const order = Number(itemData[r][itemIdx("項目順序")]);
+    if (!formId || !Number.isFinite(order)) continue;
+    const key = formId + "|" + order;
+    if (rowByKey[key]) duplicateRows++;
+    else rowByKey[key] = r + 1;
   }
-  for (let i = rowsToDelete.length - 1; i >= 0; i--)
-    itemSheet.deleteRow(rowsToDelete[i]);
 
-  const newRows = FIXED_CRANE_DAILY_ITEMS_.map((item) => {
-    const row = new Array(itemHeaders.length).fill("");
+  let updatedItemRows = 0;
+  const rowsToAppend = [];
+  sourceItems.forEach((item) => {
+    const key = String(item[0]) + "|" + Number(item[1]);
+    const sheetRow = rowByKey[key];
+    if (!sheetRow) {
+      const row = new Array(itemHeaders.length).fill("");
+      itemColumns.forEach((name, index) => {
+        row[itemIdx(name)] = item[index];
+      });
+      rowsToAppend.push(row);
+      return;
+    }
+
+    const row = itemData[sheetRow - 1].slice();
+    let changed = false;
     itemColumns.forEach((name, index) => {
-      row[itemIdx(name)] = item[index];
+      const column = itemIdx(name);
+      if (String(row[column]) !== String(item[index])) changed = true;
+      row[column] = item[index];
     });
-    return row;
+    if (changed) {
+      itemSheet
+        .getRange(sheetRow, 1, 1, itemHeaders.length)
+        .setValues([row]);
+      updatedItemRows++;
+    }
   });
-  itemSheet
-    .getRange(itemSheet.getLastRow() + 1, 1, newRows.length, itemHeaders.length)
-    .setValues(newRows);
+
+  if (rowsToAppend.length) {
+    itemSheet
+      .getRange(
+        itemSheet.getLastRow() + 1,
+        1,
+        rowsToAppend.length,
+        itemHeaders.length,
+      )
+      .setValues(rowsToAppend);
+  }
+
+  return {
+    itemCount: sourceItems.length,
+    updatedItemRows,
+    appendedItemRows: rowsToAppend.length,
+    duplicateRows,
+  };
+}
+
+/**
+ * 將既有資料庫的固定式起重機日檢項目同步為目前程式定義。
+ * 僅更新「檢查項目」設定，不會修改既有填報紀錄或歷史 PDF。
+ */
+function migrateFixedCraneDailyChecklistToSource_() {
+  const ss = SpreadsheetApp.openById(CONFIG.DB_SHEET_ID);
+  const itemSheet = ss.getSheetByName("檢查項目");
+  if (!itemSheet) throw new Error("找不到固定式起重機日檢所需資料表");
 
   return {
     ok: true,
-    replacedItemRows: rowsToDelete.length,
-    itemCount: newRows.length,
+    ...upsertChecklistItemsToSource_(itemSheet, FIXED_CRANE_DAILY_ITEMS_),
   };
 }
 
@@ -2345,39 +2389,10 @@ function migrateFixedCraneMonthlyChecklistToSource_() {
     });
   }
 
-  const itemHeaders = itemSheet
-    .getRange(1, 1, 1, itemSheet.getLastColumn())
-    .getValues()[0];
-  const itemIdx = (name) => itemHeaders.indexOf(name);
-  const itemColumns = ["表單ID", "項目順序", "項目名稱", "檢查方法", "啟用"];
-  itemColumns.forEach((name) => {
-    if (itemIdx(name) < 0) throw new Error("檢查項目缺欄位：" + name);
-  });
-  const itemData = itemSheet.getDataRange().getValues();
-  const rowsToDelete = [];
-  for (let r = 1; r < itemData.length; r++) {
-    if (String(itemData[r][itemIdx("表單ID")] || "").trim() === "F-CRANE-M")
-      rowsToDelete.push(r + 1);
-  }
-  for (let i = rowsToDelete.length - 1; i >= 0; i--)
-    itemSheet.deleteRow(rowsToDelete[i]);
-
-  const newRows = FIXED_CRANE_MONTHLY_ITEMS_.map((item) => {
-    const row = new Array(itemHeaders.length).fill("");
-    itemColumns.forEach((name, index) => {
-      row[itemIdx(name)] = item[index];
-    });
-    return row;
-  });
-  itemSheet
-    .getRange(itemSheet.getLastRow() + 1, 1, newRows.length, itemHeaders.length)
-    .setValues(newRows);
-
   return {
     ok: true,
     templateRow,
-    replacedItemRows: rowsToDelete.length,
-    itemCount: newRows.length,
+    ...upsertChecklistItemsToSource_(itemSheet, FIXED_CRANE_MONTHLY_ITEMS_),
   };
 }
 

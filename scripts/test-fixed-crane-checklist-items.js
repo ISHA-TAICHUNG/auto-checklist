@@ -65,4 +65,15 @@ assert.match(
 const mainSource = fs.readFileSync('apps-script/Main.gs', 'utf8');
 assert.match(mainSource, /case "migrateFixedCraneChecklists"/);
 
+const migrationStart = setupSource.indexOf('function upsertChecklistItemsToSource_');
+const migrationEnd = setupSource.indexOf('/**\n * 加堆高機檢查表模板', migrationStart);
+const migrationSource = setupSource.slice(migrationStart, migrationEnd);
+assert(migrationStart >= 0 && migrationEnd > migrationStart, 'fixed-crane migration helpers not found');
+assert.match(migrationSource, /function upsertChecklistItemsToSource_/);
+assert.doesNotMatch(
+  migrationSource,
+  /\.deleteRow\s*\(/,
+  'fixed-crane checklist migration must not delete existing sheet rows',
+);
+
 console.log('fixed-crane daily/monthly checklist item test passed');
