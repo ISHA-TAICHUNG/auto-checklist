@@ -10,6 +10,11 @@ const CONFIG = {
   // 新建 Apps Script 預設可能是 GMT，會讓民國年月日差一天
   TIMEZONE: 'Asia/Taipei',
 
+  // ------ 正式 Apps Script 專案身分鎖 ------
+  // 正式值只放在 ignored 的 Config.js。每日提醒會比對 ScriptApp.getScriptId()，
+  // 防止舊帳號／複製專案殘留的觸發器再次使用同一組 LINE 設定廣播。
+  PRIMARY_SCRIPT_ID: 'REPLACE_WITH_PRIMARY_SCRIPT_ID',
+
   // ------ 伺服器間 API token ------
   // 僅供 Cloud Run 與 Apps Script 間通訊，不得寫入 GitHub Pages 或公開 URL。
   // 公開前端改用後端簽發的短效、動作綁定、一次性票證。

@@ -14,7 +14,31 @@
  * 不必每台單獨填。否則 6 台堆高機 / 5 台衝剪機械都會誤寄多封信。
  */
 
+function isPrimaryDailyReminderRuntime_() {
+  const expected = String(CONFIG.PRIMARY_SCRIPT_ID || '').trim();
+  if (!expected || /^REPLACE_/.test(expected)) return false;
+  try {
+    return String(ScriptApp.getScriptId() || '').trim() === expected;
+  } catch (err) {
+    Logger.log('每日提醒專案身分檢查失敗：' + err);
+    return false;
+  }
+}
+
+function skipNonPrimaryDailyReminderRuntime_() {
+  if (isPrimaryDailyReminderRuntime_()) return null;
+  const result = [{
+    action: 'skip',
+    reason: '非正式 Apps Script 專案，略過每日提醒',
+  }];
+  Logger.log('每日提醒已由專案身分鎖停止：' + JSON.stringify(result));
+  return result;
+}
+
 function dailyReminderJob(opts) {
+  const runtimeSkip = skipNonPrimaryDailyReminderRuntime_();
+  if (runtimeSkip) return runtimeSkip;
+
   opts = opts || {};
   const dryRun = !!(opts && opts.dryRun);
   const today = opts.today || todayStart_();
@@ -210,6 +234,10 @@ function sendUnfilledReminder_(equipment, date, usage) {
  * 部署完成後，到 Apps Script 編輯器手動執行一次此函數即可
  */
 function installDailyReminderTrigger() {
+  if (!isPrimaryDailyReminderRuntime_()) {
+    throw new Error('非正式 Apps Script 專案，不得安裝每日提醒觸發器');
+  }
+
   // 先刪掉舊的同名觸發器，避免重複
   ScriptApp.getProjectTriggers()
     .filter(t => t.getHandlerFunction() === 'dailyReminderJob')
