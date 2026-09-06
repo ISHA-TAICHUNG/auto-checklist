@@ -1492,6 +1492,7 @@ function dashboardSystemHealth_() {
     venueOk: Boolean(status.venue && status.venue.ok),
     venueTitle: status.venue && status.venue.title ? status.venue.title : "",
     triggers,
+    dailyReminder: dashboardDailyReminderHealth_(),
     allTriggerCount: (status.triggers || []).length,
     links: {
       archive: CONFIG.ARCHIVE_ROOT_FOLDER_ID
@@ -1499,6 +1500,57 @@ function dashboardSystemHealth_() {
         : "",
       database: dashboardDatabaseUrl_(),
     },
+  };
+}
+
+function dashboardDailyReminderHealth_(now) {
+  const status = typeof getDailyReminderRunStatus_ === "function"
+    ? getDailyReminderRunStatus_()
+    : { lastRun: null };
+  const lastRun = status && status.lastRun ? status.lastRun : null;
+  if (!lastRun) {
+    return {
+      ok: false,
+      status: "missing",
+      value: "尚無新版執行紀錄",
+      ageHours: null,
+      failedCount: 0,
+    };
+  }
+
+  const referenceText = lastRun.completedAt || lastRun.startedAt || "";
+  const referenceMs = Date.parse(String(referenceText));
+  const nowMs = (now instanceof Date ? now : new Date()).getTime();
+  const ageHours = isNaN(referenceMs)
+    ? null
+    : Math.max(0, Math.floor((nowMs - referenceMs) / 3600000));
+  const runStatus = String(lastRun.status || "invalid");
+  const failedCount = Math.max(0, Number(lastRun.failedCount || 0));
+  const stale = ageHours == null || ageHours > 36;
+  const runningTooLong = runStatus === "running" && (ageHours == null || ageHours >= 1);
+  const ok = !stale && !runningTooLong && (
+    runStatus === "completed" || runStatus === "running"
+  ) && lastRun.ok !== false;
+  const label = String(
+    lastRun.completedAtLabel || lastRun.startedAtLabel || "時間不明",
+  );
+
+  let value = label;
+  if (runStatus === "running" && !runningTooLong) value = label + " 執行中";
+  else if (runStatus === "running") value = label + " 執行可能逾時";
+  else if (runStatus === "completed_with_errors") {
+    value = label + " 部分失敗（" + failedCount + " 項）";
+  } else if (runStatus === "failed" || runStatus === "invalid" || lastRun.ok === false) {
+    value = label + " 執行失敗";
+  } else if (stale) value = label + " 已超過 36 小時";
+  else value = label + " 完成";
+
+  return {
+    ok,
+    status: runStatus,
+    value,
+    ageHours,
+    failedCount,
   };
 }
 
@@ -1836,7 +1888,8 @@ function dashboardOverallStatus_(sections, errors) {
   }
   const system = sections.system || {};
   const triggerProblem = (system.triggers || []).some((row) => !row.ok);
-  if (!system.archiveOk || !system.venueOk || triggerProblem) {
+  const reminderProblem = system.dailyReminder && !system.dailyReminder.ok;
+  if (!system.archiveOk || !system.venueOk || triggerProblem || reminderProblem) {
     return { level: "warning", label: "需要檢查" };
   }
   return { level: "healthy", label: "運作正常" };

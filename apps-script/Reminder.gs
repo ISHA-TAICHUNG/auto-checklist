@@ -35,79 +35,192 @@ function skipNonPrimaryDailyReminderRuntime_() {
   return result;
 }
 
+const DAILY_REMINDER_LAST_RUN_PROPERTY = 'DAILY_REMINDER_LAST_RUN_V1';
+const DAILY_REMINDER_LAST_DRY_RUN_PROPERTY = 'DAILY_REMINDER_LAST_DRY_RUN_V1';
+
+function dailyReminderSafeError_(err) {
+  return String((err && err.message) || err || '未知錯誤')
+    .replace(/https?:\/\/\S+/g, '[URL]')
+    .replace(/[A-Za-z0-9_-]{32,}/g, '[REDACTED]')
+    .slice(0, 240);
+}
+
+function rememberDailyReminderRun_(payload) {
+  const value = Object.assign({}, payload || {});
+  const key = value.dryRun
+    ? DAILY_REMINDER_LAST_DRY_RUN_PROPERTY
+    : DAILY_REMINDER_LAST_RUN_PROPERTY;
+  try {
+    PropertiesService.getScriptProperties().setProperty(key, JSON.stringify(value));
+  } catch (err) {
+    Logger.log('[dailyReminderJob] 無法保存執行狀態：' + dailyReminderSafeError_(err));
+  }
+  return value;
+}
+
+function beginDailyReminderRun_(dryRun) {
+  const now = new Date();
+  return rememberDailyReminderRun_({
+    status: 'running',
+    ok: null,
+    dryRun: !!dryRun,
+    startedAt: now.toISOString(),
+    startedAtLabel: Utilities.formatDate(now, tz_(), 'yyyy-MM-dd HH:mm:ss'),
+    completedAt: '',
+    completedAtLabel: '',
+    resultCount: 0,
+    failedCount: 0,
+    failedCategories: [],
+    error: '',
+  });
+}
+
+function finishDailyReminderRun_(run, results, err) {
+  const now = new Date();
+  const rows = Array.isArray(results) ? results : [];
+  const failedRows = rows.filter((row) => {
+    const action = String((row && row.action) || '').toLowerCase();
+    return action === 'failed' || action === 'reminderfailed' || action === 'error';
+  });
+  const fatalError = err ? dailyReminderSafeError_(err) : '';
+  return rememberDailyReminderRun_(Object.assign({}, run || {}, {
+    status: fatalError ? 'failed' : failedRows.length ? 'completed_with_errors' : 'completed',
+    ok: !fatalError && failedRows.length === 0,
+    completedAt: now.toISOString(),
+    completedAtLabel: Utilities.formatDate(now, tz_(), 'yyyy-MM-dd HH:mm:ss'),
+    resultCount: rows.length,
+    failedCount: failedRows.length + (fatalError ? 1 : 0),
+    failedCategories: failedRows.map((row) => String(
+      row.category || row.equipmentName || row.equipmentId || '未分類',
+    )).slice(0, 10),
+    error: fatalError,
+  }));
+}
+
+function getDailyReminderRunStatus_() {
+  const properties = PropertiesService.getScriptProperties();
+  const parse = (raw) => {
+    if (!raw) return null;
+    try {
+      return JSON.parse(raw);
+    } catch (_) {
+      return { status: 'invalid', ok: false, error: '執行狀態格式錯誤' };
+    }
+  };
+  return {
+    lastRun: parse(properties.getProperty(DAILY_REMINDER_LAST_RUN_PROPERTY)),
+    lastDryRun: parse(properties.getProperty(DAILY_REMINDER_LAST_DRY_RUN_PROPERTY)),
+  };
+}
+
+function dailyReminderFailureResult_(category, err, extra) {
+  return Object.assign({
+    category: category || '未分類提醒',
+    action: 'failed',
+    reason: dailyReminderSafeError_(err),
+  }, extra || {});
+}
+
 function dailyReminderJob(opts) {
   const runtimeSkip = skipNonPrimaryDailyReminderRuntime_();
   if (runtimeSkip) return runtimeSkip;
 
   opts = opts || {};
   const dryRun = !!(opts && opts.dryRun);
-  const today = opts.today || todayStart_();
-  const equipments = getEquipmentList_();
   const results = [];
-  const sentCategories = new Set();         // 同類別只寄一次
-  const cyclesByCategory = getTemplateCyclesByCategory_();
+  const run = beginDailyReminderRun_(dryRun);
+  try {
+    const today = opts.today || todayStart_();
+    const equipments = getEquipmentList_();
+    const sentCategories = new Set();         // 同類別只通知一次
+    const cyclesByCategory = getTemplateCyclesByCategory_();
 
-  for (const eqp of equipments) {
-    const full = getEquipmentById_(eqp.equipmentId);
-    if (!full || !full.active) continue;
+    for (const eqp of equipments) {
+      const full = getEquipmentById_(eqp.equipmentId);
+      if (!full || !full.active) continue;
 
-    const cycles = cyclesByCategory[full.category] || [];
-    if (cycles.indexOf('每日') < 0) {
-      continue;
+      const cycles = cyclesByCategory[full.category] || [];
+      if (cycles.indexOf('每日') < 0) continue;
+
+      // 場地防護具另由專用 17:15 提醒處理，避免和一般機具提醒重複。
+      if (full.category === '防護具檢點') {
+        results.push({ equipmentId: full.equipmentId, category: full.category, action: 'skip',
+                       reason: '防護具類別由專用提醒處理' });
+        continue;
+      }
+
+      const usage = getVenueUsage_(full, today);
+      if (!usage.used) {
+        results.push({ equipmentId: full.equipmentId, category: full.category, action: 'skip',
+                       reason: usage.reason || '無使用紀錄' });
+        continue;
+      }
+
+      if (hasDailyRecordInCategory_(full.category, today)) {
+        results.push({ equipmentId: full.equipmentId, category: full.category, action: 'skip',
+                       reason: '該類別當日已填' });
+        continue;
+      }
+
+      if (sentCategories.has(full.category)) {
+        results.push({ equipmentId: full.equipmentId, category: full.category, action: 'skip',
+                       reason: '同類別已處理' });
+        continue;
+      }
+
+      sentCategories.add(full.category);
+      if (dryRun) {
+        results.push({ equipmentId: full.equipmentId, category: full.category,
+                       action: 'wouldMail', usage: usage.content });
+        continue;
+      }
+      try {
+        sendUnfilledReminder_(full, today, usage);
+        results.push({ equipmentId: full.equipmentId, category: full.category,
+                       action: 'mailed', usage: usage.content });
+      } catch (err) {
+        Logger.log('[dailyReminderJob] ' + full.category + ' 提醒失敗：' + dailyReminderSafeError_(err));
+        results.push(dailyReminderFailureResult_(full.category, err, {
+          equipmentId: full.equipmentId,
+        }));
+      }
     }
 
-    // 防護具檢點：不對場地表（每日 PPE check 由操作員每堂課自行記錄、不發 reminder）
-    if (full.category === '防護具檢點') {
-      results.push({ equipmentId: full.equipmentId, category: full.category, action: 'skip',
-                     reason: '防護具類別不發 reminder' });
-      continue;
+    if (typeof dailyPpeChecklistStatusResults_ === 'function') {
+      try {
+        dailyPpeChecklistStatusResults_(today).forEach((row) => results.push(row));
+      } catch (err) {
+        Logger.log('場地防護具狀態查詢失敗：' + dailyReminderSafeError_(err));
+        results.push(dailyReminderFailureResult_('場地防護具狀態', err));
+      }
     }
 
-    const usage = getVenueUsage_(full, today);
-    if (!usage.used) {
-      results.push({ equipmentId: full.equipmentId, category: full.category, action: 'skip',
-                     reason: usage.reason || '無使用紀錄' });
-      continue;
+    if (typeof monthlyReminderJob_ === 'function') {
+      try {
+        monthlyReminderJob_({ dryRun, today }).forEach((row) => results.push(row));
+      } catch (err) {
+        Logger.log('月檢提醒失敗：' + dailyReminderSafeError_(err));
+        results.push(dailyReminderFailureResult_('月檢提醒', err));
+      }
     }
 
-    if (hasDailyRecordInCategory_(full.category, today)) {
-      results.push({ equipmentId: full.equipmentId, category: full.category, action: 'skip',
-                     reason: '該類別當日已填' });
-      continue;
+    if (typeof pendingApprovalReminderJob_ === 'function') {
+      try {
+        results.push(pendingApprovalReminderJob_({ dryRun, today }));
+      } catch (err) {
+        Logger.log('待簽核提醒失敗：' + dailyReminderSafeError_(err));
+        results.push(dailyReminderFailureResult_('主管待簽核', err));
+      }
     }
 
-    if (sentCategories.has(full.category)) {
-      results.push({ equipmentId: full.equipmentId, category: full.category, action: 'skip',
-                     reason: '同類別已寄信' });
-      continue;
-    }
-
-    if (!dryRun) sendUnfilledReminder_(full, today, usage);
-    sentCategories.add(full.category);
-    results.push({ equipmentId: full.equipmentId, category: full.category,
-                   action: dryRun ? 'wouldMail' : 'mailed',
-                   usage: usage.content });
+    finishDailyReminderRun_(run, results);
+    Logger.log((dryRun ? 'dryRun ' : '') + 'dailyReminderJob 結果：' + JSON.stringify(results));
+    return results;
+  } catch (err) {
+    finishDailyReminderRun_(run, results, err);
+    Logger.log('[dailyReminderJob] 執行中止：' + dailyReminderSafeError_(err));
+    throw err;
   }
-
-  if (typeof dailyPpeChecklistStatusResults_ === 'function') {
-    try {
-      dailyPpeChecklistStatusResults_(today).forEach(r => results.push(r));
-    } catch (err) {
-      Logger.log('場地防護具狀態查詢失敗：' + (err && err.message ? err.message : err));
-    }
-  }
-
-  if (typeof monthlyReminderJob_ === 'function') {
-    const monthlyResults = monthlyReminderJob_({ dryRun, today });
-    monthlyResults.forEach(r => results.push(r));
-  }
-
-  if (typeof pendingApprovalReminderJob_ === 'function') {
-    results.push(pendingApprovalReminderJob_({ dryRun, today }));
-  }
-
-  Logger.log((dryRun ? 'dryRun ' : '') + 'dailyReminderJob 結果：' + JSON.stringify(results));
-  return results;
 }
 
 /**

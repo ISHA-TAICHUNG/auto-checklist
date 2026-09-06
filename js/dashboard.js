@@ -52,12 +52,15 @@
     opts = opts || {};
     if (state.loading) return;
     state.loading = true;
+    const showLoadingControl = opts.background !== true;
     if (opts.initial && dialog.open) {
       dialog.close();
       showAlert('正在驗證管理權限並讀取最近狀態...');
     }
-    $('refreshButton').disabled = true;
-    $('refreshButton').textContent = '載入中';
+    if (showLoadingControl) {
+      $('refreshButton').disabled = true;
+      $('refreshButton').textContent = '載入中';
+    }
     try {
       const result = await window.API.adminDashboardStatus(sessionToken, {
         forceRefresh: opts.forceRefresh === true,
@@ -94,8 +97,10 @@
       }
     } finally {
       state.loading = false;
-      $('refreshButton').disabled = false;
-      $('refreshButton').textContent = '重新整理';
+      if (showLoadingControl) {
+        $('refreshButton').disabled = false;
+        $('refreshButton').textContent = '重新整理';
+      }
     }
   }
 
@@ -103,7 +108,7 @@
     if (state.timer) window.clearTimeout(state.timer);
     state.timer = window.setTimeout(() => {
       const sessionToken = state.adminSessionToken;
-      if (sessionToken && !document.hidden) loadDashboard(sessionToken, { forceRefresh: true, background: true });
+      if (sessionToken && !document.hidden) loadDashboard(sessionToken, { background: true });
       else scheduleRefresh(seconds);
     }, Math.max(30, Number(seconds || 60)) * 1000);
   }
@@ -448,6 +453,13 @@
       { label: '歸檔資料夾', ok: section.archiveOk, value: section.archiveOk ? '可存取' : '異常' },
       { label: '場地資料來源', ok: section.venueOk, value: section.venueOk ? (section.venueTitle || '可存取') : '異常' },
     ].concat((section.triggers || []).map(row => ({ label: row.handler, ok: row.ok, value: row.count + ' 個觸發器' })));
+    if (section.dailyReminder) {
+      items.push({
+        label: '每日提醒最近執行',
+        ok: section.dailyReminder.ok,
+        value: section.dailyReminder.value || '沒有執行紀錄',
+      });
+    }
     $('healthRows').innerHTML = items.map(row => `<div class="health-item"><span>${escapeHtml(row.label)}</span><strong class="status ${row.ok ? 'completed' : 'critical'}">${escapeHtml(row.value)}</strong></div>`).join('');
     setResourceLink('databaseLink', section.links && section.links.database);
     setResourceLink('archiveLink', section.links && section.links.archive);
