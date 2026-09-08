@@ -2,6 +2,17 @@
 
 ## 當前安全模型
 
+### 維護入口與排程（2026-09-08）
+
+- `google.script.run` 可以呼叫未以 `_` 結尾的頂層函式；不能只靠 HTTP 管理路由或 `executionApi: MYSELF` 保護維護函式。
+- 維護實作與排程 handler 改為私有函式。保留的編輯器入口必須取得非空的 active Google 帳號，且與 effective 執行帳號相同；匿名及其他帳號一律拒絕。
+- 正式觸發器使用 `dailyReminderJob_`、`dailyPpeAssignmentJob_`。安裝器只替換同項的新舊名稱，不影響其他觸發器；部署後必須檢查綁定與下一次自然執行。
+- `dryRun` 與正式執行紀錄分開保存。只有 dry-run 通過，不能宣稱正式推播成功；驗證不應用真實送件或通知污染業務資料。
+- 群組／room 的案件與簽核指令只提示轉私訊。頁面回傳不含持久化承辦／主管操作 token；缺少必要訂閱或主管欄位時不得放寬名單。
+- 日常事件建立使用持久化階段紀錄。PDF 失敗可續作；通知已嘗試但結果不明時不自動重發，須由管理者核對後決定是否補發。
+
+依據：[Google HTML Service 私有函式說明](https://developers.google.com/apps-script/guides/html/communication#private_functions)。
+
 | 層級 | 防護 |
 |---|---|
 | 前端 → 後端 | 後端核發 10 分鐘短效、動作綁定、一次性操作票證；公開前端不保存共享密鑰 |

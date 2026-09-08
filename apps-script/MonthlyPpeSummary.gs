@@ -15,6 +15,7 @@ const MONTHLY_PPE_SUMMARY_EQUIPMENTS = [
 const MONTHLY_PPE_CONFIRMATION_STATUSES = ['未接獲異常', '異常已改善', '異常待追蹤', '不適用'];
 
 function generateMonthlyPpeSummary(options) {
+  assertScriptEditorAccess_();
   return generateMonthlyPpeSummary_(options || {});
 }
 
@@ -41,7 +42,7 @@ function generateMonthlyPpeSummary_(options) {
   };
 }
 
-function monthlyPpeSummaryReminderJob(opts) {
+function monthlyPpeSummaryReminderJob_(opts) {
   opts = opts || {};
   const dryRun = !!opts.dryRun;
   const today = opts.today || todayStart_();
@@ -824,4 +825,10 @@ function monthlyPpeCell_(rowOrValue, index) {
     return value == null ? '' : String(value).trim();
   }
   return rowOrValue == null ? '' : String(rowOrValue).trim();
+}
+
+// Editor-only wrappers; authenticated HTTP routes call the private implementations.
+function monthlyPpeSummaryReminderJob(opts) {
+  assertScriptEditorAccess_();
+  return monthlyPpeSummaryReminderJob_(opts);
 }

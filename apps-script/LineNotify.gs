@@ -314,6 +314,7 @@ function findLineSubscriberTargetsByName_(targetName, opts) {
     const staffCol = headers.indexOf('是否為同仁');
     const supervisorCol = getLineSupervisorFlagColumnIndex_(headers);
     if (nameCol < 0 || idCol < 0) return { ids: [], ambiguous: false, matchCount: 0, name: nameTarget };
+    if (activeCol < 0) return { ids: [], ambiguous: false, matchCount: 0, name: nameTarget, error: 'missing_subscription_column' };
     const ids = [];
     data.slice(1).forEach(row => {
       const name = String(row[nameCol] || '').trim();
@@ -355,12 +356,15 @@ function getSupervisorUserIdsFromSheet_(opts) {
     const subscribeCol = getLineSubscriberActiveColumnIndex_(headers);
     const supervisorCol = getLineSupervisorFlagColumnIndex_(headers);
     const notificationCol = notificationColumn ? headers.indexOf(notificationColumn) : -1;
-    if (idCol < 0) return [];
+    if (idCol < 0 || subscribeCol < 0 || supervisorCol < 0) {
+      Logger.log('[LINE] 主管通知停止：訂閱者清單缺少必要身分欄位');
+      return [];
+    }
     const ids = [];
     data.slice(1).forEach(row => {
       const id = String(row[idCol] || '').trim();
       const subscribed = subscribeCol < 0 ? true : isActiveValue_(row[subscribeCol]);
-      const isSupervisor = supervisorCol < 0 ? true : isActiveValue_(row[supervisorCol]);
+      const isSupervisor = isActiveValue_(row[supervisorCol]);
       const notificationEnabled = notificationColumn
         ? isLineNotificationEnabled_(notificationCol >= 0 ? row[notificationCol] : '')
         : true;
@@ -389,13 +393,16 @@ function getSupervisorUserIdsByName_(supervisorName, opts) {
     const subscribeCol = getLineSubscriberActiveColumnIndex_(headers);
     const supervisorCol = getLineSupervisorFlagColumnIndex_(headers);
     const notificationCol = notificationColumn ? headers.indexOf(notificationColumn) : -1;
-    if (nameCol < 0 || idCol < 0) return [];
+    if (nameCol < 0 || idCol < 0 || subscribeCol < 0 || supervisorCol < 0) {
+      Logger.log('[LINE] 指定主管通知停止：訂閱者清單缺少必要身分欄位');
+      return [];
+    }
     const ids = [];
     data.slice(1).forEach(row => {
       const name = String(row[nameCol] || '').trim();
       const id = String(row[idCol] || '').trim();
       const subscribed = subscribeCol < 0 ? true : isActiveValue_(row[subscribeCol]);
-      const isSupervisor = supervisorCol < 0 ? true : isActiveValue_(row[supervisorCol]);
+      const isSupervisor = isActiveValue_(row[supervisorCol]);
       const notificationEnabled = notificationColumn
         ? isLineNotificationEnabled_(notificationCol >= 0 ? row[notificationCol] : '')
         : true;
@@ -2361,6 +2368,129 @@ function buildDailyIncidentClosedFlex_(incident) {
  * 高層 API：寄未填提醒（給 Reminder.gs 用）
  * 自動加 Quick Reply 按鈕
  */
+function dailyReminderPolicyError_(message) {
+  const error = new Error(message);
+  error.notificationPolicyBlocked = true;
+  return error;
+}
+
+function readDailyReminderTargets_() {
+  const sheet = getLineSubscriberSheet_(SpreadsheetApp.openById(CONFIG.DB_SHEET_ID));
+  if (!sheet) throw dailyReminderPolicyError_('日檢通知名單不存在，停止發送');
+  const data = sheet.getDataRange().getValues();
+  const headers = (data[0] || []).map(value => String(value || '').trim());
+  const required = ['LINE_USER_ID', '是否訂閱', LINE_NOTIFICATION_COLUMNS.MACHINE_DAILY_REMINDER];
+  required.forEach(name => {
+    if (headers.filter(value => value === name).length !== 1) {
+      throw dailyReminderPolicyError_('日檢通知必要欄位缺漏或重複，停止發送');
+    }
+  });
+  const indexes = required.map(name => headers.indexOf(name));
+  const decisions = new Map();
+  data.slice(1).forEach(row => {
+    const id = String(row[indexes[0]] || '').trim();
+    const selected = String(row[indexes[1]] || '').trim() === '是' &&
+      String(row[indexes[2]] || '').trim() === '是';
+    if (!id && !selected) return;
+    if (selected && !/^U[0-9a-f]{32}$/i.test(id)) {
+      throw dailyReminderPolicyError_('日檢通知收件帳號格式錯誤，停止發送');
+    }
+    if (decisions.has(id) && decisions.get(id) !== selected) {
+      throw dailyReminderPolicyError_('同一日檢通知帳號的設定互相衝突，停止發送');
+    }
+    decisions.set(id, selected);
+  });
+  const ids = Array.from(decisions.keys()).filter(id => decisions.get(id));
+  if (!ids.length || ids.length > 100) {
+    throw dailyReminderPolicyError_('日檢通知收件人數無效，停止發送');
+  }
+  return ids;
+}
+
+function saveDailyReminderDeliveryAudit_(record) {
+  const props = PropertiesService.getScriptProperties();
+  const key = 'LINE_DAILY_DELIVERY_V1_' + record.id;
+  props.setProperty(key, JSON.stringify(record));
+  // Each attempt has its own key; an uncertain transport result stays visible.
+  const all = props.getProperties();
+  Object.keys(all).filter(name => name.indexOf('LINE_DAILY_DELIVERY_V1_') === 0)
+    .sort((a, b) => a.localeCompare(b)).slice(0, -20)
+    .forEach(name => props.deleteProperty(name));
+}
+
+function sendDailyReminderRestricted_(category, messages) {
+  if (!isPrimaryDailyReminderRuntime_()) {
+    throw dailyReminderPolicyError_('非正式專案，拒絕日檢通知');
+  }
+  const audit = {
+    id: Date.now() + '_' + Utilities.getUuid(),
+    revision: 'daily-recipient-policy-v2',
+    scriptId: ScriptApp.getScriptId(), category,
+    notificationColumn: LINE_NOTIFICATION_COLUMNS.MACHINE_DAILY_REMINDER,
+    startedAt: new Date().toISOString(), status: 'validating', targetCount: 0,
+  };
+  let ids;
+  try {
+    ids = readDailyReminderTargets_();
+    audit.targetCount = ids.length;
+    audit.targetHashes = ids.map(id => sha256Hex_(id));
+  } catch (err) {
+    audit.status = 'blocked';
+    try { saveDailyReminderDeliveryAudit_(audit); } catch (_) {}
+    throw dailyReminderPolicyError_('日檢收件名單驗證失敗，未發送');
+  }
+  const cfg = getLineConfig_();
+  if (!cfg.token) throw dailyReminderPolicyError_('日檢通知憑證未設定');
+  audit.status = 'sending';
+  try { saveDailyReminderDeliveryAudit_(audit); }
+  catch (_) { throw dailyReminderPolicyError_('發送稽核紀錄無法保存，未發送'); }
+  let response;
+  try {
+    response = UrlFetchApp.fetch(LINE_API + '/message/' + (ids.length === 1 ? 'push' : 'multicast'), {
+      method: 'post', contentType: 'application/json',
+      headers: { Authorization: 'Bearer ' + cfg.token },
+      payload: JSON.stringify({ to: ids.length === 1 ? ids[0] : ids, messages }),
+      muteHttpExceptions: true,
+    });
+  } catch (_) {
+    audit.status = 'delivery_unknown';
+    try { saveDailyReminderDeliveryAudit_(audit); } catch (_) {}
+    throw dailyReminderPolicyError_('LINE 回應不明，停止自動改寄並保留紀錄');
+  }
+  audit.httpStatus = response.getResponseCode();
+  const responseHeaders = response.getAllHeaders();
+  const requestIdKey = Object.keys(responseHeaders).find(key => key.toLowerCase() === 'x-line-request-id');
+  audit.requestId = requestIdKey ? String(responseHeaders[requestIdKey]) : '';
+  audit.status = audit.httpStatus >= 500 ? 'delivery_unknown' :
+    audit.httpStatus === 200 ? 'accepted' : 'rejected';
+  audit.completedAt = new Date().toISOString();
+  try { saveDailyReminderDeliveryAudit_(audit); }
+  catch (_) { throw dailyReminderPolicyError_('LINE 已回應但稽核保存失敗，請勿自動重送'); }
+  if (audit.httpStatus >= 500) {
+    throw dailyReminderPolicyError_('LINE 伺服器回應不明，停止自動改寄並保留紀錄');
+  }
+  return { ok: audit.httpStatus === 200, code: audit.httpStatus,
+    targetCount: ids.length, auditId: audit.id, targetMode: 'daily-explicit-opt-in' };
+}
+
+function getDailyReminderDeliveryAudits_() {
+  const all = PropertiesService.getScriptProperties().getProperties();
+  return Object.keys(all).filter(key => key.indexOf('LINE_DAILY_DELIVERY_V1_') === 0)
+    .sort().reverse().slice(0, 20).map(key => {
+      try { return JSON.parse(all[key]); }
+      catch (_) { return { status: 'invalid_audit' }; }
+    });
+}
+
+function getDailyReminderRecipientPreview_() {
+  try {
+    const ids = readDailyReminderTargets_();
+    return { ok: true, targetCount: ids.length, targetHashes: ids.map(id => sha256Hex_(id)) };
+  } catch (_) {
+    return { ok: false, targetCount: 0, reason: 'recipient_policy_blocked' };
+  }
+}
+
 function sendReminder_(category, equipments, webFrontendUrl, opts) {
   opts = opts || {};
   // 未填提醒不得退回一般「是否訂閱」全體名單；若呼叫端漏傳欄位，
@@ -2374,6 +2504,10 @@ function sendReminder_(category, equipments, webFrontendUrl, opts) {
     return { ok: false, reason: 'missing_notification_column', targetCount: 0 };
   }
   const flex = buildReminderFlex_(category, equipments, webFrontendUrl || '', opts);
+  if (notificationColumn === LINE_NOTIFICATION_COLUMNS.MACHINE_DAILY_REMINDER) {
+    const messages = withQuickReply_(flex);
+    return sendDailyReminderRestricted_(category, Array.isArray(messages) ? messages : [messages]);
+  }
   return linePush_(withQuickReply_(flex), { notificationColumn });
 }
 
@@ -2673,7 +2807,7 @@ function lineRichMenuArea_(x, y, width, height, action) {
   return { bounds: { x, y, width, height }, action };
 }
 
-function installDefaultLineRichMenu() {
+function installDefaultLineRichMenu_() {
   const cfg = getLineConfig_();
   if (!cfg.token) throw new Error('LINE_CHANNEL_ACCESS_TOKEN 未設定，無法建立圖文選單');
   const props = PropertiesService.getScriptProperties();
@@ -2714,7 +2848,7 @@ function installDefaultLineRichMenu() {
   return { ok: true, richMenuId, imageUrl, areas: spec.areas.length };
 }
 
-function getLineRichMenuStatus() {
+function getLineRichMenuStatus_() {
   const props = PropertiesService.getScriptProperties();
   const configuredId = props.getProperty('LINE_DEFAULT_RICH_MENU_ID') || '';
   let defaultId = '';
@@ -2804,7 +2938,7 @@ function getLineWebhookHealth_() {
   };
 }
 
-function setLineWebhookEndpointToCurrent() {
+function setLineWebhookEndpointToCurrent_() {
   const endpoint = buildExpectedLineWebhookEndpoint_();
   if (!endpoint) {
     throw new Error('無法產生 LINE Webhook URL：請確認 Web App 已部署，且 LINE_WEBHOOK_QUERY_TOKEN 已設定');
@@ -2851,7 +2985,7 @@ function lineWebhookEndpointToken_(url) {
   }
 }
 
-function deleteInstalledLineRichMenu() {
+function deleteInstalledLineRichMenu_() {
   const props = PropertiesService.getScriptProperties();
   const richMenuId = props.getProperty('LINE_DEFAULT_RICH_MENU_ID') || '';
   if (!richMenuId) return { ok: true, skipped: true, reason: 'no_installed_rich_menu_id' };
@@ -2914,4 +3048,25 @@ function lineRichMenuFetchBase_(url, options) {
     throw new Error(`LINE Rich Menu API 失敗：HTTP ${code} ${res.getContentText()}`);
   }
   return res;
+}
+
+// Editor-only wrappers; authenticated HTTP routes call the private implementations.
+function installDefaultLineRichMenu() {
+  assertScriptEditorAccess_();
+  return installDefaultLineRichMenu_();
+}
+
+function getLineRichMenuStatus() {
+  assertScriptEditorAccess_();
+  return getLineRichMenuStatus_();
+}
+
+function setLineWebhookEndpointToCurrent() {
+  assertScriptEditorAccess_();
+  return setLineWebhookEndpointToCurrent_();
+}
+
+function deleteInstalledLineRichMenu() {
+  assertScriptEditorAccess_();
+  return deleteInstalledLineRichMenu_();
 }

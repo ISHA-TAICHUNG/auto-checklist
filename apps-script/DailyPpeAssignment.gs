@@ -13,16 +13,17 @@ const DAILY_PPE_ASSIGNMENT_EQUIPMENTS = [
 ];
 const DAILY_PPE_REMINDER_DEFAULT_RECIPIENTS = '卓小媛,張家豪';
 
-function installDailyPpeAssignmentTrigger() {
+function installDailyPpeAssignmentTrigger_() {
+  if (!isPrimaryDailyReminderRuntime_()) throw new Error('非正式 Apps Script 專案，不得安裝防護具提醒');
   ScriptApp.getProjectTriggers().forEach(trigger => {
-    if (trigger.getHandlerFunction() === 'dailyPpeAssignmentJob') {
+    if (['dailyPpeAssignmentJob', 'dailyPpeAssignmentJob_'].indexOf(trigger.getHandlerFunction()) >= 0) {
       ScriptApp.deleteTrigger(trigger);
     }
   });
 
   const hour = Number(getSetting_('dailyPpeAssignmentTriggerHour', '17')) || 17;
   const minute = Number(getSetting_('dailyPpeAssignmentNearMinute', '15')) || 15;
-  ScriptApp.newTrigger('dailyPpeAssignmentJob')
+  ScriptApp.newTrigger('dailyPpeAssignmentJob_')
     .timeBased()
     .everyDays(1)
     .atHour(Math.max(0, Math.min(23, Math.floor(hour))))
@@ -34,7 +35,7 @@ function installDailyPpeAssignmentTrigger() {
 
 function dailyPpeAssignmentTriggerStatus_() {
   const triggers = ScriptApp.getProjectTriggers()
-    .filter(t => t.getHandlerFunction() === 'dailyPpeAssignmentJob')
+    .filter(t => t.getHandlerFunction() === 'dailyPpeAssignmentJob_')
     .map(t => ({
       handler: t.getHandlerFunction(),
       type: String(t.getEventType()),
@@ -47,7 +48,7 @@ function dailyPpeAssignmentTriggerStatus_() {
   };
 }
 
-function dailyPpeAssignmentStatus(opts) {
+function dailyPpeAssignmentStatus_(opts) {
   opts = opts || {};
   const targetDate = dailyPpeAssignmentResolveDate_(opts.date || opts.today);
   const missing = dailyPpeCollectMissingConfirmations_(targetDate);
@@ -94,7 +95,24 @@ function dailyPpeListRecentUnconfirmedForLine_(opts) {
   };
 }
 
-function dailyPpeAssignmentJob(opts) {
+function dailyPpeAssignmentJob_(opts) {
+  opts = Object.assign({}, opts || {}, {
+    dryRun: !!(opts && (opts.dryRun === true || String(opts.dryRun).toLowerCase() === 'true' || opts.dryRun === '1')),
+  });
+  const runtimeSkip = skipNonPrimaryDailyReminderRuntime_(opts, 'dailyPpe');
+  if (runtimeSkip) return { ok: false, action: 'runtime_rejected', reason: runtimeSkip[0].reason };
+  const run = beginDailyReminderRun_(!!(opts && opts.dryRun), 'dailyPpe');
+  try {
+    const result = runDailyPpeAssignment_(opts);
+    finishDailyReminderRun_(run, [result]);
+    return result;
+  } catch (err) {
+    finishDailyReminderRun_(run, [], err);
+    throw err;
+  }
+}
+
+function runDailyPpeAssignment_(opts) {
   opts = opts || {};
   const dryRun = opts.dryRun === true || String(opts.dryRun || '').toLowerCase() === 'true' || opts.dryRun === '1';
   const targetDate = dailyPpeAssignmentResolveDate_(opts.date || opts.today);
@@ -127,8 +145,9 @@ function dailyPpeAssignmentJob(opts) {
 
     if (dryRun) {
       return {
-        ok: true,
+        ok: targets.errors.length === 0,
         action: 'wouldNotifyDailyPpeMissing',
+        targetErrors: targets.errors,
         date: dateStr,
         targetCount: targets.ids.length,
         targets: targets.names,
@@ -138,8 +157,9 @@ function dailyPpeAssignmentJob(opts) {
 
     const pushed = dailyPpePushMissingReminder_(targets.ids, missing, targetDate);
     return {
-      ok: pushed && pushed.ok !== false,
-      action: pushed && pushed.ok !== false ? 'notifiedDailyPpeMissing' : 'push_failed',
+      ok: !!(pushed && pushed.ok === true) && targets.errors.length === 0,
+      action: pushed && pushed.ok === true ? 'notifiedDailyPpeMissing' : 'push_failed',
+      targetErrors: targets.errors,
       date: dateStr,
       targetCount: targets.ids.length,
       targets: targets.names,
@@ -238,12 +258,13 @@ function dailyPpeUsageProbeEquipment_(def, ppeEquipment) {
 function dailyPpeHasDailyRecordForEquipment_(equipmentId, date) {
   const ss = SpreadsheetApp.openById(CONFIG.DB_SHEET_ID);
   const sheet = ss.getSheetByName('填報紀錄');
-  if (!sheet || sheet.getLastRow() < 2) return false;
+  if (!sheet) throw new Error('填報紀錄分頁不存在，無法判斷防護具日檢');
+  if (sheet.getLastRow() < 2) return false;
   const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0].map(h => String(h || '').trim());
   const dateCol = headers.indexOf('檢查日期');
   const typeCol = headers.indexOf('表單類型');
   const eqpCol = headers.indexOf('設備代號');
-  if (dateCol < 0 || typeCol < 0 || eqpCol < 0) return false;
+  if (dateCol < 0 || typeCol < 0 || eqpCol < 0) throw new Error('填報紀錄缺少防護具日檢必要欄位');
   const targetDate = formatISODate_(date);
   const targetEqp = String(equipmentId || '').trim();
   const values = sheet.getRange(2, 1, sheet.getLastRow() - 1, headers.length).getValues();
@@ -276,14 +297,14 @@ function dailyPpeReminderTargets_() {
   const resolvedNames = [];
   const errors = [];
   names.forEach(name => {
-    const found = findLineSubscriberTargetsByName_(name, {});
-    if (found && found.ids && found.ids.length) {
+    const found = findLineSubscriberTargetsByName_(name, { requireStaff: true });
+    if (found && !found.ambiguous && found.ids && found.ids.length === 1) {
       found.ids.forEach(id => {
         if (ids.indexOf(id) < 0) ids.push(id);
       });
       resolvedNames.push(name);
     } else {
-      errors.push({ name, reason: (found && found.error) || 'not_found_or_unsubscribed' });
+      errors.push({ name, reason: found && found.ambiguous ? 'ambiguous_name' : 'not_found_or_unsubscribed' });
     }
   });
   return { ids, names: resolvedNames, configuredNames: names, errors };
@@ -413,4 +434,20 @@ function dailyPpeSafeMissing_(item) {
     location: item.location,
     usageContent: item.usageContent,
   };
+}
+
+// Editor-only wrappers; authenticated HTTP routes call the private implementations.
+function installDailyPpeAssignmentTrigger() {
+  assertScriptEditorAccess_();
+  return installDailyPpeAssignmentTrigger_();
+}
+
+function dailyPpeAssignmentStatus(opts) {
+  assertScriptEditorAccess_();
+  return dailyPpeAssignmentStatus_(opts);
+}
+
+function dailyPpeAssignmentJob(opts) {
+  assertScriptEditorAccess_();
+  return dailyPpeAssignmentJob_(opts);
 }

@@ -460,6 +460,9 @@
         value: section.dailyReminder.value || '沒有執行紀錄',
       });
     }
+    if (section.dailyPpeReminder) {
+      items.push({ label: '場地防護具提醒最近執行', ok: section.dailyPpeReminder.ok, value: section.dailyPpeReminder.value || '沒有執行紀錄' });
+    }
     $('healthRows').innerHTML = items.map(row => `<div class="health-item"><span>${escapeHtml(row.label)}</span><strong class="status ${row.ok ? 'completed' : 'critical'}">${escapeHtml(row.value)}</strong></div>`).join('');
     setResourceLink('databaseLink', section.links && section.links.database);
     setResourceLink('archiveLink', section.links && section.links.archive);

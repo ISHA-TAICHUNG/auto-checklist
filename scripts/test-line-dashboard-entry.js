@@ -84,7 +84,7 @@ assert(cmdStart >= 0 && cmdEnd > cmdStart, 'cmdStatus_ source not found');
 let capturedStatusOptions = null;
 let capturedQuickReplyOptions = null;
 const webhookContext = {
-  dailyReminderJob: () => [],
+  dailyReminderJob_: () => [],
   getLineSubscriberProfileByUserId_: userId => ({ isSupervisor: userId === 'U-supervisor' }),
   buildOperationsDashboardUrl_: () => dashboardUrl,
   buildChecklistStatusFlex_: (_results, opts) => {

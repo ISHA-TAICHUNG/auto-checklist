@@ -1138,7 +1138,7 @@ function dashboardMachineIncidentGroupByReference_(reference) {
 
 function dashboardDailyIncidentNotificationPlan_(recordId) {
   const found = getDailyIncidentRecord_(recordId);
-  const incident = publicDailyIncidentSummary_(found.data);
+  const incident = dailyIncidentNotificationSummary_(found.data);
   if (incident.reviewStatus === "已結案") throw new Error("此日常事件已結案");
   const targets = [];
   const skippedNames = [];
@@ -1470,15 +1470,15 @@ function dashboardSystemHealth_() {
     triggerCounts[trigger.handler] = (triggerCounts[trigger.handler] || 0) + 1;
   });
   // 待簽核彙總由 dailyReminderJob 內部呼叫，並不是獨立觸發器。
-  const expected = ["dailyReminderJob"];
+  const expected = ["dailyReminderJob_"];
   if (isActiveValue_(getSetting_("dailyPpeAssignmentEnabled", "是"))) {
-    expected.push("dailyPpeAssignmentJob");
+    expected.push("dailyPpeAssignmentJob_");
   }
   if (typeof isDailyWorkCheckEnabled_ === "function" && isDailyWorkCheckEnabled_()) {
     expected.push(
-      "dailyWorkCheckReminder1630Job",
-      "dailyWorkCheckReminder1700Job",
-      "dailyWorkCheckCleanupJob",
+      "dailyWorkCheckReminder1630Job_",
+      "dailyWorkCheckReminder1700Job_",
+      "dailyWorkCheckCleanupJob_",
     );
   }
   const triggers = expected.map((handler) => ({
@@ -1493,6 +1493,8 @@ function dashboardSystemHealth_() {
     venueTitle: status.venue && status.venue.title ? status.venue.title : "",
     triggers,
     dailyReminder: dashboardDailyReminderHealth_(),
+    dailyPpeReminder: isActiveValue_(getSetting_('dailyPpeAssignmentEnabled', '是'))
+      ? dashboardDailyReminderHealth_(null, getDailyReminderRunStatus_('dailyPpe')) : null,
     allTriggerCount: (status.triggers || []).length,
     links: {
       archive: CONFIG.ARCHIVE_ROOT_FOLDER_ID
@@ -1503,10 +1505,10 @@ function dashboardSystemHealth_() {
   };
 }
 
-function dashboardDailyReminderHealth_(now) {
-  const status = typeof getDailyReminderRunStatus_ === "function"
+function dashboardDailyReminderHealth_(now, suppliedStatus) {
+  const status = suppliedStatus || (typeof getDailyReminderRunStatus_ === "function"
     ? getDailyReminderRunStatus_()
-    : { lastRun: null };
+    : { lastRun: null });
   const lastRun = status && status.lastRun ? status.lastRun : null;
   if (!lastRun) {
     return {
@@ -1538,6 +1540,7 @@ function dashboardDailyReminderHealth_(now) {
   let value = label;
   if (runStatus === "running" && !runningTooLong) value = label + " 執行中";
   else if (runStatus === "running") value = label + " 執行可能逾時";
+  else if (runStatus === 'runtime_rejected') value = label + ' 非正式專案，已停止提醒';
   else if (runStatus === "completed_with_errors") {
     value = label + " 部分失敗（" + failedCount + " 項）";
   } else if (runStatus === "failed" || runStatus === "invalid" || lastRun.ok === false) {
@@ -1844,42 +1847,7 @@ function dashboardVenueContext_() {
 }
 
 function dashboardVenueUsage_(equipment, date, context) {
-  const tabName = equipment.venueSheetTab || CONFIG.VENUE_SHEET_DEFAULT_TAB;
-  const sheet = getVenueSheetByRef_(context.spreadsheet, tabName);
-  if (!sheet) return { used: false, content: "", reason: "分頁不存在" };
-  const parts = dateParts_(date);
-  const lastCol = sheet.getLastColumn();
-  const lastRow = sheet.getLastRow();
-  if (lastCol < 1 || lastRow < 3) return { used: false, content: "", reason: "無資料列" };
-  const header = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
-  let dateCol = -1;
-  for (let i = 0; i < header.length; i++) {
-    if (cellStr_(header[i]).replace(/\s/g, "") === parts.m + "月") {
-      dateCol = i + 1;
-      break;
-    }
-  }
-  if (dateCol < 0) return { used: false, content: "", reason: "月份欄位不存在" };
-  const rows = sheet.getRange(3, dateCol, lastRow - 2, 2).getValues();
-  for (let i = 0; i < rows.length; i++) {
-    const rawDay = rows[i][0];
-    const day = rawDay instanceof Date ? rawDay.getDate() : Number(rawDay);
-    if (day !== parts.d) continue;
-    const content = cellStr_(rows[i][1]);
-    if (!content) return { used: false, content: "", reason: null };
-    for (let h = 0; h < context.holidays.length; h++) {
-      const keyword = context.holidays[h];
-      if (keyword && content.indexOf(keyword) >= 0) {
-        return { used: false, content, reason: "節假日（" + keyword + "）" };
-      }
-    }
-    const required = getVenueUsageRequiredKeywords_(equipment);
-    if (required.length && !hasAnyKeyword_(content, required)) {
-      return { used: false, content, reason: "未命中場地使用關鍵字" };
-    }
-    return { used: true, content, reason: null };
-  }
-  return { used: false, content: "", reason: "當月找不到該日" };
+  return getVenueUsage_(equipment, date, context);
 }
 
 function dashboardOverallStatus_(sections, errors) {
@@ -1888,7 +1856,8 @@ function dashboardOverallStatus_(sections, errors) {
   }
   const system = sections.system || {};
   const triggerProblem = (system.triggers || []).some((row) => !row.ok);
-  const reminderProblem = system.dailyReminder && !system.dailyReminder.ok;
+  const reminderProblem = (system.dailyReminder && !system.dailyReminder.ok) ||
+    (system.dailyPpeReminder && !system.dailyPpeReminder.ok);
   if (!system.archiveOk || !system.venueOk || triggerProblem || reminderProblem) {
     return { level: "warning", label: "需要檢查" };
   }

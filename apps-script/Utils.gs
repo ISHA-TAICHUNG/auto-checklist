@@ -142,12 +142,25 @@ function normalizeWebAppBaseUrl_(url) {
  * 將 "YYYY-MM-DD" 字串解析為 Date 物件（以台北時區的 0:00 為準）
  * 直接 new Date('2026-05-31') 會被當 UTC 0:00，台北時區會多 8 小時、跨日不出錯但仍危險
  */
+function assertScriptEditorAccess_() {
+  const active = String(Session.getActiveUser().getEmail() || '').trim().toLowerCase();
+  const effective = String(Session.getEffectiveUser().getEmail() || '').trim().toLowerCase();
+  if (!active || !effective || active !== effective) throw new Error('此維護功能僅限專案執行帳號操作');
+}
+
 function parseISODate_(s) {
-  if (s instanceof Date) return s;
+  if (s instanceof Date) {
+    if (isNaN(s.getTime())) throw new Error('日期格式錯誤');
+    return s;
+  }
   if (!s || typeof s !== 'string') throw new Error('日期格式錯誤');
   const m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
   if (!m) throw new Error('日期格式錯誤：' + s);
-  return new Date(`${m[1]}-${m[2]}-${m[3]}T00:00:00+08:00`);
+  const parsed = new Date(`${m[1]}-${m[2]}-${m[3]}T00:00:00+08:00`);
+  if (isNaN(parsed.getTime()) || Utilities.formatDate(parsed, 'Asia/Taipei', 'yyyy-MM-dd') !== s) {
+    throw new Error('日期不存在：' + s);
+  }
+  return parsed;
 }
 
 /**

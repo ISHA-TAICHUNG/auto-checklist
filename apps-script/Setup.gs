@@ -148,7 +148,7 @@ function getFixedCraneMonthlySourceDefinition_() {
  *
  * 不會覆蓋已存在的值（idempotent，重複跑安全）。
  */
-function setupSecurityProperties() {
+function setupSecurityProperties_() {
   const props = PropertiesService.getScriptProperties();
   const report = [];
 
@@ -199,7 +199,7 @@ function setupSecurityProperties() {
  * 此函式不回傳 token 本身，避免密鑰出現在執行紀錄。executionApi 在
  * appsscript.json 設為 MYSELF，不能由匿名 Web App 訪客呼叫。
  */
-function rotateOfficialDocumentAdminTokenForCloudRun(candidate, confirmation) {
+function rotateOfficialDocumentAdminTokenForCloudRun_(candidate, confirmation) {
   const token = String(candidate || "").trim();
   if (confirmation !== "ROTATE_OFFICIAL_DOC_ADMIN_TOKEN") {
     throw new Error("確認碼錯誤");
@@ -219,7 +219,7 @@ function rotateOfficialDocumentAdminTokenForCloudRun(candidate, confirmation) {
   };
 }
 
-function initializeDatabase() {
+function initializeDatabase_() {
   if (!CONFIG.DB_SHEET_ID || CONFIG.DB_SHEET_ID.startsWith("REPLACE_")) {
     throw new Error("請先到 Config.gs 設定 DB_SHEET_ID");
   }
@@ -696,7 +696,7 @@ function initializeDatabase() {
 
   // 中文化 + 下拉驗證（把初始 seed 的 true/false 轉成 是/否、加各選項下拉）
   try {
-    applyChineseSettingsAndDropdowns();
+    applyChineseSettingsAndDropdowns_();
   } catch (e) {
     Logger.log("套用下拉驗證失敗：" + e);
   }
@@ -706,7 +706,7 @@ function initializeDatabase() {
   );
 }
 
-function applyProjectResourceNames() {
+function applyProjectResourceNames_() {
   const result = {
     ok: true,
     spreadsheetName: "",
@@ -1180,7 +1180,7 @@ function syncSupervisorIdsToSheet_() {
   const supervisorIds = getSupervisorUserIdsFromSheet_();
   props.setProperty("SUPERVISOR_USER_IDS", supervisorIds.join(","));
   try {
-    applyChineseSettingsAndDropdowns();
+    applyChineseSettingsAndDropdowns_();
   } catch (e) {
     Logger.log("訂閱者清單 dropdown 套用失敗：" + e);
   }
@@ -1290,7 +1290,7 @@ function maskLineUserId_(id) {
  *
  * 注意：必須在 Apps Script 編輯器中執行此函數，並且該 Apps Script 已部署為 Web App
  */
-function setWebAppUrlFromCurrent() {
+function setWebAppUrlFromCurrent_() {
   const url = ScriptApp.getService().getUrl();
   if (!url) throw new Error("尚未部署為 Web App");
   const ss = SpreadsheetApp.openById(CONFIG.DB_SHEET_ID);
@@ -1303,7 +1303,7 @@ function setWebAppUrlFromCurrent() {
       return url;
     }
   }
-  sheet.appendRow(["webAppUrl", url, "由 setWebAppUrlFromCurrent() 自動填入"]);
+  sheet.appendRow(["webAppUrl", url, "由 setWebAppUrlFromCurrent_() 自動填入"]);
   return url;
 }
 
@@ -1319,7 +1319,7 @@ function setWebAppUrlFromCurrent() {
  * 執行此函數一次，跳出新的 consent dialog 同意（含 Google Docs 權限）。
  * Web App 的部署不會自動 prompt 使用者授權新 scope，必須由編輯器觸發。
  */
-function triggerScopesConsent() {
+function triggerScopesConsent_() {
   // 逐一呼叫各 API 觸發 scope check
   SpreadsheetApp.openById(CONFIG.DB_SHEET_ID).getName();
   DriveApp.getRootFolder().getName();
@@ -1897,7 +1897,7 @@ function setupIncidentStatusValidation_(ss) {
  * 何時跑：DB 從早期 TRUE/FALSE 版本升級時 / 想統一管理選項時
  * 安全性：idempotent（重複跑無害），不會誤刪資料
  */
-function applyChineseSettingsAndDropdowns() {
+function applyChineseSettingsAndDropdowns_() {
   const ss = SpreadsheetApp.openById(CONFIG.DB_SHEET_ID);
   const report = [];
 
@@ -2408,7 +2408,7 @@ function migrateFixedCraneChecklistsToSource_() {
   };
 }
 
-function migrateFixedCraneChecklists() {
+function migrateFixedCraneChecklists_() {
   return migrateFixedCraneChecklistsToSource_();
 }
 
@@ -2419,7 +2419,7 @@ function migrateFixedCraneChecklists() {
  * setupSheet_ 對既有 data 不會追加，所以 initializeDatabase 不會新增這些列。
  * 此函數做「表單ID」唯一性檢查，已存在就略過。
  */
-function addForkliftTemplatesAndItems() {
+function addForkliftTemplatesAndItems_() {
   const ss = SpreadsheetApp.openById(CONFIG.DB_SHEET_ID);
   const out = { templates: 0, items: 0 };
 
@@ -2561,7 +2561,7 @@ function addForkliftTemplatesAndItems() {
  * 用法：在 Apps Script 編輯器選此函數 → 執行（一次即可，重複跑會略過已存在的）
  * 場地表分頁名稱：「內外場-堆高機、移動式、危運、吊籠、一壓」
  */
-function addForkliftEquipments() {
+function addForkliftEquipments_() {
   const ss = SpreadsheetApp.openById(CONFIG.DB_SHEET_ID);
   const sheet = ss.getSheetByName("設備清單");
   const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
@@ -2618,7 +2618,7 @@ function addForkliftEquipments() {
   return { added: newRows.length };
 }
 
-function addAerialWorkPlatformTemplatesAndEquipment() {
+function addAerialWorkPlatformTemplatesAndEquipment_() {
   const ss = SpreadsheetApp.openById(CONFIG.DB_SHEET_ID);
   const result = {
     templatesAdded: 0,
@@ -3005,7 +3005,7 @@ function addAerialWorkPlatformTemplatesAndEquipment() {
     ? 1
     : 0;
   try {
-    applyChineseSettingsAndDropdowns();
+    applyChineseSettingsAndDropdowns_();
   } catch (e) {
     Logger.log("dropdown 重套失敗：" + e);
   }
@@ -3074,7 +3074,7 @@ function ensureVenueUsageKeywordSetting_(ss, category, keyword) {
  * 來源：天車安全防護用具檢查表.docx
  * 法規：職業安全衛生設施規則 §286（雇主供給防護具，並使勞工確實使用）
  */
-function addPpeTemplatesAndEquipments() {
+function addPpeTemplatesAndEquipments_() {
   const ss = SpreadsheetApp.openById(CONFIG.DB_SHEET_ID);
   const result = {
     templateAdded: 0,
@@ -3222,7 +3222,7 @@ function addPpeTemplatesAndEquipments() {
 
   // ===== 4. 重新套用 dropdown（讓「每日場地防護具檢點」進設備類別下拉）=====
   try {
-    applyChineseSettingsAndDropdowns();
+    applyChineseSettingsAndDropdowns_();
   } catch (e) {
     Logger.log("dropdown 重套失敗：" + e);
   }
@@ -3362,4 +3362,65 @@ function getDatabaseSheetInventory_() {
     sheetCount: sheets.length,
     sheets,
   };
+}
+
+// Editor-only wrappers; authenticated HTTP routes call the private implementations.
+function setupSecurityProperties() {
+  assertScriptEditorAccess_();
+  return setupSecurityProperties_();
+}
+
+function rotateOfficialDocumentAdminTokenForCloudRun(candidate, confirmation) {
+  assertScriptEditorAccess_();
+  return rotateOfficialDocumentAdminTokenForCloudRun_(candidate, confirmation);
+}
+
+function initializeDatabase() {
+  assertScriptEditorAccess_();
+  return initializeDatabase_();
+}
+
+function applyProjectResourceNames() {
+  assertScriptEditorAccess_();
+  return applyProjectResourceNames_();
+}
+
+function setWebAppUrlFromCurrent() {
+  assertScriptEditorAccess_();
+  return setWebAppUrlFromCurrent_();
+}
+
+function triggerScopesConsent() {
+  assertScriptEditorAccess_();
+  return triggerScopesConsent_();
+}
+
+function applyChineseSettingsAndDropdowns() {
+  assertScriptEditorAccess_();
+  return applyChineseSettingsAndDropdowns_();
+}
+
+function migrateFixedCraneChecklists() {
+  assertScriptEditorAccess_();
+  return migrateFixedCraneChecklists_();
+}
+
+function addForkliftTemplatesAndItems() {
+  assertScriptEditorAccess_();
+  return addForkliftTemplatesAndItems_();
+}
+
+function addForkliftEquipments() {
+  assertScriptEditorAccess_();
+  return addForkliftEquipments_();
+}
+
+function addAerialWorkPlatformTemplatesAndEquipment() {
+  assertScriptEditorAccess_();
+  return addAerialWorkPlatformTemplatesAndEquipment_();
+}
+
+function addPpeTemplatesAndEquipments() {
+  assertScriptEditorAccess_();
+  return addPpeTemplatesAndEquipments_();
 }

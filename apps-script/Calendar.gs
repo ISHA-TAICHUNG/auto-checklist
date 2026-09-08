@@ -11,15 +11,14 @@
  * 日期欄可能是純數字、文字、或日期型別（依使用者輸入而定），這裡都處理。
  */
 
-function getVenueUsage_(equipment, date) {
-  const venueId = getVenueSheetId_();
+function getVenueUsage_(equipment, date, context) {
   const tabName = equipment.venueSheetTab || CONFIG.VENUE_SHEET_DEFAULT_TAB;
 
-  const ss = SpreadsheetApp.openById(venueId);
+  const ss = context && context.spreadsheet ? context.spreadsheet : SpreadsheetApp.openById(getVenueSheetId_());
   const sheet = getVenueSheetByRef_(ss, tabName);
   if (!sheet) {
     Logger.log(`場地表找不到分頁：${tabName}`);
-    return { used: false, content: '', reason: '分頁不存在' };
+    throw new Error('場地表分頁不存在：' + tabName);
   }
 
   const parts = dateParts_(date);
@@ -28,7 +27,7 @@ function getVenueUsage_(equipment, date) {
 
   // 找出該月對應的「日期欄」與「內容欄」
   const lastCol = sheet.getLastColumn();
-  if (lastCol < 1) return { used: false, content: '', reason: '空白表' };
+  if (lastCol < 1) throw new Error('場地表為空白表');
 
   const headerRow = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
   let dateCol = -1;
@@ -42,13 +41,14 @@ function getVenueUsage_(equipment, date) {
   }
   if (dateCol < 0) {
     Logger.log(`場地表找不到月份欄：${month}月`);
-    return { used: false, content: '', reason: '月份欄位不存在' };
+    throw new Error('場地表月份欄位不存在：' + month + '月');
   }
   const contentCol = dateCol + 1;
+  if (contentCol > lastCol) throw new Error('場地表缺少月份內容欄');
 
   // 從列 3 開始往下找日期
   const lastRow = sheet.getLastRow();
-  if (lastRow < 3) return { used: false, content: '', reason: '無資料列' };
+  if (lastRow < 3) throw new Error('場地表無日期資料列');
 
   const dateValues = sheet.getRange(3, dateCol, lastRow - 2, 1).getValues();
   for (let i = 0; i < dateValues.length; i++) {
@@ -58,7 +58,7 @@ function getVenueUsage_(equipment, date) {
     let dayValue;
     if (v instanceof Date) {
       // Sheets 可能把 1, 2, 3 自動轉成日期物件
-      dayValue = v.getDate();
+      dayValue = Number(Utilities.formatDate(v, tz_(), 'd'));
     } else if (typeof v === 'number') {
       dayValue = v;
     } else {
@@ -74,7 +74,7 @@ function getVenueUsage_(equipment, date) {
       if (!content) return { used: false, content: '', reason: null };
 
       // 節假日關鍵字檢查
-      const keywords = getHolidayKeywords_();
+      const keywords = context && context.holidays ? context.holidays : getHolidayKeywords_();
       for (const kw of keywords) {
         if (kw && content.indexOf(kw) >= 0) {
           return { used: false, content, reason: `節假日（${kw}）` };
@@ -93,7 +93,7 @@ function getVenueUsage_(equipment, date) {
       return { used: true, content, reason: null };
     }
   }
-  return { used: false, content: '', reason: '當月找不到該日' };
+  throw new Error('場地表當月找不到該日：' + day);
 }
 
 function getVenueSheetByRef_(ss, tabRef) {

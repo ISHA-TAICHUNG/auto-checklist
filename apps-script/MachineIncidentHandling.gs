@@ -64,8 +64,8 @@ function submitMachineIncidentHandling_(payload) {
   lock.waitLock(20000);
   try {
     const group = getMachineIncidentGroupByRecordId_(recordId);
-    if (group.allCompleted) {
-      if (!group.handlingApprovalStatus && !group.handlingPdfUrl) {
+    if (group.allCompleted && machineIncidentCompletionDetailsValid_(group)) {
+      if (!machineIncidentFinalizationComplete_(group)) {
         const finalized = finalizeMachineIncidentHandling_(group, machineIncidentCompletionMeta_(group, actorName));
         persistMachineIncidentHandlingFinalization_(group, finalized);
       }
@@ -98,22 +98,24 @@ function submitMachineIncidentHandling_(payload) {
     const now = Utilities.formatDate(new Date(), tz_(), 'yyyy-MM-dd HH:mm:ss');
     group.items.forEach(item => {
       const update = updateById[item.incidentId];
-      sheet.getRange(item.rowNo, col.status + 1).setValue(update.status);
+      const range = sheet.getRange(item.rowNo, 1, 1, headers.length);
+      const row = range.getValues()[0];
+      row[col.status] = update.status;
       // 中控台代填只記錄本次操作人，不覆寫原負責人，
       // 避免後續 LINE 提醒找不到原承辦同仁。
       if (!auth.isAdmin) {
-        sheet.getRange(item.rowNo, col.owner + 1).setValue(auth.person.name);
+        row[col.owner] = auth.person.name;
       }
-      sheet.getRange(item.rowNo, col.note + 1).setValue(update.note);
-      sheet.getRange(item.rowNo, col.completedDate + 1)
-        .setValue(update.status === '已完成' ? completedDate : '');
-      sheet.getRange(item.rowNo, col.updatedAt + 1).setValue(now);
+      row[col.note] = update.note;
+      row[col.completedDate] = update.status === '已完成' ? completedDate : '';
+      row[col.updatedAt] = now;
       if (!allCompleted) {
-        sheet.getRange(item.rowNo, col.handlingPdf + 1).setValue('');
-        sheet.getRange(item.rowNo, col.handlingApprovalStatus + 1).setValue('處理中');
-        sheet.getRange(item.rowNo, col.handlingSupervisor + 1).setValue('');
-        sheet.getRange(item.rowNo, col.handlingApprovedAt + 1).setValue('');
+        row[col.handlingPdf] = '';
+        row[col.handlingApprovalStatus] = '處理中';
+        row[col.handlingSupervisor] = '';
+        row[col.handlingApprovedAt] = '';
       }
+      range.setValues([row]);
     });
     SpreadsheetApp.flush();
 
@@ -288,7 +290,8 @@ function publicMachineIncidentHandlingGroup_(group) {
     handlingApprovalStatus: group.handlingApprovalStatus || '',
     awaitingApproval: group.handlingApprovalStatus === '待主管簽核',
     approved: group.handlingApprovalStatus === '已簽核歸檔',
-    allCompleted: !!group.allCompleted,
+    allCompleted: !!group.allCompleted && machineIncidentFinalizationComplete_(group),
+    finalizationPending: !!group.allCompleted && !machineIncidentFinalizationComplete_(group),
     items: group.items.map(item => ({
       incidentId: item.incidentId,
       order: item.order,
@@ -301,6 +304,23 @@ function publicMachineIncidentHandlingGroup_(group) {
       updatedAt: item.updatedAt,
     })),
   };
+}
+
+function machineIncidentCompletionDetailsValid_(group) {
+  return !!(group.items && group.items.length) && group.items.every(item => {
+    if (item.status !== '已完成' || !String(item.note || '').trim() || !item.completedDate) return false;
+    try { parseISODate_(item.completedDate); return true; } catch (_) { return false; }
+  });
+}
+
+function machineIncidentFinalizationComplete_(group) {
+  if (!machineIncidentCompletionDetailsValid_(group)) return false;
+  if (group.formType === '每月') {
+    return ['待主管簽核', '已簽核歸檔'].indexOf(group.handlingApprovalStatus) >= 0 &&
+      group.items.every(item => item.handlingApprovalStatus === group.handlingApprovalStatus);
+  }
+  return group.handlingApprovalStatus === '簽核略過' && !!group.handlingPdfUrl &&
+    group.items.every(item => item.handlingApprovalStatus === '簽核略過' && item.handlingPdfUrl === group.handlingPdfUrl);
 }
 
 function machineIncidentDateCell_(value) {
@@ -501,6 +521,7 @@ function machineIncidentCompletionMeta_(group, fallbackActorName) {
 }
 
 function finalizeMachineIncidentHandling_(group, meta) {
+  if (!machineIncidentCompletionDetailsValid_(group)) throw new Error('異常處理說明或完成日期不完整，請補齊後再送出');
   if (group.formType !== '每月') {
     const pdf = createMachineIncidentHandlingPdf_(group, meta);
     return {
@@ -524,18 +545,21 @@ function finalizeMachineIncidentHandling_(group, meta) {
   if (rec.status !== '待主管簽核') {
     updateApprovalRecord_(rec.sheet, rec.headers, rec.rowNo, { 簽核狀態: '待主管簽核' });
   }
-  persistMachineIncidentHandlingFinalization_(group, {
-    fileUrl: '',
-    approvalStatus: '待主管簽核',
-  });
-
   const equipment = getEquipmentById_(rec.equipmentId) || {
     equipmentId: rec.equipmentId,
     equipmentName: rec.equipmentName,
     category: rec.category,
   };
   const approvalUrl = buildApprovalUrl_(rec.recordId, rec.approvalToken);
+  const props = PropertiesService.getScriptProperties();
+  const noticeKey = 'MACHINE_HANDLING_NOTICE_V1_' + sha256Hex_(group.recordId);
+  const previous = props.getProperty(noticeKey);
   let approvalNotice;
+  if (previous) {
+    try { approvalNotice = JSON.parse(previous); }
+    catch (_) { approvalNotice = { ok: false, reason: 'delivery_unknown' }; }
+  } else {
+  props.setProperty(noticeKey, JSON.stringify({ ok: false, reason: 'delivery_unknown' }));
   try {
     approvalNotice = notifySupervisorApprovalRequest_({
       recordId: rec.recordId,
@@ -551,6 +575,9 @@ function finalizeMachineIncidentHandling_(group, meta) {
     Logger.log('異常處理完成後主管簽核通知失敗：' + err + '\n' + (err.stack || ''));
     approvalNotice = { ok: false, reason: 'line_error' };
   }
+  props.setProperty(noticeKey, JSON.stringify({ ok: !!(approvalNotice && approvalNotice.ok),
+    reason: approvalNotice && approvalNotice.ok ? 'accepted' : 'delivery_unknown' }));
+  }
   return {
     fileUrl: '',
     approvalStatus: '待主管簽核',
@@ -562,11 +589,13 @@ function persistMachineIncidentHandlingFinalization_(group, finalized) {
   const headers = ensureMachineIncidentHandlingColumns_(group.sheet);
   const col = machineIncidentHandlingColumnMap_(headers);
   (group.items || []).forEach(item => {
-    group.sheet.getRange(item.rowNo, col.handlingPdf + 1).setValue(finalized.fileUrl || '');
-    group.sheet.getRange(item.rowNo, col.handlingApprovalStatus + 1)
-      .setValue(finalized.approvalStatus || '');
-    group.sheet.getRange(item.rowNo, col.handlingSupervisor + 1).setValue('');
-    group.sheet.getRange(item.rowNo, col.handlingApprovedAt + 1).setValue('');
+    const range = group.sheet.getRange(item.rowNo, 1, 1, headers.length);
+    const row = range.getValues()[0];
+    row[col.handlingPdf] = finalized.fileUrl || '';
+    row[col.handlingApprovalStatus] = finalized.approvalStatus || '';
+    row[col.handlingSupervisor] = '';
+    row[col.handlingApprovedAt] = '';
+    range.setValues([row]);
   });
   SpreadsheetApp.flush();
 }
@@ -618,7 +647,9 @@ function appendMachineIncidentHandlingToApprovalDoc_(docId, group, meta) {
 
 function ensureMachineIncidentHandlingReadyForApproval_(rec) {
   const group = getMachineIncidentGroupByRecordId_(rec.recordId);
-  if (!group.allCompleted) throw new Error('異常項目尚未全部完成處理回報，暫時不能簽核歸檔');
+  if (!group.allCompleted || !machineIncidentCompletionDetailsValid_(group)) {
+    throw new Error('異常項目處理說明或日期尚未完整，暫時不能簽核歸檔');
+  }
   appendMachineIncidentHandlingToApprovalDoc_(
     rec.draftDocId,
     group,
@@ -630,7 +661,7 @@ function ensureMachineIncidentHandlingReadyForApproval_(rec) {
 function machineIncidentHandlingApprovalSummary_(recordId) {
   const group = getMachineIncidentGroupByRecordId_(recordId);
   return {
-    allCompleted: !!group.allCompleted,
+    allCompleted: !!group.allCompleted && machineIncidentCompletionDetailsValid_(group),
     approvalStatus: group.handlingApprovalStatus || '',
     items: group.items.map(item => ({
       order: item.order,

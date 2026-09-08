@@ -25,13 +25,21 @@ function isPrimaryDailyReminderRuntime_() {
   }
 }
 
-function skipNonPrimaryDailyReminderRuntime_() {
+function skipNonPrimaryDailyReminderRuntime_(opts, job) {
   if (isPrimaryDailyReminderRuntime_()) return null;
   const result = [{
     action: 'skip',
     reason: '非正式 Apps Script 專案，略過每日提醒',
   }];
   Logger.log('每日提醒已由專案身分鎖停止：' + JSON.stringify(result));
+  rememberDailyReminderRun_({
+    job: job || 'dailyReminder',
+    dryRun: !!(opts && opts.dryRun),
+    status: 'runtime_rejected', ok: false,
+    startedAt: new Date().toISOString(),
+    startedAtLabel: Utilities.formatDate(new Date(), tz_(), 'yyyy-MM-dd HH:mm:ss'),
+    error: '非正式 Apps Script 專案，未發送通知',
+  });
   return result;
 }
 
@@ -47,20 +55,24 @@ function dailyReminderSafeError_(err) {
 
 function rememberDailyReminderRun_(payload) {
   const value = Object.assign({}, payload || {});
-  const key = value.dryRun
+  const key = value.job === 'dailyPpe'
+    ? (value.dryRun ? 'DAILY_PPE_LAST_DRY_RUN_V1' : 'DAILY_PPE_LAST_RUN_V1')
+    : value.dryRun
     ? DAILY_REMINDER_LAST_DRY_RUN_PROPERTY
     : DAILY_REMINDER_LAST_RUN_PROPERTY;
   try {
     PropertiesService.getScriptProperties().setProperty(key, JSON.stringify(value));
   } catch (err) {
     Logger.log('[dailyReminderJob] 無法保存執行狀態：' + dailyReminderSafeError_(err));
+    throw new Error('提醒執行狀態保存失敗，請檢查 Script Properties');
   }
   return value;
 }
 
-function beginDailyReminderRun_(dryRun) {
+function beginDailyReminderRun_(dryRun, job) {
   const now = new Date();
   return rememberDailyReminderRun_({
+    job: job || 'dailyReminder',
     status: 'running',
     ok: null,
     dryRun: !!dryRun,
@@ -80,7 +92,8 @@ function finishDailyReminderRun_(run, results, err) {
   const rows = Array.isArray(results) ? results : [];
   const failedRows = rows.filter((row) => {
     const action = String((row && row.action) || '').toLowerCase();
-    return action === 'failed' || action === 'reminderfailed' || action === 'error';
+    return action === 'failed' || action === 'reminderfailed' || action === 'error' ||
+      action === 'push_failed' || (row && row.ok === false);
   });
   const fatalError = err ? dailyReminderSafeError_(err) : '';
   return rememberDailyReminderRun_(Object.assign({}, run || {}, {
@@ -97,7 +110,7 @@ function finishDailyReminderRun_(run, results, err) {
   }));
 }
 
-function getDailyReminderRunStatus_() {
+function getDailyReminderRunStatus_(job) {
   const properties = PropertiesService.getScriptProperties();
   const parse = (raw) => {
     if (!raw) return null;
@@ -108,8 +121,8 @@ function getDailyReminderRunStatus_() {
     }
   };
   return {
-    lastRun: parse(properties.getProperty(DAILY_REMINDER_LAST_RUN_PROPERTY)),
-    lastDryRun: parse(properties.getProperty(DAILY_REMINDER_LAST_DRY_RUN_PROPERTY)),
+    lastRun: parse(properties.getProperty(job === 'dailyPpe' ? 'DAILY_PPE_LAST_RUN_V1' : DAILY_REMINDER_LAST_RUN_PROPERTY)),
+    lastDryRun: parse(properties.getProperty(job === 'dailyPpe' ? 'DAILY_PPE_LAST_DRY_RUN_V1' : DAILY_REMINDER_LAST_DRY_RUN_PROPERTY)),
   };
 }
 
@@ -121,8 +134,8 @@ function dailyReminderFailureResult_(category, err, extra) {
   }, extra || {});
 }
 
-function dailyReminderJob(opts) {
-  const runtimeSkip = skipNonPrimaryDailyReminderRuntime_();
+function dailyReminderJob_(opts) {
+  const runtimeSkip = skipNonPrimaryDailyReminderRuntime_(opts);
   if (runtimeSkip) return runtimeSkip;
 
   opts = opts || {};
@@ -136,6 +149,7 @@ function dailyReminderJob(opts) {
     const cyclesByCategory = getTemplateCyclesByCategory_();
 
     for (const eqp of equipments) {
+      try {
       const full = getEquipmentById_(eqp.equipmentId);
       if (!full || !full.active) continue;
 
@@ -184,6 +198,9 @@ function dailyReminderJob(opts) {
           equipmentId: full.equipmentId,
         }));
       }
+      } catch (err) {
+        results.push(dailyReminderFailureResult_(eqp.category, err, { equipmentId: eqp.equipmentId }));
+      }
     }
 
     if (typeof dailyPpeChecklistStatusResults_ === 'function') {
@@ -230,6 +247,7 @@ function dailyReminderJob(opts) {
 function hasDailyRecordInCategory_(category, date) {
   const ss = SpreadsheetApp.openById(CONFIG.DB_SHEET_ID);
   const sheet = ss.getSheetByName('填報紀錄');
+  if (!sheet) throw new Error('填報紀錄分頁不存在，無法判斷日檢');
   if (sheet.getLastRow() < 2) return false;
 
   const data = sheet.getDataRange().getValues();
@@ -242,8 +260,7 @@ function hasDailyRecordInCategory_(category, date) {
   if (typeCol < 0) missing.push('表單類型');
   if (categoryCol < 0) missing.push('設備類別');
   if (missing.length) {
-    Logger.log('填報紀錄缺欄位，無法判斷日檢是否已填：' + missing.join(', '));
-    return false;
+    throw new Error('填報紀錄缺欄位，無法判斷日檢是否已填：' + missing.join(', '));
   }
   const target = formatISODate_(date);
 
@@ -326,6 +343,7 @@ function sendUnfilledReminder_(equipment, date, usage) {
       }
       throw new Error(`LINE push 失敗（非 throw 路徑）: ${JSON.stringify(r)}`);
     } catch (lineErr) {
+      if (lineErr.notificationPolicyBlocked) throw lineErr;
       // LINE 推播失敗（token 失效 / LINE API down / multicast 全 fail / no_target 等）→ 改走 email fallback
       Logger.log(`[Reminder] LINE 推播失敗，fallback 到 email: ${lineErr}\n${lineErr.stack || ''}`);
       // 不 return，繼續走下方 email 路徑
@@ -346,21 +364,32 @@ function sendUnfilledReminder_(equipment, date, usage) {
  * 一鍵：建立每日 09:00 提醒觸發器
  * 部署完成後，到 Apps Script 編輯器手動執行一次此函數即可
  */
-function installDailyReminderTrigger() {
+function installDailyReminderTrigger_() {
   if (!isPrimaryDailyReminderRuntime_()) {
     throw new Error('非正式 Apps Script 專案，不得安裝每日提醒觸發器');
   }
 
   // 先刪掉舊的同名觸發器，避免重複
   ScriptApp.getProjectTriggers()
-    .filter(t => t.getHandlerFunction() === 'dailyReminderJob')
+    .filter(t => ['dailyReminderJob', 'dailyReminderJob_'].indexOf(t.getHandlerFunction()) >= 0)
     .forEach(t => ScriptApp.deleteTrigger(t));
 
-  ScriptApp.newTrigger('dailyReminderJob')
+  ScriptApp.newTrigger('dailyReminderJob_')
     .timeBased()
     .everyDays(1)
     .atHour(CONFIG.REMINDER_TRIGGER_HOUR)
     .create();
 
   Logger.log(`已安裝每日 ${CONFIG.REMINDER_TRIGGER_HOUR}:00 提醒觸發器`);
+}
+
+// Editor-only wrappers; authenticated HTTP routes call the private implementations.
+function dailyReminderJob(opts) {
+  assertScriptEditorAccess_();
+  return dailyReminderJob_(opts);
+}
+
+function installDailyReminderTrigger() {
+  assertScriptEditorAccess_();
+  return installDailyReminderTrigger_();
 }

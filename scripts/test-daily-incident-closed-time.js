@@ -27,6 +27,7 @@ const refreshedData = {
 };
 
 const context = {
+  withDailyIncidentLock_: callback => callback(),
   normalizeDailyIncidentId_: value => value,
   sanitizeText_: value => String(value || ''),
   assertDailyIncidentApprovalToken_: () => {},

@@ -68,6 +68,11 @@ function dispatchLineEvent_(ev) {
   }
   const cmd = normalizeLineCommand_(text);
 
+  // Reply tokens belong to the conversation, not the authenticated speaker.
+  if (source.type !== 'user' && requiresLineSubscriberAuth_(cmd)) {
+    return lineReply_(replyToken, { type: 'text', text: '為保護案件與簽核資料，請私訊 ISHA 通知小幫手使用此功能。' });
+  }
+
   if (source.type === 'user' && typeof startLoadingAnimation_ === 'function') {
     startLoadingAnimation_(userId, 10);
   }
@@ -272,7 +277,7 @@ function cmdStatus_(replyToken, userId, opts) {
   opts = opts || {};
   // 跑 dryRun 的 dailyReminderJob 拿狀態（含 monthlyReminderJob_ 已過濾的月檢結果）
   // 月檢設備：非應檢期(1-5)且非補填提醒期(25+)時，monthlyReminderJob_ 已完全不 push，狀態不會列
-  const results = dailyReminderJob({ dryRun: true });
+  const results = dailyReminderJob_({ dryRun: true });
   const profile = (typeof getLineSubscriberProfileByUserId_ === 'function')
     ? getLineSubscriberProfileByUserId_(userId)
     : null;

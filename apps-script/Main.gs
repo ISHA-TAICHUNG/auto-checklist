@@ -214,7 +214,7 @@ function doGet(e) {
             // Schema migration helper — 從外部觸發 initializeDatabase
             // 安全性：受 ADMIN_TOKEN 限制 + initializeDatabase 是 idempotent
             // (重複跑不會破壞既有資料，setupSheet_ 對既有表只補缺欄位)
-            initializeDatabase();
+            initializeDatabase_();
             result = {
               ok: true,
               action,
@@ -225,7 +225,7 @@ function doGet(e) {
           case "applyDropdowns": {
             // 統一各設定表的選項欄位下拉 + 把 TRUE/FALSE 改成 是/否
             // idempotent，重複跑無害
-            const summary = applyChineseSettingsAndDropdowns();
+            const summary = applyChineseSettingsAndDropdowns_();
             result = { ok: true, action, summary };
             break;
           }
@@ -282,19 +282,19 @@ function doGet(e) {
           }
           case "addPpe": {
             // 加防護具檢點 template + 2 個項目 + 2 個場地（VENUE-CRANE / VENUE-FORK）
-            const summary = addPpeTemplatesAndEquipments();
+            const summary = addPpeTemplatesAndEquipments_();
             result = { ok: true, action, summary };
             break;
           }
           case "addMonthlySafetyPpeForms": {
             // 加龍井/復興/忠明量測設備及 PPE 月檢；SCBA 併入三張表下方區塊
-            const summary = addMonthlySafetyPpeForms();
+            const summary = addMonthlySafetyPpeForms_();
             result = { ok: true, action, summary };
             break;
           }
           case "addAerialWorkPlatform": {
             // 加/修高空工作車車載式與自走式日檢模板、設備與場地關鍵字
-            const summary = addAerialWorkPlatformTemplatesAndEquipment();
+            const summary = addAerialWorkPlatformTemplatesAndEquipment_();
             result = { ok: true, action, summary };
             break;
           }
@@ -352,7 +352,7 @@ function doGet(e) {
             result = {
               ok: true,
               action,
-              ...applyProjectResourceNames(),
+              ...applyProjectResourceNames_(),
             };
             break;
           }
@@ -360,7 +360,7 @@ function doGet(e) {
             result = {
               ok: true,
               action,
-              ...installDefaultLineRichMenu(),
+              ...installDefaultLineRichMenu_(),
             };
             break;
           }
@@ -368,7 +368,7 @@ function doGet(e) {
             result = {
               ok: true,
               action,
-              ...deleteInstalledLineRichMenu(),
+              ...deleteInstalledLineRichMenu_(),
             };
             break;
           }
@@ -376,7 +376,7 @@ function doGet(e) {
             result = {
               ok: true,
               action,
-              ...getLineRichMenuStatus(),
+              ...getLineRichMenuStatus_(),
             };
             break;
           }
@@ -468,7 +468,7 @@ function doGet(e) {
             result = {
               ok: true,
               action,
-              ...setLineWebhookEndpointToCurrent(),
+              ...setLineWebhookEndpointToCurrent_(),
             };
             break;
           }
@@ -476,7 +476,7 @@ function doGet(e) {
             result = {
               ok: true,
               action,
-              webAppUrl: setWebAppUrlFromCurrent(),
+              webAppUrl: setWebAppUrlFromCurrent_(),
             };
             break;
           }
@@ -642,7 +642,7 @@ function doGet(e) {
             const targetDate = e.parameter.date
               ? parseISODate_(e.parameter.date)
               : undefined;
-            const results = dailyReminderJob({
+            const results = dailyReminderJob_({
               dryRun: true,
               today: targetDate,
             });
@@ -746,7 +746,7 @@ function doGet(e) {
           }
           case "dailyReminderTriggerStatus": {
             const triggers = ScriptApp.getProjectTriggers()
-              .filter((t) => t.getHandlerFunction() === "dailyReminderJob")
+              .filter((t) => t.getHandlerFunction() === "dailyReminderJob_")
               .map((t) => ({
                 handler: t.getHandlerFunction(),
                 type: String(t.getEventType()),
@@ -757,13 +757,18 @@ function doGet(e) {
               expectedHour: CONFIG.REMINDER_TRIGGER_HOUR,
               count: triggers.length,
               triggers,
+              runtimePrimary: isPrimaryDailyReminderRuntime_(),
+              dailyReminderRuns: getDailyReminderRunStatus_(),
+              dailyPpeRuns: getDailyReminderRunStatus_('dailyPpe'),
+              dailyDeliveryAudits: getDailyReminderDeliveryAudits_(),
+              dailyRecipientPreview: getDailyReminderRecipientPreview_(),
             };
             break;
           }
           case "installDailyReminderTrigger": {
-            installDailyReminderTrigger();
+            installDailyReminderTrigger_();
             const triggers = ScriptApp.getProjectTriggers()
-              .filter((t) => t.getHandlerFunction() === "dailyReminderJob")
+              .filter((t) => t.getHandlerFunction() === "dailyReminderJob_")
               .map((t) => ({
                 handler: t.getHandlerFunction(),
                 type: String(t.getEventType()),
@@ -778,7 +783,7 @@ function doGet(e) {
             break;
           }
           case "installDailyWorkCheckTriggers": {
-            result = installDailyWorkCheckTriggers();
+            result = installDailyWorkCheckTriggers_();
             break;
           }
           case "sheetInventory": {
@@ -811,7 +816,7 @@ function doGet(e) {
               dryRun:
                 String(e.parameter.dryRun || "").toLowerCase() === "true" ||
                 e.parameter.dryRun === "1",
-              ...monthlyPpeSummaryReminderJob({
+              ...monthlyPpeSummaryReminderJob_({
                 dryRun:
                   String(e.parameter.dryRun || "").toLowerCase() === "true" ||
                   e.parameter.dryRun === "1",
@@ -841,7 +846,7 @@ function doGet(e) {
             result = {
               ok: true,
               action,
-              ...dailyPpeAssignmentStatus({
+              ...dailyPpeAssignmentStatus_({
                 date: e.parameter.date,
               }),
             };
@@ -850,7 +855,7 @@ function doGet(e) {
           case "dailyPpeAssignmentJob": {
             result = {
               action,
-              ...dailyPpeAssignmentJob({
+              ...dailyPpeAssignmentJob_({
                 date: e.parameter.date,
                 dryRun:
                   String(e.parameter.dryRun || "").toLowerCase() === "true" ||
@@ -863,7 +868,7 @@ function doGet(e) {
             result = {
               ok: true,
               action,
-              ...installDailyPpeAssignmentTrigger(),
+              ...installDailyPpeAssignmentTrigger_(),
             };
             break;
           }
@@ -871,7 +876,7 @@ function doGet(e) {
             const ss = SpreadsheetApp.openById(CONFIG.DB_SHEET_ID);
             setupOfficialDocumentMonitorSheets_(ss);
             applyColumnWidthsAndWrap_();
-            applyChineseSettingsAndDropdowns();
+            applyChineseSettingsAndDropdowns_();
             result = {
               ok: true,
               action,

@@ -154,7 +154,7 @@ function isMonthlyReminderCategory_(category) {
   return getMonthlyReminderCategories_().indexOf(String(category || '').trim()) >= 0;
 }
 
-function addMonthlySafetyPpeForms() {
+function addMonthlySafetyPpeForms_() {
   const ss = SpreadsheetApp.openById(CONFIG.DB_SHEET_ID);
   const defs = getMonthlySafetyPpeDefinitions_();
   const out = {
@@ -265,7 +265,7 @@ function addMonthlySafetyPpeForms() {
 
   disableLegacyMonthlyScbaForm_(ss, out);
 
-  try { applyChineseSettingsAndDropdowns(); } catch (e) { Logger.log('dropdown 重套失敗：' + e); }
+  try { applyChineseSettingsAndDropdowns_(); } catch (e) { Logger.log('dropdown 重套失敗：' + e); }
   try { applyColumnWidthsAndWrap_(); } catch (e) { Logger.log('欄寬重套失敗：' + e); }
 
   Logger.log('addMonthlySafetyPpeForms 完成：' + JSON.stringify(out));
@@ -525,4 +525,10 @@ function sendMonthlyUnfilledReminder_(equipment, date) {
     subject,
     htmlBody,
   });
+}
+
+// Editor-only wrappers; authenticated HTTP routes call the private implementations.
+function addMonthlySafetyPpeForms() {
+  assertScriptEditorAccess_();
+  return addMonthlySafetyPpeForms_();
 }

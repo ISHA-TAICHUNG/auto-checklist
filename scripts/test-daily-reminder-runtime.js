@@ -58,13 +58,13 @@ function createRuntime(expectedId, actualId) {
 
 for (const expectedId of ['', 'REPLACE_WITH_PRIMARY_SCRIPT_ID', 'another-project']) {
   const runtime = createRuntime(expectedId, 'formal-project');
-  const result = runtime.context.dailyReminderJob({ dryRun: true });
+  const result = runtime.context.dailyReminderJob_({ dryRun: true });
   assert.strictEqual(result.length, 1);
   assert.strictEqual(result[0].action, 'skip');
   assert.match(result[0].reason, /非正式 Apps Script 專案/);
   assert.strictEqual(runtime.equipmentReads(), 0, 'identity guard must run before Sheet reads');
   assert.throws(
-    () => runtime.context.installDailyReminderTrigger(),
+    () => runtime.context.installDailyReminderTrigger_(),
     /非正式 Apps Script 專案/,
   );
   assert.strictEqual(runtime.triggerCreates(), 0);
@@ -72,13 +72,13 @@ for (const expectedId of ['', 'REPLACE_WITH_PRIMARY_SCRIPT_ID', 'another-project
 }
 
 const formal = createRuntime('formal-project', 'formal-project');
-assert.deepStrictEqual(Array.from(formal.context.dailyReminderJob({ dryRun: true })), []);
+assert.deepStrictEqual(Array.from(formal.context.dailyReminderJob_({ dryRun: true })), []);
 assert.strictEqual(formal.equipmentReads(), 1);
 const successfulDryRun = formal.context.getDailyReminderRunStatus_().lastDryRun;
 assert.equal(successfulDryRun.status, 'completed');
 assert.equal(successfulDryRun.ok, true);
 assert.equal(successfulDryRun.failedCount, 0);
-formal.context.installDailyReminderTrigger();
+formal.context.installDailyReminderTrigger_();
 assert.strictEqual(formal.triggerCreates(), 1);
 
 const isolated = createRuntime('formal-project', 'formal-project');
@@ -104,7 +104,7 @@ Object.assign(isolated.context, {
     return { category: '主管待簽核', action: 'skip' };
   },
 });
-const isolatedResults = Array.from(isolated.context.dailyReminderJob({ dryRun: false }));
+const isolatedResults = Array.from(isolated.context.dailyReminderJob_({ dryRun: false }));
 assert.equal(pendingCalls, 1, '前一類提醒失敗不得阻斷待簽核提醒');
 assert.equal(isolatedResults.filter(row => row.action === 'failed').length, 2);
 assert.equal(isolatedResults.some(row => row.category === '主管待簽核'), true);
@@ -117,7 +117,7 @@ assert.equal(JSON.stringify(isolatedStatus).includes('abcdefghijklmnopqrstuvwxyz
 
 const fatal = createRuntime('formal-project', 'formal-project');
 fatal.context.getEquipmentList_ = () => { throw new Error('database unavailable'); };
-assert.throws(() => fatal.context.dailyReminderJob({ dryRun: false }), /database unavailable/);
+assert.throws(() => fatal.context.dailyReminderJob_({ dryRun: false }), /database unavailable/);
 const fatalStatus = fatal.context.getDailyReminderRunStatus_().lastRun;
 assert.equal(fatalStatus.status, 'failed');
 assert.equal(fatalStatus.ok, false);
@@ -180,3 +180,64 @@ assert.equal(
 );
 
 console.log('daily reminder runtime identity guard test passed');
+
+const readFailure = createRuntime('formal-project', 'formal-project');
+let independentMonthly = 0;
+Object.assign(readFailure.context, {
+  getEquipmentList_: () => [{ equipmentId: 'broken', category: 'broken' }, { equipmentId: 'good', category: 'good' }],
+  getEquipmentById_: id => ({ equipmentId: id, category: id, active: true }),
+  getTemplateCyclesByCategory_: () => ({ broken: ['每日'], good: ['每日'] }),
+  getVenueUsage_: eq => { if (eq.equipmentId === 'broken') throw new Error('venue missing'); return { used: true }; },
+  hasDailyRecordInCategory_: () => false,
+  monthlyReminderJob_: () => { independentMonthly++; return []; },
+});
+const readResults = readFailure.context.dailyReminderJob_({ dryRun: true });
+assert.equal(readResults.some(row => row.category === 'good' && row.action === 'wouldMail'), true);
+assert.equal(independentMonthly, 1);
+assert.equal(readFailure.context.getDailyReminderRunStatus_().lastDryRun.failedCount, 1);
+
+const noStateStorage = createRuntime('formal-project', 'formal-project');
+noStateStorage.context.PropertiesService.getScriptProperties = () => ({ setProperty() { throw new Error('quota'); } });
+assert.throws(() => noStateStorage.context.dailyReminderJob_(), /保存失敗/);
+assert.equal(noStateStorage.equipmentReads(), 0, 'never send if execution health cannot be recorded');
+
+function ppeRuntime(expected, actual) {
+  const r = createRuntime(expected, actual);
+  vm.runInContext(fs.readFileSync('apps-script/DailyPpeAssignment.gs', 'utf8'), r.context);
+  Object.assign(r.context, {
+    getSetting_: (key, fallback) => fallback,
+    isActiveValue_: v => v === '是',
+    formatISODate_: () => '2026-09-08',
+    dailyPpeAssignmentResolveDate_: () => new Date('2026-09-08T00:00:00+08:00'),
+    LockService: { getScriptLock: () => ({ waitLock() {}, releaseLock() {} }) },
+    dailyPpeCollectMissingConfirmations_: () => [{ equipmentId: 'VENUE-TEST' }],
+    findLineSubscriberTargetsByName_: () => ({ ids: ['U-test'], ambiguous: false }),
+    dailyPpePushMissingReminder_: () => { throw new Error('dry-run must never send'); },
+  });
+  return r;
+}
+const oldPpe = ppeRuntime('formal', 'old');
+assert.equal(oldPpe.context.dailyPpeAssignmentJob_({ dryRun: true }).action, 'runtime_rejected');
+assert.equal(oldPpe.context.getDailyReminderRunStatus_('dailyPpe').lastDryRun.status, 'runtime_rejected');
+assert.throws(() => oldPpe.context.installDailyPpeAssignmentTrigger_(), /非正式/);
+
+const newPpe = ppeRuntime('formal', 'formal');
+assert.equal(newPpe.context.dailyPpeAssignmentJob_({ dryRun: 'true' }).ok, true);
+assert.equal(newPpe.context.getDailyReminderRunStatus_('dailyPpe').lastRun, null);
+assert.equal(newPpe.context.getDailyReminderRunStatus_('dailyPpe').lastDryRun.status, 'completed');
+for (const dryRun of ['TRUE', 'True', 'true', '1', true]) {
+  assert.equal(newPpe.context.dailyPpeAssignmentJob_({ dryRun }).action, 'wouldNotifyDailyPpeMissing');
+}
+let matches = 0;
+newPpe.context.findLineSubscriberTargetsByName_ = (name, opts) => {
+  assert.equal(opts.requireStaff, true);
+  return ++matches === 1 ? { ids: ['U-test'], ambiguous: false } : { ids: ['U-wrong-1', 'U-wrong-2'], ambiguous: true };
+};
+const partial = newPpe.context.dailyPpeAssignmentJob_({ dryRun: true });
+assert.equal(partial.ok, false); assert.equal(partial.targetCount, 1); assert.equal(partial.targetErrors.length, 1);
+assert.equal(newPpe.context.getDailyReminderRunStatus_('dailyPpe').lastDryRun.status, 'completed_with_errors');
+newPpe.context.findLineSubscriberTargetsByName_ = () => ({ ids: ['U-test'], ambiguous: false });
+newPpe.context.dailyPpePushMissingReminder_ = () => ({ ok: false, code: 500 });
+assert.equal(newPpe.context.dailyPpeAssignmentJob_({}).ok, false);
+assert.equal(newPpe.context.getDailyReminderRunStatus_('dailyPpe').lastRun.status, 'completed_with_errors');
+console.log('reminder/PPE source isolation, recipient resolution and execution-state fault tests passed');

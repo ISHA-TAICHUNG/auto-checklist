@@ -79,8 +79,8 @@
     _start(e) {
       e.preventDefault();
       this.isDrawing = true;
-      this.hasInk = true;
       const p = this._pos(e);
+      this.lastPoint = p;
       this.ctx.beginPath();
       this.ctx.moveTo(p.x, p.y);
     }
@@ -88,8 +88,11 @@
       if (!this.isDrawing) return;
       e.preventDefault();
       const p = this._pos(e);
+      if (p.x === this.lastPoint.x && p.y === this.lastPoint.y) return;
       this.ctx.lineTo(p.x, p.y);
       this.ctx.stroke();
+      this.hasInk = true;
+      this.lastPoint = p;
     }
     _end(e) {
       if (!this.isDrawing) return;

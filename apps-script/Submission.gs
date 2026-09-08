@@ -152,24 +152,6 @@ function handleSubmission_(payload) {
       }
     }
   });
-  // b) 鎖定項驗證：「機具設備異常事件」未完成的 order，本次 result 必須仍為 bad
-  //    (避免使用者繞過前端鎖定送出「良好」)
-  let lockedItems = [];
-  lockedItems = getLockedItemsForEquipment_(
-    payload.equipmentId,
-    payload.formType,
-  );
-  if (lockedItems.length > 0) {
-    const lockedOrders = new Set(lockedItems.map((l) => l.order));
-    payload.items.forEach((it) => {
-      if (lockedOrders.has(Number(it.order)) && it.result !== badValue) {
-        throw new Error(
-          `第 ${it.order} 項目「${it.name}」仍有未處理異常，無法標為「${it.result}」，需先在『機具設備異常事件』表把狀態改為「已完成」才能解鎖`,
-        );
-      }
-    });
-  }
-
   // 鎖：避免同設備同日重複寫 / 並發 race
   const lock = LockService.getScriptLock();
   if (!lock.tryLock(30000)) throw new Error("系統忙碌，請稍後再試");
@@ -182,6 +164,21 @@ function handleSubmission_(payload) {
         return Object.assign({ ok: true, idempotent: true }, existing);
       }
     }
+
+    // 已保存的提交直接回傳；只有新提交須符合目前異常鎖定狀態。
+    const lockedItems = getLockedItemsForEquipment_(payload.equipmentId, payload.formType);
+    const lockedOrders = new Set(lockedItems.map(item => Number(item.order)));
+    if (lockedItems.some(item => !payload.items.some(it => Number(it.order) === Number(item.order)))) {
+      throw new Error('檢查項目缺少未處理異常項，請重新載入表單');
+    }
+    payload.items.forEach(it => {
+      if (lockedOrders.has(Number(it.order)) && it.result !== badValue) {
+        throw new Error(`第 ${it.order} 項仍有未處理異常，無法標為「${it.result}」`);
+      }
+    });
+
+    const currentForm = getFormMeta_(payload.formType, payload.equipmentId);
+    validateSubmissionItemsAgainstTemplate_(payload.items, currentForm.items);
 
     const recordId = uuid_();
     const submittedAt = new Date();
@@ -388,6 +385,23 @@ function handleSubmission_(payload) {
   } finally {
     lock.releaseLock();
   }
+}
+
+function validateSubmissionItemsAgainstTemplate_(items, expected) {
+  if (!Array.isArray(expected) || !expected.length) throw new Error('檢查表缺少有效檢查項目');
+  const byOrder = new Map(expected.map(item => [Number(item.order), item]));
+  const seen = new Set();
+  if (byOrder.size !== expected.length || items.length !== expected.length) {
+    throw new Error('檢查項目不完整或模板已更新，請重新載入表單');
+  }
+  items.forEach(item => {
+    const order = Number(item.order);
+    const definition = byOrder.get(order);
+    if (!definition || seen.has(order)) throw new Error('檢查項目重複或不屬於此模板');
+    seen.add(order);
+    item.name = sanitizeText_(definition.name, 200);
+    item.method = sanitizeText_(definition.method, 1200);
+  });
 }
 
 /**

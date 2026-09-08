@@ -29,6 +29,7 @@ function dailyIncidentHeaders_(descriptionHeader) {
     '陳核主管', '陳核主管Key', '審核狀態', '主管審核意見', '主管審核時間',
     '照片數', '照片資料夾連結', 'PDF連結', '待審PDF檔案ID',
     '承辦更新Token', '主管審核Token', 'clientSubmissionId', '流程紀錄', '備註',
+    '建立流程狀態',
   ];
 }
 
@@ -173,14 +174,7 @@ function handleDailyIncidentSubmission_(payload) {
     const clientId = sanitizeText_(payload.clientSubmissionId, 80);
     const existing = findDailyIncidentByClientId_(clientId);
     if (existing) {
-      return {
-        ok: true,
-        duplicate: true,
-        incidentId: existing.incidentId,
-        photoFolderUrl: existing.photoFolderUrl,
-        pdfUrl: existing.pdfUrl || '',
-        reviewStatus: existing.reviewStatus || '',
-      };
+      return Object.assign(resumeDailyIncidentCreation_(existing.incidentId), { duplicate: true });
     }
 
     const reportDate = parseISODate_(sanitizeText_(payload.reportDate, 20) || formatISODate_(new Date()));
@@ -216,6 +210,7 @@ function handleDailyIncidentSubmission_(payload) {
       approvalToken: makeDailyIncidentToken_(),
       clientSubmissionId: clientId,
       note: sanitizeText_(payload.note, 500),
+      creationState: JSON.stringify({ version: 1, status: 'pending', notices: {} }),
     };
     if (data.processStatus === '處理完成' && !data.completedDate) {
       data.completedDate = reportDateStr;
@@ -223,6 +218,7 @@ function handleDailyIncidentSubmission_(payload) {
     if (data.processStatus === '處理完成' && !data.supervisor) {
       throw new Error('處理完成時請填寫陳核主管');
     }
+    if (data.completedDate) parseISODate_(data.completedDate);
 
     const photoFolder = getOrCreateDailyIncidentPhotoFolder_(incidentId, reportDate);
     const savedPhotos = saveDailyIncidentPhotos_(photoFolder, incidentId, payload.photos || [], '通報照片');
@@ -237,49 +233,88 @@ function handleDailyIncidentSubmission_(payload) {
     );
 
     appendDailyIncidentRow_(ss, data);
-    let createdRecord = getDailyIncidentRecord_(incidentId);
-    const initialPdf = createDailyIncidentPdf_(data, 'reported');
-    updateDailyIncidentRow_(createdRecord, { 'PDF連結': initialPdf.fileUrl });
-    data.pdfUrl = initialPdf.fileUrl;
-    SpreadsheetApp.flush();
-    let notify = null;
-    let approval = null;
-    let supervisorNotice = null;
-    if (data.processStatus === '處理完成') {
-      approval = submitDailyIncidentForApproval_({
-        incidentId,
-        token: data.updateToken,
-        supervisor: data.supervisor,
-        supervisorKey: data.supervisorKey,
-      });
-      notify = approval.approvalNotice;
-    } else {
-      notify = maybeNotifyDailyIncidentCreated_(data, {
-        includeSupervisor: !(data.processStatus === '處理中' && data.supervisor),
-        includeAllSupervisorsWhenNoSelected: !data.supervisor,
-      });
-      if (data.processStatus === '處理中' && data.supervisor) {
-        supervisorNotice = maybeNotifyDailyIncidentProcessingSupervisor_(data);
-      }
-    }
-
-    return {
-      ok: true,
-      incidentId,
-      photoCount: data.photoCount,
-      photoFolderUrl: data.photoFolderUrl,
-      lineNotice: notify,
-      supervisorNotice,
-      approvalNotice: approval ? approval.approvalNotice : null,
-      pdfUrl: approval && approval.incident ? approval.incident.pdfUrl : data.pdfUrl,
-      reviewStatus: approval && approval.incident ? approval.incident.reviewStatus : data.reviewStatus,
-    };
+    return resumeDailyIncidentCreation_(incidentId);
   } finally {
     lock.releaseLock();
   }
 }
 
+// Caller holds the script lock. Resume only unfinished creation stages, never recreate the row.
+function resumeDailyIncidentCreation_(incidentId) {
+  let found = getDailyIncidentRecord_(incidentId);
+  let state = found.data.creationState ? JSON.parse(found.data.creationState) : null;
+  // Existing legacy rows with a PDF must not be re-notified on client retries.
+  if (!state && found.data.pdfUrl) return dailyIncidentCreationResult_(found.data, {});
+  state = state || { version: 1, status: 'pending', notices: {} };
+  if (state.status === 'complete') return dailyIncidentCreationResult_(found.data, state.notices);
+  const persist = () => {
+    updateDailyIncidentRow_(getDailyIncidentRecord_(incidentId), { '建立流程狀態': JSON.stringify(state) });
+    SpreadsheetApp.flush();
+  };
+  persist();
+  if (!found.data.pdfUrl) {
+    const pdf = createDailyIncidentPdf_(found.data, 'reported');
+    updateDailyIncidentRow_(getDailyIncidentRecord_(incidentId), { 'PDF連結': pdf.fileUrl });
+    SpreadsheetApp.flush();
+  }
+  found = getDailyIncidentRecord_(incidentId);
+  if (found.data.processStatus === '處理完成' && found.data.reviewStatus === '未送審') {
+    submitDailyIncidentForApprovalUnlocked_({
+      incidentId, token: found.data.updateToken,
+      supervisor: found.data.supervisor, supervisorKey: found.data.supervisorKey,
+    }, { skipNotice: true });
+    found = getDailyIncidentRecord_(incidentId);
+  }
+  const notifyOnce = (key, send) => {
+    if (state.notices[key]) return;
+    // Persist intent first: an interrupted/ambiguous delivery is reported, never blindly sent twice.
+    state.notices[key] = { ok: false, reason: 'delivery_unknown', attempted: true };
+    persist();
+    const result = send() || { ok: false, reason: 'empty_notice_result' };
+    state.notices[key] = {
+      ok: result.ok === true, skipped: !!result.skipped,
+      reason: result.ok === true ? '' : 'notice_failed',
+    };
+    persist();
+  };
+  if (found.data.reviewStatus === '待主管審核') {
+    notifyOnce('approval', () => maybeNotifyDailyIncidentApproval_(found.data));
+  } else if (found.data.reviewStatus === '未送審') {
+    notifyOnce('created', () => maybeNotifyDailyIncidentCreated_(found.data, {
+      includeSupervisor: !(found.data.processStatus === '處理中' && found.data.supervisor),
+      includeAllSupervisorsWhenNoSelected: !found.data.supervisor,
+    }));
+    if (found.data.processStatus === '處理中' && found.data.supervisor) {
+      notifyOnce('supervisor', () => maybeNotifyDailyIncidentProcessingSupervisor_(found.data));
+    }
+  }
+  state.status = 'complete';
+  persist();
+  return dailyIncidentCreationResult_(getDailyIncidentRecord_(incidentId).data, state.notices);
+}
+
+function dailyIncidentCreationResult_(data, notices) {
+  notices = notices || {};
+  return {
+    ok: true, incidentId: data.incidentId, photoCount: data.photoCount,
+    photoFolderUrl: data.photoFolderUrl, pdfUrl: data.pdfUrl || '', reviewStatus: data.reviewStatus || '',
+    lineNotice: notices.approval || notices.created || null,
+    approvalNotice: notices.approval || null, supervisorNotice: notices.supervisor || null,
+  };
+}
+
+function withDailyIncidentLock_(callback) {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try { return callback(); }
+  finally { lock.releaseLock(); }
+}
+
 function updateDailyIncident_(payload) {
+  return withDailyIncidentLock_(() => updateDailyIncidentUnlocked_(payload));
+}
+
+function updateDailyIncidentUnlocked_(payload) {
   const incidentId = normalizeDailyIncidentId_(payload.incidentId);
   const token = sanitizeText_(payload.token, 500);
   const found = getDailyIncidentRecord_(incidentId);
@@ -345,10 +380,14 @@ function updateDailyIncident_(payload) {
 }
 
 function submitDailyIncidentForApproval_(payload) {
+  return withDailyIncidentLock_(() => submitDailyIncidentForApprovalUnlocked_(payload));
+}
+
+function submitDailyIncidentForApprovalUnlocked_(payload, options) {
   const incidentId = normalizeDailyIncidentId_(payload.incidentId);
   const token = sanitizeText_(payload.token, 500);
   const found = getDailyIncidentRecord_(incidentId);
-  if (token) assertDailyIncidentUpdateToken_(found.data, token);
+  assertDailyIncidentUpdateToken_(found.data, token);
   if (found.data.reviewStatus === '已結案') throw new Error('此日常事件已結案');
   if (found.data.reviewStatus === '待主管審核') {
     found.data.flowLog = appendDailyIncidentFlowLog_(
@@ -361,7 +400,7 @@ function submitDailyIncidentForApproval_(payload) {
     const pdf = createDailyIncidentPdf_(found.data, 'pending');
     updateDailyIncidentRow_(found, { '流程紀錄': found.data.flowLog, 'PDF連結': pdf.fileUrl, '待審PDF檔案ID': pdf.fileId });
     const refreshedPending = getDailyIncidentRecord_(incidentId);
-    const notice = maybeNotifyDailyIncidentApproval_(refreshedPending.data);
+    const notice = options && options.skipNotice ? null : maybeNotifyDailyIncidentApproval_(refreshedPending.data);
     SpreadsheetApp.flush();
     return { ok: true, alreadyPending: true, incident: publicDailyIncidentSummary_(refreshedPending.data), approvalNotice: notice };
   }
@@ -392,12 +431,16 @@ function submitDailyIncidentForApproval_(payload) {
   };
   updateDailyIncidentRow_(found, updates);
   const refreshed = getDailyIncidentRecord_(incidentId);
-  const notice = maybeNotifyDailyIncidentApproval_(refreshed.data);
+  const notice = options && options.skipNotice ? null : maybeNotifyDailyIncidentApproval_(refreshed.data);
   SpreadsheetApp.flush();
   return { ok: true, incident: publicDailyIncidentSummary_(refreshed.data), approvalNotice: notice };
 }
 
 function approveDailyIncident_(payload) {
+  return withDailyIncidentLock_(() => approveDailyIncidentUnlocked_(payload));
+}
+
+function approveDailyIncidentUnlocked_(payload) {
   const incidentId = normalizeDailyIncidentId_(payload.incidentId);
   const token = sanitizeText_(payload.token, 500);
   const decision = sanitizeText_(payload.decision, 20) || 'approve';
@@ -478,6 +521,10 @@ function approveDailyIncident_(payload) {
 }
 
 function submitDailyIncidentSupervisorComment_(payload) {
+  return withDailyIncidentLock_(() => submitDailyIncidentSupervisorCommentUnlocked_(payload));
+}
+
+function submitDailyIncidentSupervisorCommentUnlocked_(payload) {
   const incidentId = normalizeDailyIncidentId_(payload.incidentId);
   const token = sanitizeText_(payload.token, 500);
   const comment = requiredText_(payload.comment || payload.reviewComment, '主管處理意見', 1000);
@@ -623,14 +670,16 @@ function getDailyIncidentPublicDetail_(incidentId) {
 function getDailyIncidentPublicDetailForLineUser_(incidentId, userId) {
   const found = getDailyIncidentRecord_(normalizeDailyIncidentId_(incidentId));
   assertDailyIncidentLineAccess_(found.data, userId);
-  return publicDailyIncidentSummary_(found.data);
+  return Object.assign(publicDailyIncidentSummary_(found.data), { updateUrl: buildDailyIncidentUpdateUrl_(found.data) });
 }
 
 function submitDailyIncidentForApprovalFromLine_(payload, userId) {
   payload = payload || {};
-  const found = getDailyIncidentRecord_(normalizeDailyIncidentId_(payload.incidentId));
-  assertDailyIncidentLineAccess_(found.data, userId);
-  return submitDailyIncidentForApproval_(payload);
+  return withDailyIncidentLock_(() => {
+    const found = getDailyIncidentRecord_(normalizeDailyIncidentId_(payload.incidentId));
+    assertDailyIncidentLineAccess_(found.data, userId);
+    return submitDailyIncidentForApprovalUnlocked_(Object.assign({}, payload, { token: found.data.updateToken }));
+  });
 }
 
 function dailyIncidentLineAccessContext_(userId) {
@@ -752,6 +801,7 @@ function appendDailyIncidentRow_(ss, data) {
   set('clientSubmissionId', data.clientSubmissionId);
   set('流程紀錄', data.flowLog);
   set('備註', data.note);
+  set('建立流程狀態', data.creationState || '');
   sheet.getRange(sheet.getLastRow() + 1, 1, 1, headers.length).setValues([row]);
 }
 
@@ -797,6 +847,7 @@ function dailyIncidentRowToObject_(headers, row) {
     clientSubmissionId: String(value('clientSubmissionId') || ''),
     flowLog: String(value('流程紀錄') || ''),
     note: String(value('備註') || ''),
+    creationState: String(value('建立流程狀態') || ''),
   };
 }
 
@@ -823,10 +874,16 @@ function publicDailyIncidentSummary_(data) {
     photoCount: data.photoCount,
     photoFolderUrl: data.photoFolderUrl,
     pdfUrl: data.pdfUrl,
+  };
+}
+
+// Internal notification payload only. Public pages never receive action credentials.
+function dailyIncidentNotificationSummary_(data) {
+  return Object.assign(publicDailyIncidentSummary_(data), {
     updateUrl: buildDailyIncidentUpdateUrl_(data),
     approvalUrl: buildDailyIncidentApprovalUrl_(data),
     commentUrl: buildDailyIncidentSupervisorCommentUrl_(data),
-  };
+  });
 }
 
 function nextDailyIncidentId_(ss, date) {
@@ -1232,7 +1289,7 @@ function buildDailyIncidentSupervisorCommentUrl_(data) {
 function maybeNotifyDailyIncidentCreated_(data, opts) {
   if (!isActiveValue_(getSetting_('dailyIncidentGroupNotify', '是'))) return { ok: true, skipped: true };
   if (typeof sendDailyIncidentCreated_ !== 'function') return { ok: false, reason: 'missing_sendDailyIncidentCreated' };
-  try { return sendDailyIncidentCreated_(publicDailyIncidentSummary_(data), opts || {}); }
+  try { return sendDailyIncidentCreated_(dailyIncidentNotificationSummary_(data), opts || {}); }
   catch (e) {
     Logger.log('[DailyIncident notify created] 失敗: ' + e + '\n' + (e.stack || ''));
     return { ok: false, error: String(e.message || e) };
@@ -1242,7 +1299,7 @@ function maybeNotifyDailyIncidentCreated_(data, opts) {
 function maybeNotifyDailyIncidentReturned_(data) {
   if (!isActiveValue_(getSetting_('dailyIncidentGroupNotify', '是'))) return { ok: true, skipped: true };
   if (typeof sendDailyIncidentReturned_ !== 'function') return { ok: false, reason: 'missing_sendDailyIncidentReturned' };
-  try { return sendDailyIncidentReturned_(publicDailyIncidentSummary_(data)); }
+  try { return sendDailyIncidentReturned_(dailyIncidentNotificationSummary_(data)); }
   catch (e) {
     Logger.log('[DailyIncident notify returned] 失敗: ' + e + '\n' + (e.stack || ''));
     return { ok: false, error: String(e.message || e) };
@@ -1252,7 +1309,7 @@ function maybeNotifyDailyIncidentReturned_(data) {
 function maybeNotifyDailyIncidentApproval_(data) {
   if (!isActiveValue_(getSetting_('dailyIncidentSupervisorNotify', '是'))) return { ok: true, skipped: true };
   if (typeof sendDailyIncidentApprovalRequest_ !== 'function') return { ok: false, reason: 'missing_sendDailyIncidentApprovalRequest' };
-  try { return sendDailyIncidentApprovalRequest_(publicDailyIncidentSummary_(data)); }
+  try { return sendDailyIncidentApprovalRequest_(dailyIncidentNotificationSummary_(data)); }
   catch (e) {
     Logger.log('[DailyIncident notify approval] 失敗: ' + e + '\n' + (e.stack || ''));
     return { ok: false, error: String(e.message || e) };
@@ -1267,7 +1324,7 @@ function maybeNotifyDailyIncidentProcessingSupervisor_(data) {
     return { ok: false, reason: 'missing_sendDailyIncidentProcessingReviewRequest', noticeType: 'processingSupervisor' };
   }
   try {
-    const res = sendDailyIncidentProcessingReviewRequest_(publicDailyIncidentSummary_(data));
+    const res = sendDailyIncidentProcessingReviewRequest_(dailyIncidentNotificationSummary_(data));
     res.noticeType = 'processingSupervisor';
     return res;
   } catch (e) {
@@ -1284,7 +1341,7 @@ function maybeNotifyDailyIncidentSupervisorComment_(data) {
     return { ok: false, reason: 'missing_sendDailyIncidentSupervisorComment', noticeType: 'supervisorComment' };
   }
   try {
-    const res = sendDailyIncidentSupervisorComment_(publicDailyIncidentSummary_(data));
+    const res = sendDailyIncidentSupervisorComment_(dailyIncidentNotificationSummary_(data));
     res.noticeType = 'supervisorComment';
     return res;
   } catch (e) {
@@ -1301,7 +1358,7 @@ function maybeNotifyDailyIncidentClosed_(data) {
     return { ok: false, reason: 'missing_sendDailyIncidentClosed', noticeType: 'closed' };
   }
   try {
-    const res = sendDailyIncidentClosed_(publicDailyIncidentSummary_(data));
+    const res = sendDailyIncidentClosed_(dailyIncidentNotificationSummary_(data));
     res.noticeType = 'closed';
     return res;
   } catch (e) {

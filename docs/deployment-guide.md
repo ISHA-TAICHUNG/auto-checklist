@@ -129,7 +129,10 @@ API_TOKEN:              'REPLACE_WITH_RANDOM_TOKEN_...',     // ← A-5-1 產的
 
 1. Apps Script 編輯器 → 選 `installDailyReminderTrigger` → 執行
 2. 同意觸發器權限
-3. 左側「觸發條件」可以確認有一筆 `dailyReminderJob` 每日 09:00 執行
+3. 左側「觸發條件」確認只有一筆 `dailyReminderJob_`，使用 HEAD（上端），台北時間 09:00-10:00 執行
+4. 每日場地防護具另執行 `installDailyPpeAssignmentTrigger`，確認只有一筆 `dailyPpeAssignmentJob_`，同樣使用 HEAD
+
+編輯器維護入口限專案執行帳號；匿名 HTML 呼叫不得通過。既有管理 API 的 action 名稱維持不變。不要從 Web App 固定版本安裝後就假設日後 HEAD 更新一定套用，必須回讀觸發器部署欄。安裝不會立即發通知；驗證只執行 dry-run，正式最近執行紀錄須等待自然排程。
 
 ---
 

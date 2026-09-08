@@ -241,11 +241,11 @@ function markDailyWorkReminderSent_(dateStr, slot) {
   PropertiesService.getScriptProperties().setProperty(key + dateStr, 'sent');
 }
 
-function dailyWorkCheckReminder1630Job() {
+function dailyWorkCheckReminder1630Job_() {
   return sendDailyWorkCheckReminder_('16:30');
 }
 
-function dailyWorkCheckReminder1700Job() {
+function dailyWorkCheckReminder1700Job_() {
   return sendDailyWorkCheckReminder_('17:00');
 }
 
@@ -264,7 +264,7 @@ function sendDailyWorkCheckReminder_(slot) {
   return Object.assign({ slot, status }, result || {});
 }
 
-function dailyWorkCheckCleanupJob() {
+function dailyWorkCheckCleanupJob_() {
   return cleanupDailyWorkChecks_();
 }
 
@@ -297,29 +297,29 @@ function cleanupDailyWorkChecks_(opts) {
   return { ok: true, dryRun, deleted: rowsToDelete.length, cutoff: cutoffStr };
 }
 
-function installDailyWorkCheckTriggers() {
+function installDailyWorkCheckTriggers_() {
   const handlers = [
-    'dailyWorkCheckReminder1630Job',
-    'dailyWorkCheckReminder1700Job',
-    'dailyWorkCheckCleanupJob',
+    'dailyWorkCheckReminder1630Job_',
+    'dailyWorkCheckReminder1700Job_',
+    'dailyWorkCheckCleanupJob_',
   ];
   ScriptApp.getProjectTriggers()
-    .filter(t => handlers.indexOf(t.getHandlerFunction()) >= 0)
+    .filter(t => handlers.indexOf(t.getHandlerFunction().replace(/_$/, '') + '_') >= 0)
     .forEach(t => ScriptApp.deleteTrigger(t));
 
-  ScriptApp.newTrigger('dailyWorkCheckReminder1630Job')
+  ScriptApp.newTrigger('dailyWorkCheckReminder1630Job_')
     .timeBased()
     .everyDays(1)
     .atHour(16)
     .nearMinute(30)
     .create();
-  ScriptApp.newTrigger('dailyWorkCheckReminder1700Job')
+  ScriptApp.newTrigger('dailyWorkCheckReminder1700Job_')
     .timeBased()
     .everyDays(1)
     .atHour(17)
     .nearMinute(0)
     .create();
-  ScriptApp.newTrigger('dailyWorkCheckCleanupJob')
+  ScriptApp.newTrigger('dailyWorkCheckCleanupJob_')
     .timeBased()
     .everyDays(1)
     .atHour(0)
@@ -371,4 +371,25 @@ function buildDailyWorkCheckPublicUrl_() {
   const frontend = String(getSetting_('webFrontendUrl', '') || CONFIG.DEFAULT_WEB_FRONTEND_URL || '')
     .replace(/\/$/, '');
   return frontend ? `${frontend}/work-check.html` : 'https://isha-taichung.github.io/auto-checklist/work-check.html';
+}
+
+// Editor-only wrappers; authenticated HTTP routes call the private implementations.
+function dailyWorkCheckReminder1630Job() {
+  assertScriptEditorAccess_();
+  return dailyWorkCheckReminder1630Job_();
+}
+
+function dailyWorkCheckReminder1700Job() {
+  assertScriptEditorAccess_();
+  return dailyWorkCheckReminder1700Job_();
+}
+
+function dailyWorkCheckCleanupJob() {
+  assertScriptEditorAccess_();
+  return dailyWorkCheckCleanupJob_();
+}
+
+function installDailyWorkCheckTriggers() {
+  assertScriptEditorAccess_();
+  return installDailyWorkCheckTriggers_();
 }

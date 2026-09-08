@@ -575,8 +575,8 @@ function getOfficialDocumentQueueStatusForUser_(userId) {
 function getOfficialDocumentSnapshot_(payload) {
   payload = payload || {};
   const ss = SpreadsheetApp.openById(CONFIG.DB_SHEET_ID);
-  setupOfficialDocumentMonitorSheets_(ss);
   const sheet = getOfficialDocumentQueueSheet_(ss);
+  if (!sheet) throw new Error('公文待發文佇列尚未初始化，請由管理者執行設定');
   const dateStr = sanitizeOfficialDocumentDate_(payload.date);
   const requestedSlot = String(payload.slot || '').trim();
   const lastRow = sheet.getLastRow();
