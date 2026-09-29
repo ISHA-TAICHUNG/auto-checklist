@@ -64,17 +64,24 @@
     return C.API_BASE + (qs ? '?' + qs : '');
   }
 
-  async function apiGet(params) {
+  async function apiGet(params, options) {
     ensureConfigured();
+    options = options || {};
     let lastError = null;
     // Apps Script occasionally returns a cached redirect/404 or an HTML error
     // page even though the endpoint is healthy. Retry with a fresh URL.
-    for (let attempt = 0; attempt < 3; attempt++) {
+    const maxAttempts = options.maxAttempts || 3;
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      let timeout;
       try {
         const attemptParams = typeof params === 'function' ? await params(attempt) : params;
+        const controller = options.timeoutMs && typeof AbortController !== 'undefined'
+          ? new AbortController() : null;
+        if (controller) timeout = setTimeout(() => controller.abort(), options.timeoutMs);
         const res = await fetch(buildUrl(attemptParams, true), {
           method: 'GET',
           cache: 'no-store',
+          signal: controller ? controller.signal : undefined,
         });
         if (!res.ok) {
           lastError = new Error('HTTP ' + res.status);
@@ -87,9 +94,12 @@
           }
         }
       } catch (error) {
-        lastError = error;
+        lastError = error && error.name === 'AbortError'
+          ? new Error('讀取檢點資料逾時') : error;
+      } finally {
+        if (timeout) clearTimeout(timeout);
       }
-      if (attempt < 2) {
+      if (attempt < maxAttempts - 1) {
         await new Promise(resolve => setTimeout(resolve, 300 * (attempt + 1)));
       }
     }
@@ -184,10 +194,28 @@
     }
   }
 
+  async function getChecklistBootstrap(form, eqp) {
+    const requestOptions = { timeoutMs: 15000, maxAttempts: 2 };
+    const response = await apiGet({ api: 'checklistBootstrap', form, eqp }, requestOptions);
+    if (!response || response.ok !== false || !/未知的 api/.test(String(response.error || ''))) {
+      return response;
+    }
+
+    // 舊版 Web App 尚未更新時保留讀取能力，但鎖定項目失敗仍須停止填報。
+    const [metaResult, lockedResult] = await Promise.all([
+      apiGet({ api: 'meta', form, eqp }, requestOptions),
+      apiGet({ api: 'lockedItems', form, eqp }, requestOptions),
+    ]);
+    if (!metaResult.ok) return metaResult;
+    if (!lockedResult.ok) return lockedResult;
+    return { ok: true, meta: metaResult.meta, locked: lockedResult.locked };
+  }
+
   window.API = {
     listEquipments: () => apiGet({ api: 'equipments' }),
     getFormMeta: (form, eqp) => apiGet({ api: 'meta', form, eqp }),
     getLockedItems: (form, eqp) => apiGet({ api: 'lockedItems', form, eqp }),
+    getChecklistBootstrap,
     getApproval: (recordId, token) => apiGet({ api: 'approval', recordId, token }),
     getDailyWorkMeta: () => apiGet({ api: 'dailyWorkMeta' }),
     dailyIncidentPeople: () => {

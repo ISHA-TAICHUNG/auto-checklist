@@ -8,7 +8,7 @@
   <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="css/style.css?v=2026070701">
   <script src="js/config.js?v=2026070101"></script>
-  <script src="js/api.js?v=2026080301"></script>
+  <script src="js/api.js?v=2026092901"></script>
   <script src="js/signature.js"></script>
   <script src="js/photos.js?v=2026070701"></script>
 </head>
@@ -51,13 +51,24 @@
       loadForm();
     }
 
-    function showError(msg) {
+    function showError(msg, canRetry) {
       const root = document.getElementById('content');
       root.textContent = '';
       const div = document.createElement('div');
       div.className = 'alert alert-error';
       div.textContent = msg;
       root.appendChild(div);
+      if (canRetry) {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'btn btn-primary';
+        button.textContent = '重新載入檢點表';
+        button.onclick = () => {
+          root.textContent = '載入中...';
+          loadForm();
+        };
+        root.appendChild(button);
+      }
     }
 
     function lockedStatusText(lock) {
@@ -87,17 +98,15 @@
 
     async function loadForm() {
       try {
-        // 並行抓 meta + 鎖定項
-        const [metaRes, lockedRes] = await Promise.all([
-          API.getFormMeta('daily', eqp),
-          API.getLockedItems('daily', eqp),
-        ]);
-        if (!metaRes.ok) return showError(metaRes.error || '取得表單失敗');
-        formMeta = metaRes.meta;
-        lockedItems = (lockedRes && lockedRes.ok) ? (lockedRes.locked || []) : [];
+        const response = await API.getChecklistBootstrap('daily', eqp);
+        if (!response || !response.ok || !response.meta || !Array.isArray(response.locked)) {
+          return showError((response && response.error) || '無法核對檢點項目及未結案異常', true);
+        }
+        formMeta = response.meta;
+        lockedItems = response.locked;
         renderForm();
       } catch (err) {
-        showError('連線後端失敗：' + err.message);
+        showError('連線後端失敗：' + err.message, true);
       }
     }
 

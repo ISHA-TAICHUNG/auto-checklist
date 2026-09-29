@@ -60,7 +60,19 @@ function doGet(e) {
         const form = e.parameter.form;
         const eqp = e.parameter.eqp;
         if (!form || !eqp) throw new Error("需提供 form 與 eqp 參數");
-        result = { ok: true, meta: getFormMeta_(form, eqp) };
+        result = { ok: true, meta: getPublicFormMeta_(form, eqp) };
+        break;
+      }
+
+      case "checklistBootstrap": {
+        const form = e.parameter.form;
+        const eqp = e.parameter.eqp;
+        if (!form || !eqp) throw new Error("需提供 form 與 eqp 參數");
+        result = {
+          ok: true,
+          meta: getPublicFormMeta_(form, eqp),
+          locked: getLockedItemsForEquipment_(eqp, form),
+        };
         break;
       }
 
@@ -1059,6 +1071,31 @@ function doGet(e) {
     Logger.log("doGet 失敗：" + err + "\n" + (err.stack || ""));
     return jsonResponse_({ ok: false, error: friendlyError_(err) });
   }
+}
+
+/** 公開讀取可短暫快取模板；送出時仍由 getFormMeta_ 讀取最新定義。 */
+function getPublicFormMeta_(form, equipmentId) {
+  if (form !== "daily" && form !== "monthly") throw new Error("不支援的表單類型");
+  const id = String(equipmentId || "");
+  if (!/^[A-Za-z0-9_-]{1,80}$/.test(id)) throw new Error("設備代號格式錯誤");
+
+  const key = "publicFormMeta:v1:" + form + ":" + id;
+  let cache;
+  try {
+    cache = CacheService.getScriptCache();
+    const cached = cache.get(key);
+    if (cached) return JSON.parse(cached);
+  } catch (err) {
+    Logger.log("讀取表單模板快取失敗：" + err);
+  }
+
+  const meta = getFormMeta_(form, id);
+  try {
+    if (cache) cache.put(key, JSON.stringify(meta), 60);
+  } catch (err) {
+    Logger.log("寫入表單模板快取失敗：" + err);
+  }
+  return meta;
 }
 
 function doPost(e) {
