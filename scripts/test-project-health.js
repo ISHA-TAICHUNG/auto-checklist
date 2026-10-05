@@ -26,7 +26,7 @@ test('maintenance RPC wrappers reject anonymous and non-owner callers before any
   let active = '', calls = 0;
   const c = runtime(files, { Session: { getActiveUser: () => ({ getEmail: () => active }), getEffectiveUser: () => ({ getEmail: () => 'owner@example.test' }) } });
   const names = files.flatMap(f => Array.from(fs.readFileSync(f, 'utf8').matchAll(/function (\w+)\([^)]*\) \{\s*assertScriptEditorAccess_\(\);/g), m => m[1]));
-  assert.equal(names.length, 28);
+  assert.equal(names.length, 26);
   for (const name of names) {
     c[name + '_'] = () => { calls++; return 'owner-only'; };
     for (active of ['', 'other@example.test']) assert.throws(() => c[name](), /僅限/);

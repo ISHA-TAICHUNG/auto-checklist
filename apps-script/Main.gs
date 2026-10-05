@@ -37,8 +37,6 @@ function doGet(e) {
           return dailyIncidentCommentPageResponse_(e);
         case "incident-approve":
           return dailyIncidentApprovalPageResponse_(e);
-        case "monthly-ppe-confirm":
-          return monthlyPpeConfirmPageResponse_(e);
         case "daily-ppe-confirm":
           return dailyPpeConfirmPageResponse_(e);
         case "machine-incident-handle":
@@ -161,9 +159,6 @@ function doGet(e) {
           "installDailyReminderTrigger",
           "installDailyWorkCheckTriggers",
           "sheetInventory",
-          "generateMonthlyPpeSummary",
-          "monthlyPpeSummaryReminder",
-          "monthlyPpeConfirmationPreview",
           "dailyPpeAssignmentStatus",
           "dailyPpeAssignmentJob",
           "installDailyPpeAssignmentTrigger",
@@ -791,54 +786,6 @@ function doGet(e) {
               ok: true,
               action,
               ...getDatabaseSheetInventory_(),
-            };
-            break;
-          }
-          case "generateMonthlyPpeSummary": {
-            result = {
-              ok: true,
-              action,
-              ...generateMonthlyPpeSummary_({
-                year: e.parameter.year,
-                month: e.parameter.month,
-                rocYear: e.parameter.rocYear,
-              }),
-            };
-            break;
-          }
-          case "monthlyPpeSummaryReminder": {
-            const targetDate = e.parameter.date
-              ? parseISODate_(e.parameter.date)
-              : undefined;
-            result = {
-              ok: true,
-              action,
-              dryRun:
-                String(e.parameter.dryRun || "").toLowerCase() === "true" ||
-                e.parameter.dryRun === "1",
-              ...monthlyPpeSummaryReminderJob_({
-                dryRun:
-                  String(e.parameter.dryRun || "").toLowerCase() === "true" ||
-                  e.parameter.dryRun === "1",
-                today: targetDate,
-              }),
-            };
-            break;
-          }
-          case "monthlyPpeConfirmationPreview": {
-            const month = monthlyPpeResolveMonth_({
-              year: e.parameter.year,
-              month: e.parameter.month,
-              rocYear: e.parameter.rocYear,
-            });
-            result = {
-              ok: true,
-              action,
-              ...getMonthlyPpeConfirmationPageData_({
-                year: month.year,
-                month: month.month,
-                token: monthlyPpeConfirmationToken_(month),
-              }),
             };
             break;
           }

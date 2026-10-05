@@ -1157,7 +1157,6 @@ function checklistStatusGroupWeight_(category) {
 
 function checklistStatusDisplayCategory_(result) {
   const category = String((result && result.category) || '?').trim() || '?';
-  if (category === '月度防護具檢點彙整確認') return category;
   const formType = String((result && result.formType) || '').trim();
   return formType === '每月' ? `${category}月檢` : `${category}日檢`;
 }
