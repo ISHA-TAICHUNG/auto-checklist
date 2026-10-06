@@ -322,6 +322,7 @@ body {
 }
 .field input[type="text"],
 .field input[type="date"],
+.field input[type="month"],
 .field textarea,
 .field select {
   width: 100%;

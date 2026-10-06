@@ -348,13 +348,13 @@ function appendSheetRowValues_(sheet, headers, values) {
 }
 
 function getMonthlyReminderStartDay_() {
-  const raw = Number(getSetting_('monthlyReminderStartDay', '25'));
-  if (!raw || raw < 1 || raw > 31) return 25;
+  const raw = Number(getSetting_('monthlyReminderStartDay', '6'));
+  if (!raw || raw < 1 || raw > 31) return 6;
   return Math.floor(raw);
 }
 
 /**
- * 月檢「應檢期」(window)：當期可填的時段
+ * 月檢「應檢期」：建議每月 1~5 日檢點，不限制補登日期。
  * 預設每月 1~5 號（依承辦實務「月初填寫」設定）
  * 可在 DB 系統設定 monthlyCheckWindowStart / monthlyCheckWindowEnd 覆蓋
  */
@@ -366,19 +366,86 @@ function getMonthlyCheckWindow_() {
   return { start: safeStart, end: safeEnd };
 }
 
+function monthlyInspectionMonthForDate_(date) {
+  const parts = dateParts_(date);
+  return `${parts.y}-${String(parts.m).padStart(2, '0')}`;
+}
+
+/** Sheets 可能把 YYYY-MM 自動轉成日期；讀取時統一還原月份。 */
+function monthlyInspectionMonthCell_(value) {
+  if (value instanceof Date) return isNaN(value.getTime()) ? '' : monthlyInspectionMonthForDate_(value);
+  const text = String(value || '').trim();
+  return /^\d{4}-(0[1-9]|1[0-2])$/.test(text) ? text : '';
+}
+
+function normalizeMonthlyInspectionMonth_(month, checkDate) {
+  const actualMonth = monthlyInspectionMonthForDate_(parseISODate_(checkDate));
+  const value = String(month || actualMonth).trim();
+  if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(value) || value > actualMonth) {
+    throw new Error('檢點所屬月份須為 YYYY-MM，且不得晚於實際檢查月份');
+  }
+  return value;
+}
+
+/** 舊資料依原檢查日期推定月份；新資料以獨立欄位為準，不改寫歷史日期。 */
+function monthlyInspectionMonthFromRow_(headers, row) {
+  const monthCol = headers.indexOf('檢點所屬月份');
+  const rawMonth = monthCol >= 0 ? row[monthCol] : '';
+  if (rawMonth) return monthlyInspectionMonthCell_(rawMonth);
+  const dateCol = headers.indexOf('檢查日期');
+  const raw = dateCol >= 0 ? row[dateCol] : '';
+  try {
+    return monthlyInspectionMonthForDate_(parseISODate_(raw));
+  } catch (_) {
+    return '';
+  }
+}
+
+function getMonthlyInspectionMonths_(today) {
+  const current = monthlyInspectionMonthForDate_(today);
+  const start = monthlyInspectionMonthCell_(getSetting_('monthlyInspectionTrackingStartMonth', current));
+  if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(start) || start > current) {
+    throw new Error('月檢追蹤起始月份設定不合法');
+  }
+  const months = [];
+  let year = Number(start.slice(0, 4));
+  let month = Number(start.slice(5));
+  while (`${year}-${String(month).padStart(2, '0')}` <= current) {
+    months.push(`${year}-${String(month).padStart(2, '0')}`);
+    if (++month > 12) { year++; month = 1; }
+  }
+  return months;
+}
+
 function monthlyReminderJob_(opts) {
+  opts = opts || {};
+  const today = opts.today || todayStart_();
+  const current = monthlyInspectionMonthForDate_(today);
+  const recordData = getMonthlyInspectionRecordData_();
+  const equipments = getEquipmentList_().map(e => getEquipmentById_(e.equipmentId)).filter(Boolean);
+  return getMonthlyInspectionMonths_(today).reduce((results, month) => {
+    const rows = monthlyReminderForMonth_({
+      dryRun: opts.dryRun, today: parseISODate_(month + '-01'),
+      currentDate: today, isOverdueMonth: month < current,
+      recordData, equipments,
+    });
+    return results.concat(rows.filter(row => month === current || !row.completed));
+  }, []);
+}
+
+function monthlyReminderForMonth_(opts) {
   opts = opts || {};
   const dryRun = !!opts.dryRun;
   const today = opts.today || todayStart_();
-  const day = dateParts_(today).d;
+  const day = dateParts_(opts.currentDate || today).d;
   const startDay = getMonthlyReminderStartDay_();
   const checkWindow = getMonthlyCheckWindow_();
-  const equipments = getEquipmentList_();
+  const equipments = opts.equipments || getEquipmentList_().map(e => getEquipmentById_(e.equipmentId)).filter(Boolean);
   const sentCategories = new Set();
   const results = [];
 
   for (const eqp of equipments) {
-    const full = getEquipmentById_(eqp.equipmentId);
+    const full = eqp;
     if (!full || !full.active) continue;
     if (!isMonthlyReminderCategory_(full.category)) continue;
 
@@ -387,6 +454,7 @@ function monthlyReminderJob_(opts) {
       equipmentName: full.equipmentName,
       category: full.category,
       formType: '每月',
+      inspectionMonth: monthlyInspectionMonthForDate_(today),
     };
 
     if (sentCategories.has(full.category)) {
@@ -395,45 +463,91 @@ function monthlyReminderJob_(opts) {
     }
 
     const inCheckWindow = (day >= checkWindow.start && day <= checkWindow.end);
-    const inReminderPeriod = (day >= startDay);
+    const inReminderPeriod = opts.isOverdueMonth || day >= startDay;
 
-    // 非「應檢期」也非「補填提醒期」→ 完全隱藏，不 push 到 results
-    //   結果：cmdStatus_ 不會列、reminderStatus 也不會出現（避免 6~24 號之間冗餘訊息）
-    if (!inCheckWindow && !inReminderPeriod) {
-      continue;
-    }
-
-    if (hasMonthlyRecordInCategory_(full.category, today)) {
-      results.push(Object.assign({}, base, { action: 'skip', reason: '該類別本月已填' }));
-      continue;
-    }
-
-    // 應檢期內未填 → 顯示在狀態（讓承辦看進度），但不寄信（避免月初就吵）
-    if (inCheckWindow && !inReminderPeriod) {
+    // LINE 狀態整月保留欠項；填報不等於完成，必須有主管簽核證據。
+    const completion = getMonthlyCompletionInCategory_(full.category, today, opts.recordData);
+    if (completion.completed) {
+      sentCategories.add(full.category);
       results.push(Object.assign({}, base, {
-        action: dryRun ? 'inWindow' : 'inWindow',
-        reason: `本月應檢期(${checkWindow.start}-${checkWindow.end}日)尚未填`,
+        action: 'skip', alreadyFilled: true, completed: true,
+        reason: '該類別本月已完成主管簽核',
+      }));
+      continue;
+    }
+    const pendingReason = completion.submitted
+      ? `本月月檢已填報，${completion.pendingStatus}`
+      : '本月尚未填月檢';
+
+    // 催辦日前只顯示進度，未填／未簽核皆不隱藏。
+    if (!inReminderPeriod) {
+      results.push(Object.assign({}, base, {
+        action: 'inWindow', completed: false, submitted: completion.submitted,
+        reason: inCheckWindow ? `${pendingReason}（應檢期 ${checkWindow.start}-${checkWindow.end} 日）` : pendingReason,
       }));
       sentCategories.add(full.category);
       continue;
     }
 
-    // 已到補填提醒期（≥ startDay）+ 未填 → 寄信
-    if (!dryRun) sendMonthlyUnfilledReminder_(full, today);
+    // 每月 6 日起，直到該月檢點與主管簽核皆完成才停止催辦。
+    if (!dryRun) sendMonthlyUnfilledReminder_(full, today, completion);
     sentCategories.add(full.category);
-    results.push(Object.assign({}, base, { action: dryRun ? 'wouldMail' : 'mailed', reason: '本月尚未填月檢' }));
+    results.push(Object.assign({}, base, {
+      action: dryRun ? 'wouldMail' : 'mailed', completed: false,
+      submitted: completion.submitted, reason: pendingReason,
+    }));
   }
 
   return results;
 }
 
 function hasMonthlyRecordInCategory_(category, date) {
+  return getMonthlyCompletionInCategory_(category, date).completed;
+}
+
+/** 月檢完成必須同時有歸檔狀態、主管姓名及簽核時間；略過簽核不算完成。 */
+function isMonthlyChecklistApproved_(headers, row) {
+  const value = name => {
+    const index = headers.indexOf(name);
+    return index < 0 ? '' : row[index];
+  };
+  const approvedAt = value('主管簽核時間');
+  let hasApprovedAt = approvedAt instanceof Date && !isNaN(approvedAt.getTime());
+  if (!(approvedAt instanceof Date)) {
+    const match = String(approvedAt || '').trim().match(/^(\d{4}-\d{2}-\d{2})[ T](\d{2}):(\d{2})(?::(\d{2}))?$/);
+    if (match && Number(match[2]) < 24 && Number(match[3]) < 60 && Number(match[4] || 0) < 60) {
+      try { parseISODate_(match[1]); hasApprovedAt = true; } catch (_) {}
+    }
+  }
+  return String(value('簽核狀態') || '').trim() === '已簽核歸檔' &&
+    !!String(value('主管姓名') || '').trim() && hasApprovedAt;
+}
+
+function getMonthlyInspectionRecordData_() {
   const ss = SpreadsheetApp.openById(CONFIG.DB_SHEET_ID);
   const sheet = ss.getSheetByName('填報紀錄');
-  if (!sheet || sheet.getLastRow() < 2) return false;
+  if (!sheet) throw new Error('找不到填報紀錄工作表');
+  return sheet.getDataRange().getValues();
+}
 
-  const data = sheet.getDataRange().getValues();
-  const headers = data[0];
+function getMonthlyCompletionInCategory_(category, date, recordData) {
+  return monthlyCompletionFromRows_(recordData || getMonthlyInspectionRecordData_(), category, date);
+}
+
+function getMonthlyInspectionPolicyStatus_(date) {
+  const today = date || todayStart_();
+  const data = getMonthlyInspectionRecordData_();
+  return {
+    checkWindow: getMonthlyCheckWindow_(), reminderStartDay: getMonthlyReminderStartDay_(),
+    trackingMonths: getMonthlyInspectionMonths_(today),
+    monthColumnPresent: (data[0] || []).indexOf('檢點所屬月份') >= 0,
+    recordCount: Math.max(0, data.length - 1),
+    results: monthlyReminderJob_({ dryRun: true, today }),
+  };
+}
+
+function monthlyCompletionFromRows_(data, category, date) {
+  const headers = (data[0] || []).map(h => String(h || '').trim());
   const dateCol = headers.indexOf('檢查日期');
   const typeCol = headers.indexOf('表單類型');
   const categoryCol = headers.indexOf('設備類別');
@@ -441,54 +555,61 @@ function hasMonthlyRecordInCategory_(category, date) {
   if (dateCol < 0) missing.push('檢查日期');
   if (typeCol < 0) missing.push('表單類型');
   if (categoryCol < 0) missing.push('設備類別');
+  ['簽核狀態', '主管姓名', '主管簽核時間'].forEach(name => {
+    if (headers.indexOf(name) < 0) missing.push(name);
+  });
   if (missing.length) {
-    Logger.log('填報紀錄缺欄位，無法判斷月檢是否已填：' + missing.join(', '));
-    return false;
+    throw new Error('填報紀錄缺欄位，無法判斷月檢是否完成簽核：' + missing.join(', '));
   }
-  const target = dateParts_(date);
+  const targetMonth = monthlyInspectionMonthForDate_(date);
+  let submitted = false;
+  let pendingStatus = '尚未填報';
 
   for (let i = 1; i < data.length; i++) {
-    let cellDate = data[i][dateCol];
-    if (!(cellDate instanceof Date)) {
-      const s = String(cellDate || '').trim();
-      if (!s) continue;
-      cellDate = new Date(s + 'T00:00:00+08:00');
-    }
-    const parts = dateParts_(cellDate);
     if (
-      parts.y === target.y &&
-      parts.m === target.m &&
-      data[i][typeCol] === '每月' &&
-      data[i][categoryCol] === category
+      monthlyInspectionMonthFromRow_(headers, data[i]) === targetMonth &&
+      String(data[i][typeCol] || '').trim() === '每月' &&
+      String(data[i][categoryCol] || '').trim() === category
     ) {
-      return true;
+      submitted = true;
+      if (isMonthlyChecklistApproved_(headers, data[i])) {
+        return { completed: true, submitted: true, pendingStatus: '' };
+      }
+      const status = String(data[i][headers.indexOf('簽核狀態')] || '').trim();
+      pendingStatus = status === '待異常處理' ? '待異常處理及主管簽核'
+        : status === '待主管簽核' ? '待主管簽核' : '尚未完成主管簽核';
     }
   }
-  return false;
+  return { completed: false, submitted, pendingStatus };
 }
 
-function sendMonthlyUnfilledReminder_(equipment, date) {
+function sendMonthlyUnfilledReminder_(equipment, date, completion) {
+  completion = completion || { submitted: false, pendingStatus: '尚未填報' };
   const p = dateParts_(date);
   const rocMonth = `${p.y - 1911}/${String(p.m).padStart(2, '0')}`;
-  const subject = `[未填月檢提醒] ${rocMonth} ${equipment.category}`;
+  const subject = `[月檢未完成提醒] ${rocMonth} ${equipment.category}`;
   const webFrontendUrl = getSetting_('webFrontendUrl', '') || CONFIG.DEFAULT_WEB_FRONTEND_URL;
-  const fillLink = webFrontendUrl
-    ? `${webFrontendUrl}/monthly.html?eqp=${encodeURIComponent(equipment.equipmentId)}`
-    : '';
+  const progressUrl = completion.submitted && typeof buildOperationsDashboardUrl_ === 'function'
+    ? buildOperationsDashboardUrl_() : '';
+  const fillLink = progressUrl || (webFrontendUrl
+    ? `${webFrontendUrl}/monthly.html?eqp=${encodeURIComponent(equipment.equipmentId)}&month=${encodeURIComponent(monthlyInspectionMonthForDate_(date))}`
+    : '');
+  const buttonLabel = completion.submitted ? '查看月檢進度' : '填寫月檢';
   const E = escapeHtml_;
   const linkButton = fillLink
-    ? `<p><a href="${E(fillLink)}" style="display:inline-block;background:#1a73e8;color:#fff;padding:10px 20px;border-radius:4px;text-decoration:none;">前往填寫月檢</a></p>`
+    ? `<p><a href="${E(fillLink)}" style="display:inline-block;background:#1a73e8;color:#fff;padding:10px 20px;border-radius:4px;text-decoration:none;">${E(buttonLabel)}</a></p>`
     : '';
 
   const htmlBody = `
     <div style="font-family:'Microsoft JhengHei',Arial,sans-serif;font-size:14px;color:#222;line-height:1.6;">
       <p>承辦您好，</p>
-      <p>系統偵測到 <b>${E(rocMonth)}</b> <b>${E(equipment.category)}</b> 尚未完成每月檢核表填報。</p>
+      <p>系統偵測到 <b>${E(rocMonth)}</b> <b>${E(equipment.category)}</b> 尚未完成月檢及主管簽核。</p>
+      <p>目前進度：${E(completion.pendingStatus)}</p>
       <table style="border-collapse:collapse;margin:12px 0;">
         <tr><td style="padding:4px 12px 4px 0;color:#666;">表單</td><td><b>${E(equipment.equipmentName)}</b></td></tr>
         <tr><td style="padding:4px 12px 4px 0;color:#666;">所在位置</td><td>${E(equipment.location)}</td></tr>
       </table>
-      <p>請於月底前完成月檢；若檢核結果為異常，系統會自動建立異常事件並推播 LINE 通知。</p>
+      <p>每月 1–5 日進行當月月檢，6 日起持續催辦，直到當月檢點及主管簽核完成；異常須先完成處理再送主管簽核。</p>
       ${linkButton}
       <hr style="border:none;border-top:1px solid #ddd;margin:24px 0;">
       <p style="font-size:12px;color:#888;">本信由「自動檢查表電子化系統」自動寄送<br>${E(getOrgHeader_())}</p>
@@ -502,11 +623,11 @@ function sendMonthlyUnfilledReminder_(equipment, date) {
   if (hasLineToken) {
     try {
       const r = sendSupervisorReminder_(equipment.category, [equipment], safeFillLink, {
-        title: '本月未完成月檢',
+        title: '該月月檢及主管簽核未完成',
         dateLabel: rocMonth,
-        itemLabel: '待填表單',
+        itemLabel: completion.submitted ? completion.pendingStatus : '待填表單',
         itemIcon: '📋',
-        buttonLabel: '填寫月檢',
+        buttonLabel,
         notificationColumn: typeof lineMonthlyNotificationColumnForEquipment_ === 'function'
           ? lineMonthlyNotificationColumnForEquipment_(equipment)
           : '',

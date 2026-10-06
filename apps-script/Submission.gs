@@ -35,6 +35,9 @@ function handleSubmission_(payload) {
   if (!payload || !payload.formType) throw new Error("缺少 formType");
   if (!payload.equipmentId) throw new Error("缺少 equipmentId");
   if (!payload.checkDate) throw new Error("缺少 checkDate");
+  if (payload.formType === "monthly") {
+    payload.checkMonth = normalizeMonthlyInspectionMonth_(payload.checkMonth, payload.checkDate);
+  }
   if (!Array.isArray(payload.items) || !payload.items.length) {
     throw new Error("缺少 items");
   }
@@ -222,7 +225,7 @@ function handleSubmission_(payload) {
       });
       const draftFile = DriveApp.getFileById(docInfo.docId);
       draftFile.setName(
-        buildDraftDocFilename_(payload.formType, checkDate, equipment),
+        buildDraftDocFilename_(payload.formType, checkDate, equipment, payload.checkMonth),
       );
       const pendingFolder = getOrCreatePendingApprovalFolder_();
       draftFile.moveTo(pendingFolder);
@@ -357,6 +360,7 @@ function handleSubmission_(payload) {
           submittedAt,
           checkDate,
           formType: payload.formType,
+          checkMonth: payload.checkMonth,
           equipment,
           inspector: payload.inspector,
           incidentCount,
@@ -377,6 +381,7 @@ function handleSubmission_(payload) {
       ok: true,
       recordId,
       fileUrl,
+      ...(payload.formType === "monthly" ? { checkMonth: payload.checkMonth } : {}),
       approvalPending: needsApproval,
       approvalDeferredForIncidents: needsApproval && incidentCount > 0,
       approvalNotice,
@@ -439,6 +444,10 @@ function writeRecord_({
     Utilities.formatDate(submittedAt, tz_(), "yyyy-MM-dd HH:mm:ss"),
   );
   setCol("檢查日期", formatISODate_(checkDate));
+  if (formType === "monthly") {
+    if (headers.indexOf("檢點所屬月份") < 0) throw new Error("填報紀錄缺檢點所屬月份欄位");
+    setCol("檢點所屬月份", payload.checkMonth);
+  }
   setCol("表單類型", formType === "daily" ? "每日" : "每月");
   setCol("設備代號", equipment.equipmentId);
   setCol("設備名稱", equipment.equipmentName);
@@ -517,8 +526,8 @@ function buildApprovalUrl_(recordId, token) {
   );
 }
 
-function buildDraftDocFilename_(formType, checkDate, equipment) {
-  return buildPdfFilename_(formType, checkDate, equipment).replace(
+function buildDraftDocFilename_(formType, checkDate, equipment, checkMonth) {
+  return buildPdfFilename_(formType, checkDate, equipment, checkMonth).replace(
     /\.pdf$/i,
     "_待主管簽核",
   );
@@ -695,6 +704,7 @@ function listPendingApprovalRecords_(opts) {
       recordId: rec.recordId,
       checkDate: rec.checkDate,
       checkDateLabel,
+      checkMonth: rec.checkMonth,
       formType: rec.formType,
       formTypeZh: rec.formTypeZh,
       equipmentId: rec.equipmentId,
@@ -741,6 +751,8 @@ function approvalBatchKey_(rec) {
     String(rec.checkDate || "").trim(),
     String(rec.formType || rec.formTypeZh || "").trim(),
     String(rec.equipmentId || rec.equipmentName || "").trim(),
+    rec.formType === "monthly" || rec.formTypeZh === "每月"
+      ? String(rec.checkMonth || String(rec.checkDate || '').slice(0, 7)).trim() : '',
   ].join("|");
 }
 
@@ -834,6 +846,7 @@ function approvalDiagnosticSafeRecord_(rec, archivedBatchMap) {
     recordId: rec.recordId,
     rowNo: rec.rowNo,
     checkDate: rec.checkDate,
+    checkMonth: rec.checkMonth,
     formType: rec.formTypeZh,
     equipmentId: rec.equipmentId,
     equipmentName: rec.equipmentName,
@@ -872,6 +885,7 @@ function pendingApprovalSafeRecord_(rec) {
   return {
     recordId: rec.recordId,
     checkDate: rec.checkDate,
+    checkMonth: rec.checkMonth,
     formType: rec.formTypeZh,
     equipmentId: rec.equipmentId,
     equipmentName: rec.equipmentName,
@@ -1127,12 +1141,12 @@ function handleApprovalSubmission_(payload) {
     );
 
     const pdfBlob = exportChecklistDocToPdf_(rec.draftDocId);
-    const fileName = buildPdfFilename_(rec.formType, checkDate, equipment);
+    const fileName = buildPdfFilename_(rec.formType, checkDate, equipment, rec.checkMonth);
     pdfBlob.setName(fileName);
     const folder = getOrCreateArchiveFolderForSubmission_(
       rec.formType,
       equipment,
-      checkDate,
+      rec.formType === "monthly" && rec.checkMonth ? parseISODate_(rec.checkMonth + '-01') : checkDate,
     );
     const file = folder.createFile(pdfBlob);
     sharePdfFileForLinkView_(file, "approval");
@@ -1276,6 +1290,7 @@ function approvalRecordFromRow_(sheet, headers, row, rowNo) {
       checkDate instanceof Date
         ? formatISODate_(checkDate)
         : String(checkDate || "").trim(),
+    checkMonth: formTypeZh === "每月" ? monthlyInspectionMonthFromRow_(headers, row) : "",
     formType: formTypeZh === "每日" ? "daily" : "monthly",
     formTypeZh,
     equipmentId: String(value("設備代號") || ""),
@@ -1351,6 +1366,7 @@ function getApprovalSummary_(recordId, token) {
       status: displayStatus,
       submittedAt: rec.submittedAt,
       checkDate: rec.checkDate,
+      checkMonth: rec.checkMonth,
       formType: rec.formTypeZh,
       equipmentId: rec.equipmentId,
       equipmentName: rec.equipmentName,
@@ -1746,7 +1762,7 @@ function getTemplateForCategoryCycle_(category, formType, equipment) {
  *
  * 例：1150518_<設備名稱>_日檢.pdf
  */
-function buildPdfFilename_(formType, checkDate, equipment) {
+function buildPdfFilename_(formType, checkDate, equipment, checkMonth) {
   const rocDate = formatROCDate_(checkDate);
   const typeStr = formType === "daily" ? "日檢" : "月檢";
   // 移除 Drive / 檔名不安全字元 + ASCII 控制字元
@@ -1754,5 +1770,6 @@ function buildPdfFilename_(formType, checkDate, equipment) {
     /[\\/:*?"<>|\x00-\x1f]/g,
     "_",
   );
-  return `${rocDate}_${safeName}_${typeStr}.pdf`;
+  const monthLabel = formType === "monthly" && checkMonth ? `_所屬${checkMonth}` : '';
+  return `${rocDate}_${safeName}_${typeStr}${monthLabel}.pdf`;
 }

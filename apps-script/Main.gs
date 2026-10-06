@@ -138,6 +138,8 @@ function doGet(e) {
           "supervisorStatus",
           "subscriberStatus",
           "updateMonthlySettingNotes",
+          "applyMonthlyInspectionPolicy",
+          "monthlyInspectionPolicyStatus",
           "applyProjectResourceNames",
           "installRichMenu",
           "deleteRichMenu",
@@ -341,6 +343,19 @@ function doGet(e) {
               action,
               ...updateMonthlySettingNotes_(),
             };
+            break;
+          }
+          case "applyMonthlyInspectionPolicy": {
+            result = { ok: true, action, ...applyMonthlyInspectionPolicy_({
+              dryRun: e.parameter.dryRun !== "false",
+              trackingStartMonth: e.parameter.startMonth || "",
+            }) };
+            break;
+          }
+          case "monthlyInspectionPolicyStatus": {
+            result = { ok: true, action, ...getMonthlyInspectionPolicyStatus_(
+              e.parameter.date ? parseISODate_(e.parameter.date) : undefined,
+            ) };
             break;
           }
           case "applyProjectResourceNames": {
@@ -1198,6 +1213,9 @@ function friendlyError_(err) {
     "找不到模板",
     "檢查表模板缺必要欄位",
     "日期格式",
+    "檢點所屬月份",
+    "月檢追蹤起始月份設定不合法",
+    "須指定有效的月檢追蹤起始月份",
     "處理狀況",
     "日常事件",
     "更新連結",
