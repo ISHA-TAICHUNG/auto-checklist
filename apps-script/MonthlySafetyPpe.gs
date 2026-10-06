@@ -371,6 +371,13 @@ function monthlyInspectionMonthForDate_(date) {
   return `${parts.y}-${String(parts.m).padStart(2, '0')}`;
 }
 
+/** Sheets 可能把 YYYY-MM 自動轉成日期；讀取時統一還原月份。 */
+function monthlyInspectionMonthCell_(value) {
+  if (value instanceof Date) return isNaN(value.getTime()) ? '' : monthlyInspectionMonthForDate_(value);
+  const text = String(value || '').trim();
+  return /^\d{4}-(0[1-9]|1[0-2])$/.test(text) ? text : '';
+}
+
 function normalizeMonthlyInspectionMonth_(month, checkDate) {
   const actualMonth = monthlyInspectionMonthForDate_(parseISODate_(checkDate));
   const value = String(month || actualMonth).trim();
@@ -383,8 +390,8 @@ function normalizeMonthlyInspectionMonth_(month, checkDate) {
 /** 舊資料依原檢查日期推定月份；新資料以獨立欄位為準，不改寫歷史日期。 */
 function monthlyInspectionMonthFromRow_(headers, row) {
   const monthCol = headers.indexOf('檢點所屬月份');
-  const explicitMonth = monthCol >= 0 ? String(row[monthCol] || '').trim() : '';
-  if (explicitMonth) return /^\d{4}-(0[1-9]|1[0-2])$/.test(explicitMonth) ? explicitMonth : '';
+  const rawMonth = monthCol >= 0 ? row[monthCol] : '';
+  if (rawMonth) return monthlyInspectionMonthCell_(rawMonth);
   const dateCol = headers.indexOf('檢查日期');
   const raw = dateCol >= 0 ? row[dateCol] : '';
   try {
@@ -396,7 +403,7 @@ function monthlyInspectionMonthFromRow_(headers, row) {
 
 function getMonthlyInspectionMonths_(today) {
   const current = monthlyInspectionMonthForDate_(today);
-  const start = String(getSetting_('monthlyInspectionTrackingStartMonth', current)).trim();
+  const start = monthlyInspectionMonthCell_(getSetting_('monthlyInspectionTrackingStartMonth', current));
   if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(start) || start > current) {
     throw new Error('月檢追蹤起始月份設定不合法');
   }

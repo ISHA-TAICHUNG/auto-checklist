@@ -20,13 +20,14 @@ function sheet(initial) {
   let maxColumns = 26, writes = 0;
   const width = () => Math.max(...rows.map(r => r.length));
   const api = {
-    getLastRow: () => rows.length, getLastColumn: width, getMaxColumns: () => maxColumns,
+    getLastRow: () => rows.length, getLastColumn: width, getMaxColumns: () => maxColumns, getMaxRows: () => 1000,
     insertColumnsAfter: (c, n) => { maxColumns += n; },
     getDataRange: () => ({ getValues: () => rows.map(r => Array.from({ length: width() }, (_, i) => r[i] ?? '')) }),
     getRange(r, c, nr = 1, nc = 1) {
       return {
         getValues: () => Array.from({ length: nr }, (_, i) => Array.from({ length: nc }, (_, j) => rows[r + i - 1]?.[c + j - 1] ?? '')),
         setValue(v) { return this.setValues([[v]]); },
+        setNumberFormat() { return this; },
         setValues(values) { writes++; values.forEach((rr, i) => {
           rows[r + i - 1] ||= [];
           rr.forEach((v, j) => { rows[r + i - 1][c + j - 1] = v; });
@@ -159,6 +160,16 @@ test('月份驗證拒絕未來或非法月份，舊前端省略月份時預設�
   assert.equal(r.c.normalizeMonthlyInspectionMonth_('', '2026-10-02'), '2026-10');
   assert.equal(r.c.normalizeMonthlyInspectionMonth_('2026-09', '2026-10-02'), '2026-09');
   for (const m of ['2026-11', '2026-13', '2026-00', '2026-9', '<script>']) assert.throws(() => r.c.normalizeMonthlyInspectionMonth_(m, '2026-10-02'));
+});
+test('Sheets 把所屬月份或追蹤設定自動轉成日期時仍正確歸屬', () => {
+  const r = runtime([headers, row({ month: date(1, '2026-09'), status: '已簽核歸檔',
+    supervisor: '測試主管', approvedAt: '2026-10-03 10:00:00' })],
+  { monthlyInspectionTrackingStartMonth: date(1, '2026-09') });
+  assert.deepEqual(Array.from(r.c.getMonthlyInspectionMonths_(date(6))), ['2026-09', '2026-10']);
+  assert.equal(r.c.getMonthlyCompletionInCategory_('堆高機', date(6, '2026-09')).completed, true);
+  r.settingsTable.rows.push(['monthlyInspectionTrackingStartMonth', date(1, '2026-09'), '日期格式設定']);
+  const result = r.c.applyMonthlyInspectionPolicy_({ dryRun: false, trackingStartMonth: '2026-10' });
+  assert.equal(result.settings.monthlyInspectionTrackingStartMonth, '2026-09');
 });
 test('欄位缺失不能誤判月檢已完成', () => {
   const r = runtime([headers.filter(h => h !== '主管姓名')]);

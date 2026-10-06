@@ -988,7 +988,7 @@ function applyMonthlyInspectionPolicy_(opts) {
       if (key) rowByKey[key] = i + 2;
     });
     const existingStart = rowByKey.monthlyInspectionTrackingStartMonth
-      ? String(data[rowByKey.monthlyInspectionTrackingStartMonth - 1][valueCol] || '').trim() : '';
+      ? monthlyInspectionMonthCell_(data[rowByKey.monthlyInspectionTrackingStartMonth - 1][valueCol]) : '';
     const start = existingStart || String(opts.trackingStartMonth || '').trim();
     const current = monthlyInspectionMonthForDate_(todayStart_());
     if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(start) || start > current) {
@@ -1010,15 +1010,18 @@ function applyMonthlyInspectionPolicy_(opts) {
     });
     const originalDataHash = sha256Hex_(JSON.stringify(originalData));
     if (!dryRun) {
+      const monthColumn = monthColumns ? originalData[0].indexOf('檢點所屬月份') + 1 : originalColumnCount + 1;
       if (!monthColumns) {
         if (recordsSheet.getMaxColumns() <= originalColumnCount) recordsSheet.insertColumnsAfter(originalColumnCount, 1);
         recordsSheet.getRange(1, originalColumnCount + 1).setValue('檢點所屬月份');
       }
+      recordsSheet.getRange(1, monthColumn, recordsSheet.getMaxRows(), 1).setNumberFormat('@');
       Object.keys(settings).forEach(key => {
         const row = rowByKey[key] ? data[rowByKey[key] - 1].slice() : new Array(headers.length).fill('');
         row[keyCol] = key; row[valueCol] = settings[key][0]; row[noteCol] = settings[key][1];
-        if (rowByKey[key]) settingsSheet.getRange(rowByKey[key], 1, 1, headers.length).setValues([row]);
-        else settingsSheet.appendRow(row);
+        const rowNo = rowByKey[key] || settingsSheet.getLastRow() + 1;
+        settingsSheet.getRange(rowNo, valueCol + 1).setNumberFormat('@');
+        settingsSheet.getRange(rowNo, 1, 1, headers.length).setValues([row]);
       });
       SpreadsheetApp.flush();
     }
