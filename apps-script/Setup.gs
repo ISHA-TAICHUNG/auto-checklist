@@ -260,8 +260,8 @@ function initializeDatabase_() {
     ],
     [
       "monthlyReminderStartDay",
-      "25",
-      "月檢補填提醒起始日（教室/堆高機/固定式起重機）",
+      "6",
+      "月檢催辦起始日；未填或未完成主管簽核皆持續提醒",
     ],
     [
       "dailyWorkCheckEnabled",
@@ -637,6 +637,7 @@ function initializeDatabase_() {
       "草稿Doc連結",
       "clientSubmissionId",
       "備註",
+      "檢點所屬月份",
     ],
     [],
   );
@@ -910,11 +911,11 @@ function ensureSystemSettingDefaults_(ss, rows) {
 function updateMonthlySettingNotes_() {
   const notes = {
     monthlyCheckWindowStart:
-      "月檢應檢期起始日；適用三間教室、堆高機、固定式起重機；應檢期內 LINE「狀態」顯示尚未填，應檢期後到補填日前靜默隱藏，補填日起再次顯示並提醒",
+      "月檢應檢期起始日；每月 1–5 日進行當月月檢；LINE 欠項整月顯示至檢點及主管簽核完成",
     monthlyCheckWindowEnd:
-      "月檢應檢期結束日；適用三間教室、堆高機、固定式起重機；應檢期內 LINE「狀態」顯示尚未填，應檢期後到補填日前靜默隱藏，補填日起再次顯示並提醒",
+      "月檢應檢期結束日；填報仍待主管簽核時不算完成；跨月欠項繼續追蹤",
     monthlyReminderStartDay:
-      "月檢補填提醒起始日；適用三間教室、堆高機、固定式起重機；本月未填時，從此日起重新顯示於 LINE「狀態」並推播補填提醒",
+      "月檢催辦起始日；每月 6 日起每天提醒，直到該月檢點及主管簽核完成；補檢依檢點所屬月份歸屬",
   };
   const ss = SpreadsheetApp.openById(CONFIG.DB_SHEET_ID);
   const sheet = ss.getSheetByName("系統設定");
@@ -948,7 +949,7 @@ function updateMonthlySettingNotes_() {
     row[keyCol] = key;
     row[valueCol] =
       key === "monthlyReminderStartDay"
-        ? "25"
+        ? "6"
         : key === "monthlyCheckWindowEnd"
           ? "5"
           : "1";
@@ -961,6 +962,77 @@ function updateMonthlySettingNotes_() {
 
   SpreadsheetApp.flush();
   return { sheetName: "系統設定", updated, inserted, keys: Object.keys(notes) };
+}
+
+/** 僅調整月檢週期與追加月份欄位；不重跑初始化、不改寫既有填報資料。 */
+function applyMonthlyInspectionPolicy_(opts) {
+  opts = opts || {};
+  const dryRun = opts.dryRun !== false;
+  const lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    const ss = SpreadsheetApp.openById(CONFIG.DB_SHEET_ID);
+    const settingsSheet = ss.getSheetByName('系統設定');
+    const recordsSheet = ss.getSheetByName('填報紀錄');
+    if (!settingsSheet || !recordsSheet) throw new Error('缺少系統設定或填報紀錄工作表');
+    const data = settingsSheet.getDataRange().getValues();
+    const headers = data[0].map(h => String(h || '').trim());
+    const keyCol = headers.indexOf('鍵');
+    const valueCol = headers.indexOf('值');
+    const noteCol = headers.indexOf('備註');
+    if (Math.min(keyCol, valueCol, noteCol) < 0) throw new Error('系統設定缺必要欄位');
+    const rowByKey = {};
+    data.slice(1).forEach((row, i) => {
+      const key = String(row[keyCol] || '').trim();
+      if (key && rowByKey[key]) throw new Error('系統設定有重複鍵：' + key);
+      if (key) rowByKey[key] = i + 2;
+    });
+    const existingStart = rowByKey.monthlyInspectionTrackingStartMonth
+      ? String(data[rowByKey.monthlyInspectionTrackingStartMonth - 1][valueCol] || '').trim() : '';
+    const start = existingStart || String(opts.trackingStartMonth || '').trim();
+    const current = monthlyInspectionMonthForDate_(todayStart_());
+    if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(start) || start > current) {
+      throw new Error('須指定有效的月檢追蹤起始月份 YYYY-MM');
+    }
+    const originalData = recordsSheet.getDataRange().getValues();
+    const originalColumnCount = recordsSheet.getLastColumn();
+    const monthColumns = originalData[0].filter(h => String(h || '').trim() === '檢點所屬月份').length;
+    if (monthColumns > 1) throw new Error('填報紀錄有重複月份欄位');
+    const settings = {
+      monthlyCheckWindowStart: ['1', '月檢應檢期起始日；每月 1–5 日進行當月月檢'],
+      monthlyCheckWindowEnd: ['5', '月檢應檢期結束日；LINE 欠項持續顯示至檢點及主管簽核完成'],
+      monthlyReminderStartDay: ['6', '每月 6 日起每天催辦至該月主管簽核完成；跨月欠項不消失'],
+      monthlyInspectionTrackingStartMonth: [start, '月檢欠項持續追蹤的起始月份；補檢依檢點所屬月份結算'],
+    };
+    const before = {};
+    Object.keys(settings).forEach(key => {
+      before[key] = rowByKey[key] ? data[rowByKey[key] - 1][valueCol] : null;
+    });
+    const originalDataHash = sha256Hex_(JSON.stringify(originalData));
+    if (!dryRun) {
+      if (!monthColumns) {
+        if (recordsSheet.getMaxColumns() <= originalColumnCount) recordsSheet.insertColumnsAfter(originalColumnCount, 1);
+        recordsSheet.getRange(1, originalColumnCount + 1).setValue('檢點所屬月份');
+      }
+      Object.keys(settings).forEach(key => {
+        const row = rowByKey[key] ? data[rowByKey[key] - 1].slice() : new Array(headers.length).fill('');
+        row[keyCol] = key; row[valueCol] = settings[key][0]; row[noteCol] = settings[key][1];
+        if (rowByKey[key]) settingsSheet.getRange(rowByKey[key], 1, 1, headers.length).setValues([row]);
+        else settingsSheet.appendRow(row);
+      });
+      SpreadsheetApp.flush();
+    }
+    const afterOriginalDataHash = dryRun ? originalDataHash : sha256Hex_(JSON.stringify(
+      recordsSheet.getDataRange().getValues().map(row => row.slice(0, originalColumnCount)),
+    ));
+    if (afterOriginalDataHash !== originalDataHash) throw new Error('月檢設定更新後既有填報資料校驗不符');
+    return {
+      dryRun, before, settings: Object.fromEntries(Object.keys(settings).map(key => [key, settings[key][0]])),
+      monthColumnAdded: !dryRun && !monthColumns, monthColumnPlanned: !monthColumns,
+      recordCount: Math.max(0, originalData.length - 1), originalDataHash, afterOriginalDataHash,
+      originalDataUnchanged: true,
+    };
+  } finally { lock.releaseLock(); }
 }
 
 function setupSupervisorSheet_(ss) {

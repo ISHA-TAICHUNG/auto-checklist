@@ -600,19 +600,22 @@ function dashboardChecklistStatus_(today) {
     (day >= checkWindow.start && day <= checkWindow.end) || day >= reminderStartDay;
   // 營運資訊面板需整月呈現月檢進度；提醒是否啟動仍另外保留，
   // 不因面板顯示而改變 LINE 主動推播時段。
+  const currentMonth = monthlyInspectionMonthForDate_(today);
   const monthly = Object.keys(monthlyByCategory)
     .sort(dashboardCompareMonthlyCategories_)
-    .map((category) => {
-      const completed = dashboardHasChecklistRecord_(recordIndex, "每月", category, today);
+    .flatMap((category) => getMonthlyInspectionMonths_(today).map((inspectionMonth) => {
+      const monthDate = parseISODate_(inspectionMonth + '-01');
+      const completed = dashboardHasChecklistRecord_(recordIndex, "每月", category, monthDate);
       return {
         category,
-        equipmentName: dashboardMonthlyEquipmentLabel_(monthlyByCategory[category]),
+        inspectionMonth,
+        equipmentName: `${inspectionMonth} ${dashboardMonthlyEquipmentLabel_(monthlyByCategory[category])}`,
         equipmentCount: monthlyByCategory[category].equipmentCount,
         completed,
         status: completed ? "completed" : "pending",
-        records: dashboardChecklistRecords_(recordIndex, "每月", category, today),
+        records: dashboardChecklistRecords_(recordIndex, "每月", category, monthDate),
       };
-    });
+    })).filter(row => row.inspectionMonth === currentMonth || !row.completed);
 
   const dailyRequired = daily.filter((row) => row.required);
   const monthlyCompleted = monthly.filter((row) => row.completed).length;
@@ -1709,6 +1712,7 @@ function dashboardChecklistRecordIndex_() {
     monthly: {},
     dailyByEquipment: {},
     monthlyByEquipment: {},
+    monthlyApproved: {},
   };
   if (!sheet || sheet.getLastRow() < 2) return index;
   const data = sheet.getDataRange().getValues();
@@ -1767,8 +1771,11 @@ function dashboardChecklistRecordIndex_() {
       }
     }
     if (type === "每月") {
-      const parts = dateParts_(date);
-      const monthKey = parts.y + "-" + parts.m;
+      const monthKey = monthlyInspectionMonthFromRow_(headers, row);
+      if (!monthKey) return;
+      if (isMonthlyChecklistApproved_(headers, row)) {
+        index.monthlyApproved[monthKey + "|" + category] = true;
+      }
       dashboardChecklistIndexRecord_(index.monthly, monthKey + "|" + category, itemKey, record);
       if (equipmentId) {
         dashboardChecklistIndexRecord_(
@@ -1789,6 +1796,10 @@ function dashboardChecklistIndexRecord_(collection, bucketKey, itemKey, record) 
 }
 
 function dashboardHasChecklistRecord_(index, type, category, date) {
+  if (type === "每月") {
+    const monthKey = monthlyInspectionMonthForDate_(date);
+    return !!(index.monthlyApproved && index.monthlyApproved[monthKey + "|" + category]);
+  }
   return dashboardChecklistRecords_(index, type, category, date).length > 0;
 }
 
@@ -1797,8 +1808,7 @@ function dashboardChecklistRecords_(index, type, category, date) {
   if (type === "每日") {
     bucket = index.daily[formatISODate_(date) + "|" + category];
   } else {
-    const parts = dateParts_(date);
-    bucket = index.monthly[parts.y + "-" + parts.m + "|" + category];
+    bucket = index.monthly[monthlyInspectionMonthForDate_(date) + "|" + category];
   }
   return dashboardChecklistPublicRecords_(bucket);
 }
@@ -1810,9 +1820,8 @@ function dashboardChecklistRecordsForEquipment_(index, type, equipmentId, date) 
   if (type === "每日") {
     bucket = index.dailyByEquipment[formatISODate_(date) + "|" + safeEquipmentId];
   } else {
-    const parts = dateParts_(date);
     bucket = index.monthlyByEquipment[
-      parts.y + "-" + parts.m + "|" + safeEquipmentId
+      monthlyInspectionMonthForDate_(date) + "|" + safeEquipmentId
     ];
   }
   return dashboardChecklistPublicRecords_(bucket);

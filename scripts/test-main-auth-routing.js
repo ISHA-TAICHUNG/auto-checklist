@@ -86,6 +86,8 @@ const context = {
   submitDailyWorkCheck_: () => ({ ok: true }),
   getDailyIncidentPeopleOptions_: () => ({ ok: true, people: ['A'] }),
   getLineMessageQuotaStatus_: () => ({ quota: 200 }),
+  applyMonthlyInspectionPolicy_: opts => ({ dryRun: opts.dryRun, testRoute: 'monthly-policy' }),
+  getMonthlyInspectionPolicyStatus_: () => ({ testRoute: 'monthly-status' }),
 };
 vm.createContext(context);
 vm.runInContext(fs.readFileSync('apps-script/PublicSession.gs', 'utf8'), context, { filename: 'PublicSession.gs' });
@@ -103,6 +105,13 @@ function get(parameters) {
   const output = context.doGet({ parameter: parameters || {} });
   return JSON.parse(output.text);
 }
+
+for (const action of ['applyMonthlyInspectionPolicy', 'monthlyInspectionPolicyStatus']) {
+  assert.equal(get({ api: 'admin', action }).ok, false);
+  assert.equal(get({ api: 'admin', action, adminToken: 'wrong' }).ok, false);
+  assert.equal(get({ api: 'admin', action, adminToken: 'admin-secret' }).ok, true);
+}
+assert.equal(get({ api: 'admin', action: 'applyMonthlyInspectionPolicy', adminToken: 'admin-secret' }).dryRun, true);
 
 const publicTicket = context.issuePublicSession_('submitChecklist');
 assert.deepEqual(post({ publicSessionToken: publicTicket.publicSessionToken }), { ok: true, route: 'public' });

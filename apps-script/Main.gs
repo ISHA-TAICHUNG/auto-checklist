@@ -138,6 +138,8 @@ function doGet(e) {
           "supervisorStatus",
           "subscriberStatus",
           "updateMonthlySettingNotes",
+          "applyMonthlyInspectionPolicy",
+          "monthlyInspectionPolicyStatus",
           "applyProjectResourceNames",
           "installRichMenu",
           "deleteRichMenu",
@@ -341,6 +343,19 @@ function doGet(e) {
               action,
               ...updateMonthlySettingNotes_(),
             };
+            break;
+          }
+          case "applyMonthlyInspectionPolicy": {
+            result = { ok: true, action, ...applyMonthlyInspectionPolicy_({
+              dryRun: e.parameter.dryRun !== "false",
+              trackingStartMonth: e.parameter.startMonth || "",
+            }) };
+            break;
+          }
+          case "monthlyInspectionPolicyStatus": {
+            result = { ok: true, action, ...getMonthlyInspectionPolicyStatus_(
+              e.parameter.date ? parseISODate_(e.parameter.date) : undefined,
+            ) };
             break;
           }
           case "applyProjectResourceNames": {

@@ -192,7 +192,18 @@
         const pad = (n) => String(n).padStart(2, "0");
         const isoToday = `${today.getFullYear()}-${pad(today.getMonth() + 1)}-${pad(today.getDate())}`;
 
-        const fDate = makeField("檢查日期", "date", isoToday);
+        const requestedMonth = new URLSearchParams(location.search).get("month") || "";
+        const defaultMonth = /^\d{4}-(0[1-9]|1[0-2])$/.test(requestedMonth) && requestedMonth <= isoToday.slice(0, 7)
+          ? requestedMonth : isoToday.slice(0, 7);
+        const fMonth = makeField("檢點所屬月份", "month", defaultMonth);
+        fMonth.input.id = "checkMonth";
+        fMonth.input.max = isoToday.slice(0, 7);
+        dateCard.body.appendChild(fMonth.field);
+        const monthHelp = document.createElement("p");
+        monthHelp.className = "alert alert-info";
+        monthHelp.textContent = "每月 1–5 日進行當月月檢，6 日起持續提醒至主管簽核完成。補檢請選欠檢月份，實際檢查日期照實填寫；補檢只計入所選月份。";
+        dateCard.body.appendChild(monthHelp);
+        const fDate = makeField("實際檢查日期", "date", isoToday);
         fDate.input.id = "checkDate";
         dateCard.body.appendChild(fDate.field);
 
@@ -643,8 +654,12 @@
         const btn = document.getElementById("submitBtn");
         const inspector = document.getElementById("inspector").value.trim();
         const checkDate = document.getElementById("checkDate").value;
+        const checkMonth = document.getElementById("checkMonth").value;
 
         if (!checkDate) return alert("請選擇檢查日期");
+        if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(checkMonth) || checkMonth > checkDate.slice(0, 7)) {
+          return alert("請選擇檢點所屬月份，且不得晚於實際檢查月份");
+        }
         if (!inspector) return alert("請填寫檢查人員姓名");
 
         const schema = formMeta.template.monthlySchema || "crane_full";
@@ -787,6 +802,7 @@
           formType: "monthly",
           equipmentId: eqp,
           checkDate: checkDate,
+          checkMonth: checkMonth,
           inspector: inspector,
           items: items,
           signature: sigPad.trimmedDataURL(),
@@ -834,6 +850,7 @@
           : r.approvalPending
             ? "已送出主管簽核通知，主管簽名後才會正式歸檔"
             : "本次紀錄已自動歸檔";
+        if (r.checkMonth) meta.textContent = `所屬月份：${r.checkMonth}；${meta.textContent}`;
         card.appendChild(meta);
 
         if (r.approvalPending && r.approvalNotice && !r.approvalNotice.ok) {
