@@ -276,7 +276,7 @@ function cmdQRList_(replyToken) {
 function cmdStatus_(replyToken, userId, opts) {
   opts = opts || {};
   // 跑 dryRun 的 dailyReminderJob 拿狀態（含 monthlyReminderJob_ 已過濾的月檢結果）
-  // 月檢設備：非應檢期(1-5)且非補填提醒期(25+)時，monthlyReminderJob_ 已完全不 push，狀態不會列
+  // 月檢欠項整月顯示，直到當月檢點及主管簽核完成才從待確認清單移除。
   const results = dailyReminderJob_({ dryRun: true });
   const profile = (typeof getLineSubscriberProfileByUserId_ === 'function')
     ? getLineSubscriberProfileByUserId_(userId)

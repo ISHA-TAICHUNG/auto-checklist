@@ -434,6 +434,7 @@
       addRow(grid, '設備類別', record.category);
       addRow(grid, '表單類型', record.formType);
       addRow(grid, '檢查日期', record.checkDate);
+      if (record.checkMonth) addRow(grid, '檢點所屬月份', record.checkMonth);
       addRow(grid, '檢查人', record.inspector);
       addRow(grid, '異常項目', String(record.incidentCount || 0));
       addRow(grid, '簽核狀態', record.status);

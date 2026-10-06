@@ -1132,7 +1132,8 @@ function isNonActionableChecklistStatus_(result) {
 
 function isFilledChecklistStatus_(result) {
   const reason = String((result && result.reason) || '').trim();
-  return reason === '該類別當日已填' || reason === '該類別本月已填';
+  return reason === '該類別當日已填' || reason === '該類別本月已填' ||
+    reason === '該類別本月已完成主管簽核';
 }
 
 function normalizeChecklistPendingRow_(category, result) {
@@ -1158,7 +1159,9 @@ function checklistStatusGroupWeight_(category) {
 function checklistStatusDisplayCategory_(result) {
   const category = String((result && result.category) || '?').trim() || '?';
   const formType = String((result && result.formType) || '').trim();
-  return formType === '每月' ? `${category}月檢` : `${category}日檢`;
+  const month = String((result && result.inspectionMonth) || '').trim();
+  return formType === '每月'
+    ? `${category}月檢${month ? `（${month}）` : ''}` : `${category}日檢`;
 }
 
 function checklistStatusCategorySummary_(results) {
@@ -1770,6 +1773,10 @@ function buildApprovalRequestFlex_(record) {
             { type: 'text', text: '日期', flex: 2, size: 'sm', color: '#666666' },
             { type: 'text', text: checkDateLabel, flex: 5, size: 'sm', wrap: true },
           ]},
+          ...(record.checkMonth ? [{ type: 'box', layout: 'baseline', contents: [
+            { type: 'text', text: '所屬月份', flex: 2, size: 'sm', color: '#666666' },
+            { type: 'text', text: record.checkMonth, flex: 5, size: 'sm', wrap: true },
+          ]}] : []),
           { type: 'box', layout: 'baseline', contents: [
             { type: 'text', text: '檢查人', flex: 2, size: 'sm', color: '#666666' },
             { type: 'text', text: record.inspector || '', flex: 5, size: 'sm', wrap: true },
@@ -1811,6 +1818,7 @@ function buildPendingApprovalBubble_(record, opts) {
     dailyIncidentFlexField_('設備', record.equipmentName || record.equipmentId, { weight: 'bold' }),
     dailyIncidentFlexField_('表單', `${formTypeZh}檢查紀錄`),
     dailyIncidentFlexField_('日期', record.checkDateLabel || record.checkDate),
+    ...(record.checkMonth ? [dailyIncidentFlexField_('所屬月份', record.checkMonth)] : []),
     dailyIncidentFlexField_('檢查人', record.inspector),
     dailyIncidentFlexField_('待簽', ageText, { color: record.ageHours >= 24 ? '#B06000' : '#202124', weight: 'bold' }),
     dailyIncidentFlexField_('異常', `${record.incidentCount || 0} 項`, {

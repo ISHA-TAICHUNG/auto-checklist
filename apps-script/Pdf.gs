@@ -80,11 +80,13 @@ function createChecklistDoc_(formType, ctx) {
     // ----- 設備資訊表 -----
     const eq = ctx.equipment;
     const rocDate = `${rocDateStr.substring(0, 3)}/${rocDateStr.substring(3, 5)}/${rocDateStr.substring(5, 7)}`;
-    const metaTable = body.appendTable([
+    const metaRows = [
       ["設備名稱", eq.equipmentName, "設備類別", eq.category],
       ["機械編號", eq.machineSerial, "型式規格", eq.machineType],
       ["所在位置", eq.location, "檢查日期", rocDate],
-    ]);
+    ];
+    if (!isDaily) metaRows.push(['檢點所屬月份', ctx.payload.checkMonth || monthlyInspectionMonthForDate_(ctx.checkDate), '', '']);
+    const metaTable = body.appendTable(metaRows);
     styleMetaTable_(metaTable);
 
     body.appendParagraph("");
@@ -397,6 +399,7 @@ function appendClassroomMonthlySafetyPpePdf_(
 
   const infoTable = body.appendTable([
     ["所在教室", eq.location || "", "檢查或校正日", rocDateZh],
+    ["檢點所屬月份", ctx.payload.checkMonth || monthlyInspectionMonthForDate_(ctx.checkDate), "", ""],
   ]);
   styleClassroomMonthlyInfoTable_(infoTable);
 

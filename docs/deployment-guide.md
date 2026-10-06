@@ -138,6 +138,19 @@ API_TOKEN:              'REPLACE_WITH_RANDOM_TOKEN_...',     // ← A-5-1 產的
 
 ## B. GitHub 端（push 到 <your-github-username> 組織）
 
+### 既有月檢週期升級
+
+月檢每月 1–5 日進行，6 日起每天催辦；未填、待異常處理及待主管簽核皆為欠項。
+必須有「已簽核歸檔」、主管姓名及主管簽核時間，才停止該月份提醒。
+表單的「檢點所屬月份」與實際檢查日期分開保存，跨月補檢只計入所選月份。
+舊紀錄沒有月份欄位時，依原檢查日期推定，不重寫歷史日期或簽核資料。
+
+既有資料庫使用受管理員驗證保護的 `applyMonthlyInspectionPolicy` 升級；
+先以 `dryRun=true` 和 `startMonth=YYYY-MM` 預覽，再以 `dryRun=false` 套用。
+此操作只追加「檢點所屬月份」欄位及四個月檢設定，校驗原有填報資料雜湊不變。
+重跑會保留已設定的追蹤起始月份。`monthlyInspectionPolicyStatus` 可唯讀核對設定及欠項，
+不發送通知、不建立檢查或簽核紀錄。追蹤起始月份之後的欠項持續保留，跨月不會消失。
+
 ### B-1. 建立 repo
 
 在 <your-github-username> 組織開一個新 repo：
