@@ -329,6 +329,18 @@ function getFormMeta_(formType, equipmentId) {
   }
   items.sort((a, b) => a.order - b.order);
 
+  // 舊堆高機項目表尚未加列時也提供補充項目；已有「其他」則放到最後，
+  // 保留其項次，避免影響依項次追蹤的未結案異常。
+  if (template.templateId === 'F-FORK-D') {
+    const otherIndex = items.findIndex(item => item.name === '其他');
+    if (otherIndex >= 0) {
+      items.push(items.splice(otherIndex, 1)[0]);
+    } else {
+      const lastOrder = items.reduce((max, item) => Math.max(max, Number(item.order) || 0), 0);
+      items.push({ order: lastOrder + 1, name: '其他', method: '' });
+    }
+  }
+
   // 固定式起重機日檢同樣使用程式內的單一來源，避免既有資料表尚未遷移時
   // 前端漏掉新增項目。既有填報與歷史 PDF 不受影響。
   if (template.templateId === 'F-CRANE-D') {

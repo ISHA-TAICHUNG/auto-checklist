@@ -197,16 +197,25 @@
         const group = makeRadioGroup('item_' + idx, radioOpts);
         row.appendChild(group.el);
 
-        // 異常說明 + 照片上傳（選 bad 才出現；鎖定項一律顯示）
+        // 「其他」可補充未列出的正常檢查事項；照片仍限不良／異常時上傳。
+        const isOtherItem = ['F-FORK-D', 'F-CRANE-D'].includes(formMeta.template.templateId)
+          && it.name === '其他';
         const abnormalWrap = document.createElement('div');
         abnormalWrap.className = 'abnormal-input';
         const ta = document.createElement('textarea');
-        ta.placeholder = '請填寫異常情形 / 處理方式';
+        ta.placeholder = isOtherItem
+          ? '請填寫其他檢查項目及檢查情形（不良／異常時必填）'
+          : '請填寫異常情形 / 處理方式';
+        if (isOtherItem) ta.setAttribute('aria-label', '其他檢查項目及檢查情形');
         ta.dataset.itemIdx = idx;
         abnormalWrap.appendChild(ta);
 
         // 異常照片 manager（拍照 / 上傳 / 自動壓縮）
         const photoWrap = document.createElement('div');
+        if (isOtherItem) {
+          abnormalWrap.classList.add('show');
+          photoWrap.hidden = !lock;
+        }
         abnormalWrap.appendChild(photoWrap);
         const photoMgr = new PhotoManager(photoWrap, { max: 4 });
         // 存到 item，送出時收集
@@ -239,8 +248,9 @@
         }
 
         group.onChange = (v) => {
-          if (v === badValue) abnormalWrap.classList.add('show');
+          if (v === badValue || isOtherItem) abnormalWrap.classList.add('show');
           else abnormalWrap.classList.remove('show');
+          if (isOtherItem) photoWrap.hidden = v !== badValue;
         };
 
         itemsCard.body.appendChild(row);

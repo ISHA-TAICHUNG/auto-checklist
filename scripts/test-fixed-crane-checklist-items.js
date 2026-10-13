@@ -21,10 +21,10 @@ const dailyItems = context.daily.items;
 const monthlyItems = context.monthly.items;
 const targetName = '緊急停止裝置正常作動';
 
-assert.strictEqual(dailyItems.length, 8, 'fixed-crane daily checklist must contain 8 items');
+assert.strictEqual(dailyItems.length, 9, '固定式起重機日檢必須包含 9 項');
 assert.deepStrictEqual(
   Array.from(dailyItems, item => item[1]),
-  [1, 2, 3, 4, 5, 6, 7, 8],
+  [1, 2, 3, 4, 5, 6, 7, 8, 9],
   'daily item order must remain contiguous',
 );
 assert.strictEqual(dailyItems.filter(item => item[2] === targetName).length, 1);
@@ -32,6 +32,11 @@ assert.deepStrictEqual(
   Array.from(dailyItems.find(item => item[2] === targetName).slice(0, 5)),
   ['F-CRANE-D', 8, targetName, '操作', true],
   'daily emergency-stop item must follow the daily checklist schema',
+);
+assert.deepStrictEqual(
+  Array.from(dailyItems.at(-1)),
+  ['F-CRANE-D', 9, '其他', '', true],
+  '其他必須位於固定式起重機日檢最後一項',
 );
 
 assert.strictEqual(monthlyItems.length, 16, 'fixed-crane monthly checklist must contain 16 items');
