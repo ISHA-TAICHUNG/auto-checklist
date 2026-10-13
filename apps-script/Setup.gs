@@ -2,7 +2,7 @@
  * ===== 一鍵初始化資料庫 Sheets =====
  *
  * 部署時，在 Apps Script 編輯器手動執行 `initializeDatabase` 一次即可。
- * 會自動建立工作表並填入初始資料（含「固定式起重機」的 8 項日檢、16 項月檢）。
+ * 會自動建立工作表並填入初始資料（含「固定式起重機」的 9 項日檢、16 項月檢）。
  *
  * 重複執行時：已存在的工作表不會被覆蓋（只補欄位 / 補缺少的列）。
  */
@@ -18,6 +18,7 @@ const FIXED_CRANE_DAILY_ITEMS_ = [
   ["F-CRANE-D", 6, "控制裝置性能", "操作", true],
   ["F-CRANE-D", 7, "直、橫行軌道", "目視", true],
   ["F-CRANE-D", 8, "緊急停止裝置正常作動", "操作", true],
+  ["F-CRANE-D", 9, "其他", "", true],
 ];
 
 function getFixedCraneDailySourceDefinition_() {
@@ -443,7 +444,7 @@ function initializeDatabase_() {
     ],
   );
 
-  // 固定式起重機日檢 8 項、月檢 16 項
+  // 固定式起重機日檢 9 項、月檢 16 項
   setupSheet_(
     ss,
     "檢查項目",
@@ -453,7 +454,7 @@ function initializeDatabase_() {
 
       ...FIXED_CRANE_MONTHLY_ITEMS_,
 
-      // ----- 堆高機日檢 11 項 -----
+      // ----- 堆高機日檢 12 項 -----
       ["F-FORK-D", 1, "水箱、副水箱水是否足夠", "", true],
       ["F-FORK-D", 2, "機油是否足夠", "", true],
       ["F-FORK-D", 3, "煞車油是否足夠", "", true],
@@ -465,6 +466,7 @@ function initializeDatabase_() {
       ["F-FORK-D", 9, "液壓油是否足夠（油量尺上下限）", "", true],
       ["F-FORK-D", 10, "油管是否漏油", "", true],
       ["F-FORK-D", 11, "電瓶水（上下限）", "", true],
+      ["F-FORK-D", 12, "其他", "", true],
 
       // ----- 堆高機月檢 7 項 -----
       ["F-FORK-M", 1, "頂蓬及桅桿有無損傷", "目視", true],
@@ -2488,7 +2490,7 @@ function migrateFixedCraneChecklists_() {
 }
 
 /**
- * 加堆高機檢查表模板 + 18 項檢查項目（既有 DB upsert）
+ * 加堆高機檢查表模板 + 19 項檢查項目（既有 DB upsert）
  *
  * 何時跑：第一次加堆高機（或新機具）時，從 source code 把模板與項目寫到 DB。
  * setupSheet_ 對既有 data 不會追加，所以 initializeDatabase 不會新增這些列。
@@ -2581,7 +2583,7 @@ function addForkliftTemplatesAndItems_() {
   }
 
   const newItems = [
-    // 堆高機日檢 11 項
+    // 堆高機日檢 12 項
     ["F-FORK-D", 1, "水箱、副水箱水是否足夠", "", true],
     ["F-FORK-D", 2, "機油是否足夠", "", true],
     ["F-FORK-D", 3, "煞車油是否足夠", "", true],
@@ -2593,6 +2595,7 @@ function addForkliftTemplatesAndItems_() {
     ["F-FORK-D", 9, "液壓油是否足夠(油量尺上下限)", "", true],
     ["F-FORK-D", 10, "油管是否漏油", "", true],
     ["F-FORK-D", 11, "電瓶水（上下限）", "", true],
+    ["F-FORK-D", 12, "其他", "", true],
     // 堆高機月檢 7 項
     ["F-FORK-M", 1, "頂蓬及桅桿有無損傷", "目視", true],
     ["F-FORK-M", 2, "積載裝置之性能", "測試", true],
