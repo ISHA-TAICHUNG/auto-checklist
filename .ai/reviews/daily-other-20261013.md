@@ -36,3 +36,39 @@ PLAYWRIGHT_MODULE=/Users/hao/.cache/codex-runtimes/codex-primary-runtime/depende
 PASS 僅核可交給 hao 確認本機改動。正式部署、正式 Sheet 狀態、實際 PDF 產生與正式裝置讀回仍未執行，須在 hao 確認後驗證。
 
 維護注意：舊堆高機 Sheet 未保存 Other 列時，其虛擬項次取最大啟用項次加一；後續如另行新增末項，需同步保存並保留 Other 項次，避免依 order 的未結案異常對應改變。此為後續題庫維護限制，本次未進行此類配置改動。
+
+## 2026-10-13 使用者確認後的正式部署證據審閱
+
+- result: PASS
+- reviewer: Codex 唯讀代理 /root/daily_flow_review
+- scope: 只核對主代理部署與正式讀回產物；本節覆蓋前述「尚未部署」狀態。審閱者未部署、未改產品、未送出正式業務資料或通知，只追加本審閱紀錄。
+
+### 窄範圍發布
+
+前端正式 release 為 `5a4f8f5f9ca2a806e3738c24d21960296d35544f`，父提交為原已發布 `a0c35af611b85eb9fccca343c76333e6d5771f2a`。審閱者已獨立核對兩者 diff 僅 7 個預期路徑；Setup、Templates、測試及任務紀錄與已確認的 `78fbaff` 修改相同，daily.html 僅套入「其他」的 16 行調整，Main、js/api.js 與 monthly.html 完全未改。保留正式原 meta + lockedItems 載入流程，未帶入桌面主分支先前未發布的載入優化。
+
+`frontend-release.json` 記錄 fresh bare repository 重建 tree 與 commit 完全相符並已推送 release。原桌面 Git pack 卡住的推送已停止；managed worktree 因 mmap timeout 建立失敗並由工具清理，沒有額外發布或遺留 checkout。
+
+### Apps Script 正式版本
+
+已讀取 `cloud-baseline.json`、`cloud-deployment.json` 及部署／verify 程式。Google 部署帳號經 userinfo email 與 verified_email 核對為 `isha26336999@gmail.com`；兩個既有固定 deployment 已更新為 v124。
+
+審閱者獨立比對保存的雜湊與 entryPoints，確認：
+
+- 舊 immutable v123 全部 27 檔與部署前 HEAD 完全相同；候選相較 v123 只改 Setup、Templates，另外 25 檔保持相同。
+- 新 immutable v124 全檔、目前 HEAD 與 deployment GET 讀回皆符合候選；兩個既有 Web App URL、ANYONE_ANONYMOUS、USER_DEPLOYING 與 Execution API 權限均保留。
+- 本次沒有初始化 DB、執行 migration 或改寫正式 Sheet 項目設定。
+
+### Pages 與正式功能讀回
+
+`pages-verification.json` 的 Pages build 為 built，commit 等於 release `5a4f8f…`，發布時間為 2026-10-13 17:51:39（Asia/Taipei）。審閱者從 fresh bare repository 直接讀 release daily.html 計算 SHA-256，確認與正式讀回雜湊 `04ed185bd465a50b0c2e52fc6d32a6c71f31aca14015897d3eb523722d848662` 一致；正式 js/api.js 與 monthly.html 雜湊也與原已發布基線一致。
+
+`production-api-verification.json` 共有兩個 exec URL × 7 台設備共 14 組。審閱者獨立檢查每個 deployment 均涵蓋 CRANE-LJ-001 與 FORK-LJ-A 至 F，各組 meta、lockedItems 成功；固定式起重機 9 項、堆高機 12 項，尾項名稱與項次均為「其他」及 9／12。
+
+`production-browser-verification.json` 記錄真實線上堆高機及起重機頁面：正常結果的補充欄可見、輸入文字可讀回且照片隱藏；改選 X 後照片區顯示；兩頁 console error 均為 0。審閱者已檢視 production-forklift.jpg 與 production-fixed-crane.jpg，正式第 12／9 項「其他」、補充說明欄及對應結果選項均可讀。
+
+### 驗收範圍
+
+正式 API 與瀏覽器驗證的 businessWrites=0、notificationsSent=0；未新增檢點／異常／簽核紀錄、未發送通知。送出 note、異常必填、照片 payload 與既有鎖定已在真正 release blobs 的離線瀏覽器模擬通過，審閱者另獨立重跑 release 的 7 組 Other 測試及固定式起重機回歸，均 PASS。
+
+實際正式 PDF 尚未產出，本次完成的是不新增業務資料的正式部署與功能讀回驗收；未將離線 payload／既有通用 PDF 程式碼核對宣稱為正式 PDF 產出證據。未發現此範圍內需要修正的 P0 / P1 / P2 問題。
