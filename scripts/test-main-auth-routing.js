@@ -7,6 +7,8 @@ const vm = require('vm');
 
 const cache = new Map();
 let uuidCounter = 0;
+let formMetaReads = 0;
+let lockedItemReads = 0;
 const SERVER_SECRET = 'server-secret-at-least-32-characters';
 function toBuffer(value) {
   if (typeof value === 'string') return Buffer.from(value, 'utf8');
@@ -85,6 +87,15 @@ const context = {
   submitDailyIncidentSupervisorComment_: () => ({ ok: true }),
   submitDailyWorkCheck_: () => ({ ok: true }),
   getDailyIncidentPeopleOptions_: () => ({ ok: true, people: ['A'] }),
+  getFormMeta_: (form, equipmentId) => {
+    formMetaReads += 1;
+    return { form, equipmentId, items: [{ order: 1 }] };
+  },
+  getLockedItemsForEquipment_: equipmentId => {
+    lockedItemReads += 1;
+    if (equipmentId === 'BROKEN') throw new Error('異常紀錄讀取失敗');
+    return [{ order: 1, status: '處理中' }];
+  },
   getLineMessageQuotaStatus_: () => ({ quota: 200 }),
   applyMonthlyInspectionPolicy_: opts => ({ dryRun: opts.dryRun, testRoute: 'monthly-policy' }),
   getMonthlyInspectionPolicyStatus_: () => ({ testRoute: 'monthly-status' }),
@@ -142,6 +153,16 @@ assert.equal(get({
   api: 'dailyIncidentPeople',
   publicSessionToken: peopleTicket.publicSessionToken,
 }).ok, false, 'dailyIncidentPeople 票證不可重放');
+
+const formParams = { api: 'checklistBootstrap', form: 'daily', eqp: 'FORK-LJ-A' };
+const firstForm = get(formParams);
+const secondForm = get(formParams);
+assert.equal(firstForm.ok, true);
+assert.deepEqual(secondForm, firstForm);
+assert.equal(formMetaReads, 1, '公開表單模板應短暫快取');
+assert.equal(lockedItemReads, 2, '未結案異常每次都必須重新查詢');
+assert.equal(get({ ...formParams, eqp: 'BROKEN' }).ok, false, '異常查詢失敗不得回傳可填表單');
+assert.equal(get({ ...formParams, form: 'unknown' }).ok, false, '不得讀取未知表單類型');
 
 assert.equal(get({
   api: 'admin',

@@ -147,6 +147,7 @@ function dailyReminderJob_(opts) {
     const equipments = getEquipmentList_();
     const sentCategories = new Set();         // 同類別只通知一次
     const cyclesByCategory = getTemplateCyclesByCategory_();
+    const venueReadContext = {};              // 只重用本次執行的場地設定與月份原始資料
 
     for (const eqp of equipments) {
       try {
@@ -163,7 +164,7 @@ function dailyReminderJob_(opts) {
         continue;
       }
 
-      const usage = getVenueUsage_(full, today);
+      const usage = getVenueUsage_(full, today, venueReadContext);
       if (!usage.used) {
         results.push({ equipmentId: full.equipmentId, category: full.category, action: 'skip',
                        reason: usage.reason || '無使用紀錄' });

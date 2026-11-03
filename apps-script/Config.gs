@@ -136,18 +136,44 @@ function ensureMachineIncidentSheet_(ss) {
 }
 
 /**
+ * 只在明確包住的單次同步操作內重用設定，避免同一請求反覆讀取 Sheets。
+ * 不使用跨請求快取；結束或拋錯即清除，管理操作與排程預設仍即時讀取。
+ */
+let settingsReadSnapshot_ = null;
+
+function withSettingsReadSnapshot_(callback) {
+  if (settingsReadSnapshot_) return callback();
+  settingsReadSnapshot_ = { sheetId: CONFIG.DB_SHEET_ID, values: null };
+  try {
+    return callback();
+  } finally {
+    settingsReadSnapshot_ = null;
+  }
+}
+
+/**
  * 從 DB「系統設定」工作表讀取設定值；找不到則回傳 fallback
  */
 function getSetting_(key, fallback) {
   try {
-    const ss = SpreadsheetApp.openById(CONFIG.DB_SHEET_ID);
-    const sheet = ss.getSheetByName('系統設定');
-    if (!sheet) return fallback;
-    const lastRow = sheet.getLastRow();
-    if (lastRow < 2) return fallback;
-    const values = sheet.getRange(2, 1, lastRow - 1, 2).getValues();
+    const snapshot = settingsReadSnapshot_ &&
+      settingsReadSnapshot_.sheetId === CONFIG.DB_SHEET_ID ? settingsReadSnapshot_ : null;
+    let values = snapshot && snapshot.values;
+    if (!values) {
+      const ss = SpreadsheetApp.openById(CONFIG.DB_SHEET_ID);
+      const sheet = ss.getSheetByName('系統設定');
+      if (!sheet) return fallback;
+      const lastRow = sheet.getLastRow();
+      values = lastRow < 2 ? [] : sheet.getRange(2, 1, lastRow - 1, 2).getValues();
+      // 只保存成功讀取的原始列；fallback 由每次呼叫各自決定。
+      if (snapshot) snapshot.values = values;
+    }
     for (const row of values) {
-      if (row[0] === key) return row[1] || fallback;
+      if (row[0] === key) {
+        const value = row[1];
+        if (snapshot && value instanceof Date) return new Date(value.getTime());
+        return value || fallback;
+      }
     }
   } catch (e) {
     Logger.log('讀取設定失敗：' + e);

@@ -8,6 +8,7 @@ const requests = [];
 let sessionCounter = 0;
 let retrySubmissionRejected = false;
 let peopleResponseFailed = false;
+let bootstrapResponseFailed = false;
 const context = {
   console,
   setTimeout,
@@ -42,6 +43,23 @@ const context = {
         return { ok: true, json: async () => { throw new Error('transient html response'); } };
       }
       return { ok: true, json: async () => ({ ok: true, people: [] }) };
+    }
+    if (parsed.searchParams.get('api') === 'checklistBootstrap') {
+      const equipmentId = parsed.searchParams.get('eqp');
+      if (equipmentId === 'RETRY' && !bootstrapResponseFailed) {
+        bootstrapResponseFailed = true;
+        return { ok: false, status: 404 };
+      }
+      if (equipmentId === 'OLD') {
+        return { ok: true, json: async () => ({ ok: false, error: '未知的 api: checklistBootstrap' }) };
+      }
+      return { ok: true, json: async () => ({ ok: true, meta: { equipmentId }, locked: [] }) };
+    }
+    if (parsed.searchParams.get('api') === 'meta') {
+      return { ok: true, json: async () => ({ ok: true, meta: { equipmentId: parsed.searchParams.get('eqp') } }) };
+    }
+    if (parsed.searchParams.get('api') === 'lockedItems') {
+      return { ok: true, json: async () => ({ ok: true, locked: [{ order: 1 }] }) };
     }
     if (options.method === 'POST') {
       const body = JSON.parse(options.body);
@@ -110,6 +128,14 @@ vm.runInContext(fs.readFileSync('js/api.js', 'utf8'), context, { filename: 'js/a
     new URL(peopleRequests[1].url).searchParams.get('publicSessionToken'),
   );
 
+  assert.equal((await context.window.API.getChecklistBootstrap('daily', 'RETRY')).ok, true);
+  assert.equal(requests.filter(request => request.api === 'checklistBootstrap' &&
+    new URL(request.url).searchParams.get('eqp') === 'RETRY').length, 2,
+  '表單啟動資料遇到 404 應重新發起一次唯讀請求');
+  const legacyBootstrap = await context.window.API.getChecklistBootstrap('monthly', 'OLD');
+  assert.equal(legacyBootstrap.ok, true, '舊版後端應可安全回退');
+  assert.equal(legacyBootstrap.locked.length, 1, '回退時仍須核對未結案異常');
+
   const sessionsBeforeConcurrent = sessionCounter;
   await Promise.all([
     context.window.API.submit({ formType: 'daily', equipmentId: 'CONCURRENT-1' }),
@@ -125,6 +151,27 @@ vm.runInContext(fs.readFileSync('js/api.js', 'utf8'), context, { filename: 'js/a
     JSON.parse(concurrentPosts[0].options.body).publicSessionToken,
     JSON.parse(concurrentPosts[1].options.body).publicSessionToken,
   );
+
+  const originalFetch = context.fetch;
+  const originalSetTimeout = context.setTimeout;
+  try {
+    context.setTimeout = (callback, delay) => originalSetTimeout(callback, delay >= 15000 ? 1 : 0);
+    context.fetch = (url, options) => new Promise((resolve, reject) => {
+      options.signal.addEventListener('abort', () => {
+        const error = new Error('aborted');
+        error.name = 'AbortError';
+        reject(error);
+      });
+    });
+    await assert.rejects(
+      () => context.window.API.getChecklistBootstrap('daily', 'TIMEOUT'),
+      /讀取檢點資料逾時/,
+      '表單啟動資料不得無限停留在載入中',
+    );
+  } finally {
+    context.fetch = originalFetch;
+    context.setTimeout = originalSetTimeout;
+  }
 
   console.log('API client auth tests passed.');
 })().catch(error => {
