@@ -278,8 +278,8 @@ function cmdStatus_(replyToken, userId, opts) {
   // 跑 dryRun 的 dailyReminderJob 拿狀態（含 monthlyReminderJob_ 已過濾的月檢結果）
   // 月檢欠項整月顯示，直到當月檢點及主管簽核完成才從待確認清單移除。
   const results = typeof withStatusMetadataReadSnapshot_ === 'function'
-    ? withStatusMetadataReadSnapshot_(() => dailyReminderJob_({ dryRun: true }))
-    : dailyReminderJob_({ dryRun: true });
+    ? withStatusMetadataReadSnapshot_(() => dailyReminderJob_({ dryRun: true, reuseDailyRecords: true }))
+    : dailyReminderJob_({ dryRun: true, reuseDailyRecords: true });
   const profile = (typeof getLineSubscriberProfileByUserId_ === 'function')
     ? getLineSubscriberProfileByUserId_(userId)
     : null;
