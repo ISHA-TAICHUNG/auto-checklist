@@ -567,9 +567,9 @@ function monthlyCompletionFromRows_(data, category, date) {
 
   for (let i = 1; i < data.length; i++) {
     if (
-      monthlyInspectionMonthFromRow_(headers, data[i]) === targetMonth &&
       String(data[i][typeCol] || '').trim() === '每月' &&
-      String(data[i][categoryCol] || '').trim() === category
+      String(data[i][categoryCol] || '').trim() === category &&
+      monthlyInspectionMonthFromRow_(headers, data[i]) === targetMonth
     ) {
       submitted = true;
       if (isMonthlyChecklistApproved_(headers, data[i])) {
