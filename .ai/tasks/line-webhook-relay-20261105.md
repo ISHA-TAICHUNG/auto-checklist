@@ -9,6 +9,12 @@
 - forbidden_actions: 未經 hao 核准不切 Webhook；不代填任何金鑰；真實 LINE 訊息只限私人對話的「幫助」「狀態」，不觸發填報、簽核或陳核（陳核會走 push）。
 - 2026-11-05 hao 同意開始上線並將操作交給 Claude；金鑰由 hao 自行輸入，切換 Webhook 需當下再確認。Cloudflare 帳號為 geminihao0516 個人帳號。
 
+## 2026-11-05 接手進度（自動檢查表對話）
+
+- 待辦 1 完成：v140 原始碼已提交（d06cb5b，分支 fix/line-status-timing，未 push）。
+- 待辦 2 完成：Worker `isha-line-webhook-relay` 已於 21:17 刪除。刪除前金鑰為空；Cloudflare 指標全部只有 18:41（部署同一分鐘）2 筆請求，對得上當時的 GET 404、POST 500 測試。Worker 程式留在 d06cb5b 的 git 歷史。
+- 待辦 3 調整：不用 Logger／console。程式用預設 GCP 專案，匿名 doPost 的執行項目無法展開紀錄，`clasp logs` 也回 Permission denied（isha-taichung-test 沒連到這支程式，開權限無效）；錯 token 測試請求已驗證看不到紀錄。改成傳「狀態計時」時把各段毫秒數回在 LINE，reply 不計額度；一般「狀態」回覆不變，總秒數可由執行項目頁對照。
+
 ## 2026-11-05 決定與待辦
 
 hao 接受建議：不加前置層，改查「狀態」查詢的 15～18 秒，並說「通知小幫手這部分都修改，改到自動檢查表_電子話的專案對話匡進行討論」。原因：前置層只省轉圈前 2～3 秒，回覆不會變快，還要多存一份 LINE 金鑰並同步維護；webhook 路徑（靜態閱讀）沒有全域鎖、回覆前不寫試算表日誌，轉圈前只剩 Apps Script 起動。
