@@ -90,6 +90,31 @@ assert.equal(candidate.state.sent, 0, '狀態查詢不可發提醒');
   assert.equal(conversions, 9);
 }
 
+// 日檢判定維持嚴格比對：表單類型、類別或字串日期帶空白都不算今日已填，否則會漏發提醒。
+{
+  const { c, state } = runtime();
+  state.books.db.push(
+    ['2026-11-04', ' 每日 ', '堆高機'],
+    ['2026-11-04', '每日', ' 堆高機'],
+    [' 2026-11-04', '每日', '堆高機'],
+  );
+  assert.equal(c.hasDailyRecordInCategory_('堆高機', today), false);
+  assert.equal(c.hasDailyRecordInCategory_('堆高機', today, {}), false);
+}
+
+// 已填的結果也要共用：第二次查詢只算目標日期，不再轉資料列的日期。
+{
+  const { c, state } = runtime();
+  state.books.db.push([new Date(today), '每日', '堆高機']);
+  let conversions = 0;
+  c.formatISODate_ = value => { conversions += 1; return iso(value); };
+  const context = {};
+  assert.equal(c.hasDailyRecordInCategory_('堆高機', today, context), true);
+  const afterFirstScan = conversions;
+  assert.equal(c.hasDailyRecordInCategory_('堆高機', today, context), true);
+  assert.equal(conversions, afterFirstScan + 1);
+}
+
 // 不同日期不可共用掃描結果；有共用資料時仍看得到當次資料中的今日日檢。
 {
   const { c, state } = runtime();

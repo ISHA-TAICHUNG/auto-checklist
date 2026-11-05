@@ -300,15 +300,29 @@ const ppeRows = rows => rows.filter(row => row.type === 'dailyPpeStatus');
 const ppeScan = makePpeRuntime();
 ppeScan.state.recordSheet.getDataRange = () => ({ getValues: () => [
   ['檢查日期', '表單類型', '設備類別', '設備代號'],
-  [new Date('2027-05-18T04:00:00Z'), '每日', '防護具檢點', 'VENUE-FORK'],
   [new Date('2027-05-18T04:00:00Z'), '每日', '防護具檢點', 'VENUE-CRANE'],
   [new Date('2027-05-18T04:00:00Z'), '每月', '防護具檢點', 'VENUE-FORK'],
+  [new Date('2027-05-18T04:00:00Z'), '每日', '防護具檢點', 'VENUE-FORK'],
 ] });
 let ppeConversions = 0;
 const ppeFormat = ppeScan.context.formatISODate_;
 ppeScan.context.formatISODate_ = date => { ppeConversions += 1; return ppeFormat(date); };
 assert.equal(ppeScan.context.dailyPpeHasDailyRecordForEquipment_('VENUE-FORK', ppeScan.context.todayStart_()), true);
 assert.equal(ppeConversions, 2, '目標日期一次，相符的日檢列一次');
+
+// 防護具判定維持去除前後空白：這三種已填紀錄都要分開驗證，否則第一列命中就測不到後面。
+[
+  [' 2027-05-18 ', '每日', '防護具檢點', 'VENUE-FORK'],
+  ['2027-05-18', ' 每日 ', '防護具檢點', 'VENUE-FORK'],
+  ['2027-05-18', '每日', '防護具檢點', ' VENUE-FORK '],
+].forEach(row => {
+  const r = makePpeRuntime();
+  r.state.recordSheet.getDataRange = () => ({ getValues: () => [
+    ['檢查日期', '表單類型', '設備類別', '設備代號'], row,
+  ] });
+  assert.equal(r.context.dailyPpeHasDailyRecordForEquipment_('VENUE-FORK', r.context.todayStart_()), true,
+    JSON.stringify(row));
+});
 
 const ppeStatus = makePpeRuntime();
 const ppeResult = ppeRows(ppeStatus.runJob({ dryRun: true, reuseDailyRecords: true }));
