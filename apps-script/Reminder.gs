@@ -260,6 +260,12 @@ function dailyReminderJob_(opts) {
  */
 function hasDailyRecordInCategory_(category, date, readContext) {
   const dbId = String(CONFIG.DB_SHEET_ID);
+  const target = formatISODate_(date);
+  // 同次狀態查詢內，同類別的多台設備共用第一次掃描的結果。
+  const scanKey = dbId + '|' + category + '|' + target;
+  if (readContext && readContext.scanned && scanKey in readContext.scanned) {
+    return readContext.scanned[scanKey];
+  }
   let data;
   if (readContext && readContext.dbId === dbId && Array.isArray(readContext.data)) {
     data = readContext.data;
@@ -286,21 +292,24 @@ function hasDailyRecordInCategory_(category, date, readContext) {
     readContext.dbId = dbId;
     readContext.data = data;
   }
-  const target = formatISODate_(date);
 
+  let found = false;
   for (let i = 1; i < data.length; i++) {
+    // 日期轉換要呼叫 Utilities，只對表單類型與類別相符的列做。
+    if (data[i][typeCol] !== '每日' || data[i][categoryCol] !== category) continue;
     let cellDate = data[i][dateCol];
     if (cellDate instanceof Date) cellDate = formatISODate_(cellDate);
     else cellDate = String(cellDate);
-    if (
-      cellDate === target &&
-      data[i][typeCol] === '每日' &&
-      data[i][categoryCol] === category
-    ) {
-      return true;
+    if (cellDate === target) {
+      found = true;
+      break;
     }
   }
-  return false;
+  if (readContext) {
+    readContext.scanned = readContext.scanned || Object.create(null);
+    readContext.scanned[scanKey] = found;
+  }
+  return found;
 }
 
 /**

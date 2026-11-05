@@ -281,13 +281,13 @@ function dailyPpeHasDailyRecordForEquipment_(equipmentId, date, readContext) {
   const targetDate = formatISODate_(date);
   const targetEqp = String(equipmentId || '').trim();
   for (let i = 1; i < data.length; i++) {
-    let rowDate = data[i][dateCol];
-    rowDate = rowDate instanceof Date ? formatISODate_(rowDate) : String(rowDate || '').trim();
+    // 日期轉換要呼叫 Utilities，只對表單類型與設備相符的列做。
     if (
-      rowDate === targetDate &&
-      String(data[i][typeCol] || '').trim() === '每日' &&
-      String(data[i][eqpCol] || '').trim() === targetEqp
-    ) {
+      String(data[i][typeCol] || '').trim() !== '每日' ||
+      String(data[i][eqpCol] || '').trim() !== targetEqp
+    ) continue;
+    const rowDate = data[i][dateCol];
+    if ((rowDate instanceof Date ? formatISODate_(rowDate) : String(rowDate || '').trim()) === targetDate) {
       return true;
     }
   }
