@@ -2,7 +2,7 @@
 
 - task_slug: line-webhook-relay-20261105
 - writer: Claude（管理職類測驗網題庫 session）；reviewer: Claude reviewer agent
-- lease_status: 交接中（前置層方案已取消；由自動檢查表專案的對話接手，見下方「2026-11-05 決定與待辦」）
+- lease_status: 量測中（前置層方案已取消、Worker 已刪；v141 等 hao 傳「狀態計時」）
 - 目標：按 LINE 按鈕後立即看到轉圈，不增加任何額度。回覆內容的耗時不變（幫助約 4 秒、狀態約 15～18 秒，v136 原生量測）。
 - 硬限制：不可增加訊息額度。Worker 只呼叫 chat/loading/start 與 Apps Script，不呼叫 LINE 訊息 API；reply 依官方收費文件不計入，轉圈不屬於官方列出的計入方式。POST 只送一次，任何轉址都不重送。
 - allowed_paths: cloudflare/line-webhook-relay/；apps-script/LineNotify、LineWebhook、Main 的 .gs 與 .js；scripts/test-line-webhook-relay.js、scripts/test-settings-read-snapshot.js（build 字串）；本檔。
@@ -14,6 +14,11 @@
 - 待辦 1 完成：v140 原始碼已提交（d06cb5b，分支 fix/line-status-timing，未 push）。
 - 待辦 2 完成：Worker `isha-line-webhook-relay` 已於 21:17 刪除。刪除前金鑰為空；Cloudflare 指標全部只有 18:41（部署同一分鐘）2 筆請求，對得上當時的 GET 404、POST 500 測試。Worker 程式留在 d06cb5b 的 git 歷史。
 - 待辦 3 調整：不用 Logger／console。程式用預設 GCP 專案，匿名 doPost 的執行項目無法展開紀錄，`clasp logs` 也回 Permission denied（isha-taichung-test 沒連到這支程式，開權限無效）；錯 token 測試請求已驗證看不到紀錄。改成傳「狀態計時」時把各段毫秒數回在 LINE，reply 不計額度；一般「狀態」回覆不變，總秒數可由執行項目頁對照。
+- v141 已發布（21:25）：從雲端 HEAD（等於 v140）建受限套件，只換 LineNotify、LineWebhook、Main、Reminder；HEAD 與 v141 都和套件逐位元相同；兩個固定部署 @141，build `2026-11-05-line-status-timing`。回滾：兩部署改回 v140。
+- 發布後驗證：兩個入口 health 正常。第一輪表單 20/21，`FORK-LJ-B` 月檢回「系統處理失敗，請聯絡管理員」一次，原因不明（執行項目全部顯示已完成，看不到例外）；同一張表單隨後重試 5/5 成功，第二輪 21/21，鎖定 0。這次改動沒有碰表單路徑。
+- 全套離線測試 25/25；`test-checklist-loading.js` 需要 `PLAYWRIGHT_MODULE`，且專案內 Playwright 要的瀏覽器版本未安裝，要包一層 `channel: 'chrome'` 才會真的跑。
+- 未驗證：真實 LINE 上的「狀態計時」回覆與版面、實際秒數。
+- 待 hao 傳「狀態計時」後依數字決定優化；量完移除指令與放寬的測試比對。
 
 ## 2026-11-05 決定與待辦
 
