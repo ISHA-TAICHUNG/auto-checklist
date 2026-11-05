@@ -437,4 +437,19 @@ test('送出不可使用 60 秒公開模板快取', () => {
   assertRejectedWithoutSideEffects(fixture, submission(), /模板已更新/);
 });
 
+test('送件計時依流程順序標記各段，被拒絕時停在驗證之後', () => {
+  const marks = [];
+  const fixture = setup();
+  assert.equal(fixture.context.handleSubmission_(submission(), { mark: name => marks.push(name) }).ok, true);
+  assert.deepEqual(marks, [
+    '驗證與模板', '等待鎖', '重送檢查', '鎖定項目', '表單比對',
+    '產生PDF或文件', '雲端硬碟', '寫紀錄', '異常追蹤', '異常通報', '主管通知',
+  ]);
+
+  const rejectedMarks = [];
+  const rejected = setup({ incidentRows: [INCIDENT_HEADERS, OPEN_INCIDENT] });
+  assert.throws(() => rejected.context.handleSubmission_(submission(), { mark: name => rejectedMarks.push(name) }), /仍有未處理異常/);
+  assert.deepEqual(rejectedMarks, ['驗證與模板', '等待鎖', '重送檢查']);
+});
+
 console.log('異常鎖定 fail-closed 與鎖內查核測試通過：' + cases + ' 組。');
