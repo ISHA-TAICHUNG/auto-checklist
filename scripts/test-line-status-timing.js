@@ -50,7 +50,7 @@ function readHealth(lineEndpoint) {
 }
 
 // 走真實的 dispatchLineEvent_、cmdStatus_、dailyReminderJob_ 與 lineReply_，只替換資料來源。
-function dispatch({ text, source = { type: 'user', userId: USER_ID }, timestamp, subscriber = true, optional = false }) {
+function dispatch({ text, source = { type: 'user', userId: USER_ID }, timestamp, subscriber = true, optional = false, fakeClock = false }) {
   const state = { loading: [], replies: [], reminderRuns: 0 };
   const context = vm.createContext({
     Logger: { log() {} },
@@ -68,6 +68,8 @@ function dispatch({ text, source = { type: 'user', userId: USER_ID }, timestamp,
   loadSource(context, 'LineNotify.js');
   loadSource(context, 'LineWebhook.js');
   loadSource(context, 'Reminder.js');
+  // 每次取時間固定前進 100 毫秒，分段數字才能精確斷言。
+  if (fakeClock) vm.runInContext('{ let now = 1000; Date.now = () => (now += 100); }', context);
   Object.assign(context, {
     getLineConfig_: () => ({ token: 'token' }),
     // 正式環境走這條分支；少了它，分段斷言只會驗到 fallback。
@@ -133,6 +135,15 @@ function timingText(state) {
   assert.match(lines[lines.length - 1], /^合計 \d+$/);
   const sum = lines.slice(2, -1).reduce((total, line) => total + Number(line.split(' ')[1]), 0);
   assert.ok(sum <= Number(lines[lines.length - 1].split(' ')[1]), '各段加總不可超過合計');
+}
+
+// 兩台設備的同名分段要累加；各段加上組訊息前的最後一段等於合計
+{
+  const lines = timingText(dispatch({ text: '狀態計時', fakeClock: true })).split('\n');
+  assert.ok(lines.includes('設備日檢-場地 200'));
+  assert.ok(lines.includes('設備日檢-填報紀錄 200'));
+  const sum = lines.slice(2, -1).reduce((total, line) => total + Number(line.split(' ')[1]), 0);
+  assert.strictEqual(sum + 100, Number(lines[lines.length - 1].split(' ')[1]));
 }
 
 // 狀態計時：不帶 userId 與 reply token，訊息內容也不寫入個資

@@ -639,7 +639,7 @@ function linePushTo_(to, messages, _action) {
 /**
  * 觸發「正在輸入...」loading 動畫
  * 僅支援 1:1 私訊（group / room 不支援）
- * 不計入 LINE Messaging API 訊息額度；LINE API 支援 5-60 秒，本系統 UX 上限固定 20 秒。
+ * 不計入 LINE Messaging API 訊息額度；LINE API 支援 5-60 秒，本系統 UX 上限固定 30 秒。
  * https://developers.line.biz/en/reference/messaging-api/#display-a-loading-indicator
  */
 function startLoadingAnimation_(chatId, seconds) {

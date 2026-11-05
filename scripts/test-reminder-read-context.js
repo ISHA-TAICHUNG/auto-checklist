@@ -273,7 +273,13 @@ function makePpeRuntime(headers = ['檢查日期', '表單類型', '設備類別
   r.context.formatISODate_ = date => date.toISOString().slice(0, 10);
   r.context.parseISODate_ = iso => new Date(iso + 'T04:00:00Z');
   r.recordReads = 0;
-  const rows = [headers, ['2027-05-18', '每日', '防護具檢點', 'VENUE-FORK']];
+  const rows = [
+    headers,
+    [new Date('2027-05-18T04:00:00Z'), '每日', '防護具檢點', 'VENUE-FORK'],
+    // 昨天的日檢與今天的月檢都不算今天已填，少了這兩個條件會漏發。
+    ['2027-05-17', '每日', '防護具檢點', 'VENUE-CRANE'],
+    ['2027-05-18', '每月', '防護具檢點', 'VENUE-CRANE'],
+  ];
   r.state.recordSheet = {
     getLastRow: () => rows.length,
     getDataRange: () => ({ getValues: () => { r.recordReads += 1; return rows; } }),
@@ -320,6 +326,21 @@ const ppeMissing = makePpeRuntime(['檢查日期', '表單類型', '設備類別
 const ppeMissingRows = ppeMissing.runJob({ dryRun: true, reuseDailyRecords: true });
 assert.equal(ppeRows(ppeMissingRows).length, 0);
 assert.equal(ppeMissingRows.filter(row => row.action === 'failed' && row.category === '場地防護具狀態').length, 1);
+
+// 場地表年度驗證失敗不保存：每台設備都要重新驗證並回報失敗，不可改讀錯誤年度的資料。
+const wrongYear = makeStatusRuntime(true);
+let workbookNameCalls = 0;
+wrongYear.books.new2027.getName = () => { workbookNameCalls += 1; return '115-術科V1'; };
+wrongYear.books.new2027.sheets[0].set(5, 18, 0, '堆高機課程');
+const wrongYearRows = wrongYear.run();
+assert.equal(wrongYearRows.length, 6);
+assert(wrongYearRows.every(row => row.action === 'failed'), '年度不符時每台設備都要失敗');
+assert.equal(workbookNameCalls, 6);
+
+// 補充分頁與主分頁相同時不重複列出來源。
+const sameTab = runtime();
+sameTab.books.new2027.sheets[0].set(5, 18, 4, '高空車課程');
+assert.equal(sameTab.usage(AERIAL, '2027-05-18', {}, MAIN).sources.length, 1);
 
 // 分頁找不到不保存，下一台設備要重查而不是沿用空結果。
 const missingTab = makePpeRuntime();
