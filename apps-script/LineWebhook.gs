@@ -67,6 +67,8 @@ function dispatchLineEvent_(ev) {
     if (!text.startsWith('/') && !text.startsWith('@')) return;
   }
   const cmd = normalizeLineCommand_(text);
+  // ponytail: 臨時量測指令，秒數直接回在 LINE，因為預設 GCP 專案讀不到匿名呼叫的執行紀錄；決定優化方向後移除。
+  const timing = cmd === '狀態計時' ? createLineStatusTiming_(ev.timestamp) : null;
 
   // Reply tokens belong to the conversation, not the authenticated speaker.
   if (source.type !== 'user' && requiresLineSubscriberAuth_(cmd)) {
@@ -74,16 +76,19 @@ function dispatchLineEvent_(ev) {
   }
 
   if (source.type === 'user' && typeof startLoadingAnimation_ === 'function') {
-    startLoadingAnimation_(userId, 10);
+    // LINE 以最後一次請求的秒數為準；狀態查詢約 15～18 秒，10 秒會在回覆到達前結束。
+    startLoadingAnimation_(userId, 20);
   }
+  if (timing) timing.mark('轉圈');
 
   if (requiresLineSubscriberAuth_(cmd) && !isLineSubscriberUser_(userId)) {
     return lineReply_(replyToken, buildSubscriberRegistrationFlex_());
   }
+  if (timing) timing.mark('訂閱者檢查');
 
   // 指令路由
-  if (/^(狀態|status)$/i.test(cmd)) {
-    return cmdStatus_(replyToken, userId, { isDirectChat: source.type === 'user' });
+  if (/^(狀態|status)$/i.test(cmd) || timing) {
+    return cmdStatus_(replyToken, userId, { isDirectChat: source.type === 'user', timing });
   }
   if (/^(每日作業|作業|work|dailywork)$/i.test(cmd)) return cmdDailyWorkCheck_(replyToken);
   if (/^(待發文|公文待發文|dispatch|documents)$/i.test(cmd)) return cmdOfficialDocumentDispatch_(replyToken, userId);
@@ -273,16 +278,39 @@ function cmdQRList_(replyToken) {
   return lineReply_(replyToken, buildQrMenuFlex_());
 }
 
+// 分段計時只回報毫秒數，不含 userId 與查詢內容，也不寫試算表。
+function createLineStatusTiming_(eventTimestamp) {
+  const startedAt = Date.now();
+  const segments = [];
+  let last = startedAt;
+  return {
+    mark(name) {
+      const now = Date.now();
+      segments.push(name + ' ' + (now - last));
+      last = now;
+    },
+    summary() {
+      const delay = eventTimestamp > 0 ? startedAt - eventTimestamp : '未知';
+      return ['狀態計時（毫秒）', '事件到程式 ' + delay]
+        .concat(segments, ['合計 ' + (Date.now() - startedAt)])
+        .join('\n');
+    },
+  };
+}
+
 function cmdStatus_(replyToken, userId, opts) {
   opts = opts || {};
+  const timing = opts.timing || { mark() {} };
   // 跑 dryRun 的 dailyReminderJob 拿狀態（含 monthlyReminderJob_ 已過濾的月檢結果）
   // 月檢欠項整月顯示，直到當月檢點及主管簽核完成才從待確認清單移除。
   const results = typeof withStatusMetadataReadSnapshot_ === 'function'
-    ? withStatusMetadataReadSnapshot_(() => dailyReminderJob_({ dryRun: true, reuseDailyRecords: true }))
-    : dailyReminderJob_({ dryRun: true, reuseDailyRecords: true });
+    ? withStatusMetadataReadSnapshot_(() => dailyReminderJob_({ dryRun: true, reuseDailyRecords: true, timing }))
+    : dailyReminderJob_({ dryRun: true, reuseDailyRecords: true, timing });
+  timing.mark('提醒收尾');
   const profile = (typeof getLineSubscriberProfileByUserId_ === 'function')
     ? getLineSubscriberProfileByUserId_(userId)
     : null;
+  timing.mark('訂閱者資料');
   const viewerIsSupervisor = !!(profile && profile.isSupervisor && opts.isDirectChat);
   const dashboardUrl = viewerIsSupervisor && typeof buildOperationsDashboardUrl_ === 'function'
     ? buildOperationsDashboardUrl_()
@@ -291,6 +319,7 @@ function cmdStatus_(replyToken, userId, opts) {
     viewerIsSupervisor,
     dashboardUrl,
   })];
+  timing.mark('狀態卡片');
   if (typeof dailyPpeListRecentUnconfirmedForLine_ === 'function' &&
       typeof buildDailyPpeAssignmentStatusFlex_ === 'function') {
     const ppeStatus = dailyPpeListRecentUnconfirmedForLine_({
@@ -301,10 +330,13 @@ function cmdStatus_(replyToken, userId, opts) {
       messages.push(buildDailyPpeAssignmentStatusFlex_(ppeStatus));
     }
   }
+  timing.mark('防護具');
   if (typeof isDailyWorkCheckEnabled_ === 'function' && isDailyWorkCheckEnabled_() &&
       typeof getDailyWorkCheckStatus_ === 'function' && typeof buildDailyWorkStatusFlex_ === 'function') {
     messages.push(buildDailyWorkStatusFlex_(getDailyWorkCheckStatus_({ userId })));
   }
+  timing.mark('每日作業');
+  if (opts.timing) messages.push({ type: 'text', text: opts.timing.summary() });
   return lineReply_(replyToken, withQuickReply_(messages, {
     viewerIsSupervisor,
     dashboardUrl,
