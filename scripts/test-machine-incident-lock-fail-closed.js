@@ -439,8 +439,12 @@ test('送出不可使用 60 秒公開模板快取', () => {
 
 test('送件計時依流程順序標記各段，被拒絕時停在驗證之後', () => {
   const marks = [];
+  const lockedAt = {};
   const fixture = setup();
-  assert.equal(fixture.context.handleSubmission_(submission(), { mark: name => marks.push(name) }).ok, true);
+  const recorder = { mark: name => { marks.push(name); lockedAt[name] = fixture.world.locked; } };
+  assert.equal(fixture.context.handleSubmission_(submission(), recorder).ok, true);
+  assert.equal(lockedAt['驗證與模板'], false, '驗證在取得鎖之前');
+  assert.equal(lockedAt['等待鎖'], true, '等待鎖要在取得鎖之後才標記');
   assert.deepEqual(marks, [
     '驗證與模板', '等待鎖', '重送檢查', '鎖定項目', '表單比對',
     '產生PDF或文件', '雲端硬碟', '寫紀錄', '異常追蹤', '異常通報', '主管通知',

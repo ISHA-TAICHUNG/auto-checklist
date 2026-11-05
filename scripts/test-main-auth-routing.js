@@ -223,6 +223,24 @@ assert.equal(post({
   assert.equal(lines[1], '2026-08-14 12:00:00 月檢・PDF');
   assert.match(lines[lines.length - 1], /^合計 \d+$/);
 
+  // 處理方式依回傳結果對應；送件拋錯時不覆寫上一筆計時
+  const realHandler = context.handleSubmission_;
+  [
+    [{ ok: true, idempotent: true }, '重送', false],
+    [{ ok: true, approvalPending: true, incidentCount: 2 }, '待簽核文件', true],
+  ].forEach(([result, mode, incident]) => {
+    context.handleSubmission_ = () => result;
+    post({ publicSessionToken: context.issuePublicSession_('submitChecklist').publicSessionToken });
+    const latest = JSON.parse(props.get('SUBMISSION_TIMING_LAST_V1'));
+    assert.equal(latest.mode, mode);
+    assert.equal(latest.incident, incident);
+  });
+  const beforeFailure = props.get('SUBMISSION_TIMING_LAST_V1');
+  context.handleSubmission_ = () => { throw new Error('模板已更新'); };
+  assert.equal(post({ publicSessionToken: context.issuePublicSession_('submitChecklist').publicSessionToken }).ok, false);
+  assert.equal(props.get('SUBMISSION_TIMING_LAST_V1'), beforeFailure, '失敗的送件不可覆寫計時');
+  context.handleSubmission_ = realHandler;
+
   props.set('SUBMISSION_TIMING_LAST_V1', '{broken');
   assert.equal(context.submissionTimingText_(), '送件計時紀錄無法讀取。');
 
