@@ -234,7 +234,8 @@ function dailyReminderJob_(opts) {
     }
     timing.mark('月檢');
 
-    if (typeof pendingApprovalReminderJob_ === 'function') {
+    // LINE 狀態卡片會濾掉待簽核結果（isNonActionableChecklistStatus_），不必為它解析整張填報紀錄。
+    if (!opts.skipPendingApproval && typeof pendingApprovalReminderJob_ === 'function') {
       try {
         results.push(pendingApprovalReminderJob_({ dryRun, today }));
       } catch (err) {

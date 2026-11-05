@@ -51,7 +51,7 @@ function readHealth(lineEndpoint) {
 
 // 走真實的 dispatchLineEvent_、cmdStatus_、dailyReminderJob_ 與 lineReply_，只替換資料來源。
 function dispatch({ text, source = { type: 'user', userId: USER_ID }, timestamp, subscriber = true, optional = false, fakeClock = false }) {
-  const state = { loading: [], replies: [], reminderRuns: 0 };
+  const state = { loading: [], replies: [], reminderRuns: 0, pendingApprovalRuns: 0 };
   const context = vm.createContext({
     Logger: { log() {} },
     PropertiesService: { getScriptProperties: () => ({ getProperty: () => null }) },
@@ -90,7 +90,7 @@ function dispatch({ text, source = { type: 'user', userId: USER_ID }, timestamp,
     hasDailyRecordInCategory_: () => false,
     dailyPpeChecklistStatusResults_: () => [],
     monthlyReminderJob_: () => [],
-    pendingApprovalReminderJob_: () => ({ action: 'skip' }),
+    pendingApprovalReminderJob_: () => { state.pendingApprovalRuns += 1; return { type: 'pendingApprovalReminder', action: 'skip' }; },
     dailyPpeListRecentUnconfirmedForLine_: () => ({ count: optional ? 1 : 0 }),
     buildDailyPpeAssignmentStatusFlex_: () => ({ type: 'flex', altText: '防護具' }),
     isDailyWorkCheckEnabled_: () => optional,
@@ -105,6 +105,7 @@ function dispatch({ text, source = { type: 'user', userId: USER_ID }, timestamp,
     timestamp,
   };
   vm.runInContext('dispatchLineEvent_(event)', context);
+  state.context = context;
   return state;
 }
 
@@ -170,6 +171,15 @@ assert.match(timingText(dispatch({ text: '狀態計時' })), /\n事件到程式 
   assert.strictEqual(state.reminderRuns, 1);
   assert.strictEqual(timingText(state), null);
   assert.strictEqual(state.replies[0].messages.length, 1);
+}
+
+// 狀態卡片會濾掉待簽核結果，狀態查詢跳過；正式提醒與管理頁試算照舊計算
+{
+  const state = dispatch({ text: '狀態' });
+  assert.strictEqual(state.pendingApprovalRuns, 0);
+  assert.strictEqual(dispatch({ text: '狀態計時' }).pendingApprovalRuns, 0);
+  vm.runInContext('dailyReminderJob_({ dryRun: true })', state.context);
+  assert.strictEqual(state.pendingApprovalRuns, 1);
 }
 
 // 非訂閱者與群組沿用狀態指令的限制，不會跑查詢也拿不到計時
