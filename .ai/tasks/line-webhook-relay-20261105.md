@@ -2,7 +2,7 @@
 
 - task_slug: line-webhook-relay-20261105
 - writer: Claude（管理職類測驗網題庫 session）；reviewer: Claude reviewer agent
-- lease_status: 量測中（v144 已上線，等 hao 傳「狀態計時」）
+- lease_status: 待 hao 決定（v144 實測合計 7761 毫秒；建議停止優化並 push）
 - 目標：按 LINE 按鈕後立即看到轉圈，不增加任何額度。回覆內容的耗時不變（幫助約 4 秒、狀態約 15～18 秒，v136 原生量測）。
 - 硬限制：不可增加訊息額度。Worker 只呼叫 chat/loading/start 與 Apps Script，不呼叫 LINE 訊息 API；reply 依官方收費文件不計入，轉圈不屬於官方列出的計入方式。POST 只送一次，任何轉址都不重送。
 - allowed_paths: cloudflare/line-webhook-relay/；apps-script/LineNotify、LineWebhook、Main 的 .gs 與 .js；scripts/test-line-webhook-relay.js、scripts/test-settings-read-snapshot.js（build 字串）；本檔。
@@ -30,7 +30,9 @@
 - 待簽核現為最大段：`listPendingApprovalRecords_`（Submission.gs:651）對每列都完整解析後才篩選。hao 同意改這段；查程式後發現狀態卡片本來就濾掉待簽核結果（`isNonActionableChecklistStatus_`，LineNotify.gs:1122），改為更小的做法：LINE 狀態查詢帶 `skipPendingApproval` 直接不算，正式提醒、管理頁試算不帶旗標照舊。`listPendingApprovalRecords_` 本身沒改。
 - 刻意的行為差異：待簽核出錯時，v143 的狀態卡片會多一列標錯名稱的「主管待簽核日檢」失敗項，v144 不再顯示；正式提醒出錯仍記入管理頁健康檢查。狀態查詢不再覆寫 `PENDING_APPROVAL_REMINDER_LAST_DRY_RUN`，`DAILY_REMINDER_LAST_DRY_RUN_V1` 不再含待簽核一筆；讀取端只有管理 API，健康檢查只讀正式 `lastRun`。
 - v144 已發布（11/6 03:19）：`8ecc462`，受限套件只換 LineWebhook、Main、Reminder；已確認 `bf3c0b3` 與 v143 除 Config 與 manifest 外相同，HEAD 與 v144 都和套件逐位元相同。兩入口 build `2026-11-06-line-status-skip-pending-approval`，表單 21/21、鎖定 0（3.23／4.46／5.83 秒）。回滾：兩部署改回 v143；觸發器跑 HEAD，要再 push 舊內容才會退回。
-- 未驗證：v143 只有一筆、正式提醒自然執行。量完移除指令與放寬的測試比對。
+- v144 實測一筆（hao，LINE 原生，11/6 約 03:25）：事件到程式 2467、合計 7761 毫秒；設備與週期設定 1260、設備日檢-場地 2147、設備日檢-填報紀錄 1274、場地防護具 126、月檢 1248、待簽核 0、轉圈 489、訂閱者資料 1145。合計歷程：v141 20615 → v142 13876 → v143 11465 → v144 7761。
+- 剩餘各段約 1～2 秒且分散：場地要跨次快取外部場地表（有資料新鮮度風險）；訂閱者資料每次重讀整張訂閱者表（快取會延後主管權限撤銷生效）；月檢可再重用同次已讀的填報紀錄。報酬遞減，建議停在 v144。
+- 未驗證：各版只有一筆，段落間波動約 ±50%、正式提醒自然執行。量完移除指令與放寬的測試比對。
 
 ## 2026-11-05 決定與待辦
 
