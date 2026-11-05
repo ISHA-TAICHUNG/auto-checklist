@@ -96,6 +96,7 @@ function dispatch({ text, source = { type: 'user', userId: USER_ID }, timestamp,
     isDailyWorkCheckEnabled_: () => optional,
     getDailyWorkCheckStatus_: () => ({}),
     buildDailyWorkStatusFlex_: () => ({ type: 'flex', altText: '每日作業' }),
+    submissionTimingText_: () => '送件計時（毫秒）\n合計 1',
   });
   context.event = {
     type: 'message',
@@ -180,6 +181,19 @@ assert.match(timingText(dispatch({ text: '狀態計時' })), /\n事件到程式 
   assert.strictEqual(dispatch({ text: '狀態計時' }).pendingApprovalRuns, 0);
   vm.runInContext('dailyReminderJob_({ dryRun: true })', state.context);
   assert.strictEqual(state.pendingApprovalRuns, 1);
+}
+
+// 送件計時：回上一筆送件的分段文字，不跑狀態查詢；非訂閱者與群組拿不到
+{
+  const state = dispatch({ text: '送件計時' });
+  const messages = state.replies[0].messages;
+  assert.strictEqual(messages.length, 1);
+  assert.strictEqual(messages[0].text, '送件計時（毫秒）\n合計 1');
+  assert.strictEqual(state.reminderRuns, 0);
+  const outsider = dispatch({ text: '送件計時', subscriber: false });
+  assert.strictEqual(outsider.replies[0].messages[0].altText, '請先登錄');
+  const group = dispatch({ text: '/送件計時', source: { type: 'group', groupId: 'C1', userId: USER_ID } });
+  assert.match(group.replies[0].messages[0].text, /請私訊/);
 }
 
 // 非訂閱者與群組沿用狀態指令的限制，不會跑查詢也拿不到計時
