@@ -39,3 +39,7 @@ docs/superpowers/
 # .gs 才是 git 上的 source of truth（redacted with placeholders）
 # 工作流程見 docs/deployment-guide.md 的 clasp 章節
 apps-script/*.js
+
+# 本機產出（健檢報告、簡報成品、影片等；1.4 GB 且含個資，不入庫、也避免 Codex 快照整包收進 .git）
+output/
+tmp/
