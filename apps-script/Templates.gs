@@ -10,13 +10,45 @@
  *   未來新增「堆高機日檢」時，只需要在這 3 個工作表加列，不用改程式。
  */
 
+/** 只供單次LINE狀態計算重用metadata；送出、正式提醒與其他查詢預設不啟用。 */
+let statusMetadataReadSnapshot_ = null;
+
+function withStatusMetadataReadSnapshot_(callback) {
+  if (statusMetadataReadSnapshot_) return callback();
+  statusMetadataReadSnapshot_ = new Map();
+  try {
+    return callback();
+  } finally {
+    statusMetadataReadSnapshot_ = null;
+  }
+}
+
+function readStatusMetadataTable_(name, readRows) {
+  const snapshot = statusMetadataReadSnapshot_;
+  if (!snapshot || (name !== '設備清單' && name !== '檢查表模板')) return readRows();
+  const key = String(CONFIG.DB_SHEET_ID) + ':' + name;
+  let values;
+  if (snapshot.has(key)) {
+    values = snapshot.get(key);
+  } else {
+    values = readRows();
+    // 缺少分頁、空模板與讀取失敗不保存成成功的空資料。
+    if (!Array.isArray(values)) return values;
+    snapshot.set(key, values);
+  }
+  return values.map(row => row.map(value =>
+    value instanceof Date ? new Date(value.getTime()) : value));
+}
+
 /**
  * 取得單一設備的資料
  */
 function getEquipmentById_(equipmentId) {
-  const ss = SpreadsheetApp.openById(CONFIG.DB_SHEET_ID);
-  const sheet = ss.getSheetByName('設備清單');
-  const data = sheet.getDataRange().getValues();
+  const data = readStatusMetadataTable_('設備清單', () => {
+    const ss = SpreadsheetApp.openById(CONFIG.DB_SHEET_ID);
+    const sheet = ss.getSheetByName('設備清單');
+    return sheet.getDataRange().getValues();
+  });
   const headers = data[0];
   const idx = name => headers.indexOf(name);
   const opt = name => {
@@ -100,9 +132,11 @@ function findTemplateMetaForEquipment_(headers, data, category, formType, equipm
  * 取得所有啟用中的設備
  */
 function getEquipmentList_() {
-  const ss = SpreadsheetApp.openById(CONFIG.DB_SHEET_ID);
-  const sheet = ss.getSheetByName('設備清單');
-  const data = sheet.getDataRange().getValues();
+  const data = readStatusMetadataTable_('設備清單', () => {
+    const ss = SpreadsheetApp.openById(CONFIG.DB_SHEET_ID);
+    const sheet = ss.getSheetByName('設備清單');
+    return sheet.getDataRange().getValues();
+  });
   const headers = data[0];
   const idx = name => headers.indexOf(name);
   const cyclesByCategory = getTemplateCyclesByCategory_();
@@ -130,11 +164,13 @@ function getEquipmentList_() {
  * 依設備類別彙整已啟用模板的週期，讓前端只顯示可填的表單按鈕。
  */
 function getTemplateCyclesByCategory_() {
-  const ss = SpreadsheetApp.openById(CONFIG.DB_SHEET_ID);
-  const sheet = ss.getSheetByName('檢查表模板');
-  if (!sheet || sheet.getLastRow() < 2) return {};
-
-  const data = sheet.getDataRange().getValues();
+  const data = readStatusMetadataTable_('檢查表模板', () => {
+    const ss = SpreadsheetApp.openById(CONFIG.DB_SHEET_ID);
+    const sheet = ss.getSheetByName('檢查表模板');
+    if (!sheet || sheet.getLastRow() < 2) return null;
+    return sheet.getDataRange().getValues();
+  });
+  if (!data) return {};
   const headers = data[0];
   const idx = name => headers.indexOf(name);
   const categoryIdx = idx('設備類別');

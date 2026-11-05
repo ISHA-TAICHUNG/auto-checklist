@@ -147,6 +147,9 @@ function dailyReminderJob_(opts) {
     const equipments = getEquipmentList_();
     const sentCategories = new Set();         // 同類別只通知一次
     const cyclesByCategory = getTemplateCyclesByCategory_();
+    const venueReadContext = {};              // 只重用本次執行的場地設定與月份原始資料
+    // 僅 LINE 狀態的明確 dry-run 共用當次紀錄；正式提醒仍逐次重新查核。
+    const dailyRecordReadContext = dryRun && opts.reuseDailyRecords === true ? {} : null;
 
     for (const eqp of equipments) {
       try {
@@ -163,14 +166,14 @@ function dailyReminderJob_(opts) {
         continue;
       }
 
-      const usage = getVenueUsage_(full, today);
+      const usage = getVenueUsage_(full, today, venueReadContext);
       if (!usage.used) {
         results.push({ equipmentId: full.equipmentId, category: full.category, action: 'skip',
                        reason: usage.reason || '無使用紀錄' });
         continue;
       }
 
-      if (hasDailyRecordInCategory_(full.category, today)) {
+      if (hasDailyRecordInCategory_(full.category, today, dailyRecordReadContext)) {
         results.push({ equipmentId: full.equipmentId, category: full.category, action: 'skip',
                        reason: '該類別當日已填' });
         continue;
@@ -244,13 +247,18 @@ function dailyReminderJob_(opts) {
  * 判斷指定「設備類別」當天是否有任一設備填了日檢
  * （取代舊版 per-equipment 的 hasDailyRecord_，避免 group 內每台重複寄信）
  */
-function hasDailyRecordInCategory_(category, date) {
-  const ss = SpreadsheetApp.openById(CONFIG.DB_SHEET_ID);
-  const sheet = ss.getSheetByName('填報紀錄');
-  if (!sheet) throw new Error('填報紀錄分頁不存在，無法判斷日檢');
-  if (sheet.getLastRow() < 2) return false;
-
-  const data = sheet.getDataRange().getValues();
+function hasDailyRecordInCategory_(category, date, readContext) {
+  const dbId = String(CONFIG.DB_SHEET_ID);
+  let data;
+  if (readContext && readContext.dbId === dbId && Array.isArray(readContext.data)) {
+    data = readContext.data;
+  } else {
+    const ss = SpreadsheetApp.openById(CONFIG.DB_SHEET_ID);
+    const sheet = ss.getSheetByName('填報紀錄');
+    if (!sheet) throw new Error('填報紀錄分頁不存在，無法判斷日檢');
+    if (sheet.getLastRow() < 2) return false;
+    data = sheet.getDataRange().getValues();
+  }
   const headers = data[0];
   const dateCol = headers.indexOf('檢查日期');
   const typeCol = headers.indexOf('表單類型');
@@ -261,6 +269,11 @@ function hasDailyRecordInCategory_(category, date) {
   if (categoryCol < 0) missing.push('設備類別');
   if (missing.length) {
     throw new Error('填報紀錄缺欄位，無法判斷日檢是否已填：' + missing.join(', '));
+  }
+  // 只保存成功且通過欄位驗證的原始列；本函式不修改或回傳這些列。
+  if (readContext) {
+    readContext.dbId = dbId;
+    readContext.data = data;
   }
   const target = formatISODate_(date);
 
