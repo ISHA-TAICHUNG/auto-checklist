@@ -1893,7 +1893,7 @@ function buildPendingApprovalsFlex_(records, opts) {
 
 function buildPendingApprovalReminderFlex_(records, opts) {
   opts = opts || {};
-  const list = (records || []).slice(0, 8);
+  const list = (records || []).slice(0, 10);
   const minAgeHours = opts.minAgeHours || 24;
   const rows = list.map((record, index) => ({
     type: 'text',
