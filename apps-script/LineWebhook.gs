@@ -76,8 +76,8 @@ function dispatchLineEvent_(ev) {
   }
 
   if (source.type === 'user' && typeof startLoadingAnimation_ === 'function') {
-    // LINE 以最後一次請求的秒數為準；狀態查詢約 15～18 秒，10 秒會在回覆到達前結束。
-    startLoadingAnimation_(userId, 20);
+    // LINE 以最後一次請求的秒數為準；狀態查詢實測可超過 20 秒，太短會在回覆到達前結束。
+    startLoadingAnimation_(userId, 30);
   }
   if (timing) timing.mark('轉圈');
 
@@ -281,18 +281,18 @@ function cmdQRList_(replyToken) {
 // 分段計時只回報毫秒數，不含 userId 與查詢內容，也不寫試算表。
 function createLineStatusTiming_(eventTimestamp) {
   const startedAt = Date.now();
-  const segments = [];
+  const segments = {};
   let last = startedAt;
   return {
     mark(name) {
       const now = Date.now();
-      segments.push(name + ' ' + (now - last));
+      segments[name] = (segments[name] || 0) + now - last;
       last = now;
     },
     summary() {
       const delay = eventTimestamp > 0 ? startedAt - eventTimestamp : '未知';
       return ['狀態計時（毫秒）', '事件到程式 ' + delay]
-        .concat(segments, ['合計 ' + (Date.now() - startedAt)])
+        .concat(Object.keys(segments).map(name => name + ' ' + segments[name]), ['合計 ' + (Date.now() - startedAt)])
         .join('\n');
     },
   };

@@ -71,7 +71,9 @@ function runtime() {
       return Object.entries(state.settings);
     } }),
   };
-  const db = { getSheetByName: name => name === '系統設定' ? settingsSheet : null };
+  const db = {
+    getSheetByName: name => (name === '系統設定' ? settingsSheet : name === '填報紀錄' ? state.recordSheet : null),
+  };
   const context = vm.createContext({
     Date,
     CONFIG: {
@@ -148,7 +150,7 @@ const settingStart = configSource.indexOf('let settingsReadSnapshot_');
 const settingEnd = configSource.indexOf('/**\n * 取得場地表 ID', settingStart);
 assert(settingStart >= 0 && settingEnd > settingStart);
 
-function makeStatusRuntime(useContext, suppliedEquipment) {
+function makeStatusRuntime(useContext, suppliedEquipment, realRecords) {
   const r = runtime();
   const equipment = suppliedEquipment || Array.from({ length: 6 }, (_, i) => ({
     equipmentId: 'TEST-' + i, category: '堆高機', active: true, venueSheetTab: MAIN,
@@ -167,7 +169,7 @@ function makeStatusRuntime(useContext, suppliedEquipment) {
     getEquipmentById_: id => equipment.find(e => e.equipmentId === id),
     getTemplateCyclesByCategory_: () => Object.fromEntries(
       equipment.map(e => [e.category, ['每日']])),
-    hasDailyRecordInCategory_: () => false,
+    hasDailyRecordInCategory_: realRecords ? r.context.hasDailyRecordInCategory_ : () => false,
     sendUnfilledReminder_: () => { sendCalls += 1; },
     buildChecklistStatusFlex_: rows => rows,
     withQuickReply_: x => x,
@@ -257,5 +259,79 @@ notifyAfter.books.new2027.sheets[0].set(5, 18, 0, '');
 assert.equal(notifyAfter.runJob({ dryRun: false })
   .filter(row => row.action === 'mailed').length, 0);
 assert.equal(notifyAfter.sendCalls(), 1, '下一操作空課表不得沿用前次課程寄送');
+
+// 場地防護具：沿用前段已讀的場地與填報紀錄，結果要和各自重新讀取完全相同。
+const ppeSource = fs.readFileSync('apps-script/DailyPpeAssignment.gs', 'utf8');
+function makePpeRuntime(headers = ['檢查日期', '表單類型', '設備類別', ' 設備代號 ']) {
+  const r = makeStatusRuntime(true, [
+    { equipmentId: 'FORK-1', category: '堆高機', active: true, venueSheetTab: MAIN },
+    { equipmentId: 'FORK-2', category: '堆高機', active: true, venueSheetTab: MAIN },
+    { equipmentId: 'VENUE-FORK', category: '防護具檢點', active: true, venueSheetTab: MAIN },
+    { equipmentId: 'VENUE-CRANE', category: '防護具檢點', active: true, venueSheetTab: CRANE },
+  ], true);
+  vm.runInContext(ppeSource, r.context);
+  r.context.formatISODate_ = date => date.toISOString().slice(0, 10);
+  r.context.parseISODate_ = iso => new Date(iso + 'T04:00:00Z');
+  r.recordReads = 0;
+  const rows = [headers, ['2027-05-18', '每日', '防護具檢點', 'VENUE-FORK']];
+  r.state.recordSheet = {
+    getLastRow: () => rows.length,
+    getDataRange: () => ({ getValues: () => { r.recordReads += 1; return rows; } }),
+  };
+  r.books.new2027.sheets[0].set(5, 18, 0, '堆高機課程');
+  r.books.new2027.sheets[1].set(5, 18, 0, '固定式課程');
+  r.lookups = { byName: 0, workbookName: 0 };
+  const book = r.books.new2027;
+  const getSheetByName = book.getSheetByName;
+  book.getSheetByName = name => { r.lookups.byName += 1; return getSheetByName(name); };
+  const getName = book.getName;
+  book.getName = () => { r.lookups.workbookName += 1; return getName(); };
+  return r;
+}
+const ppeRows = rows => rows.filter(row => row.type === 'dailyPpeStatus');
+
+const ppeStatus = makePpeRuntime();
+const ppeResult = ppeRows(ppeStatus.runJob({ dryRun: true, reuseDailyRecords: true }));
+assert.equal(ppeResult.find(row => row.equipmentId === 'VENUE-FORK').alreadyFilled, true,
+  '共用紀錄時表頭前後空白仍要對得到設備代號');
+assert.equal(ppeResult.find(row => row.equipmentId === 'VENUE-CRANE').alreadyFilled, false);
+assert.equal(ppeStatus.recordReads, 1, '狀態查詢的填報紀錄只讀一次');
+assert.equal(ppeStatus.state.settingsReads, 1, '場地設定只讀一次');
+assert.equal(ppeStatus.state.opens.filter(id => id === 'new2027').length, 1, '場地表只開一次');
+assert.equal(ppeStatus.lookups.byName, 2, '兩個分頁各查一次，不隨設備台數增加');
+assert.equal(ppeStatus.lookups.workbookName, 1, '場地表年度只驗證一次');
+assert.equal(ppeStatus.books.new2027.sheets[0].reads, 2, '同月份原始資料只讀一次');
+
+const ppeAlone = makePpeRuntime();
+const ppeAloneRows = ppeAlone.context.dailyPpeChecklistStatusResults_(ppeAlone.context.todayStart_());
+assert.equal(JSON.stringify(ppeAloneRows), JSON.stringify(ppeResult), '不傳 context 時結果相同');
+assert.equal(ppeAlone.recordReads, 2, '不傳 context 時仍各自重新讀取');
+assert.equal(ppeAlone.state.settingsReads, 2);
+
+// 正式提醒只共用場地資料，填報紀錄每次都重新查核。
+const ppeFormal = makePpeRuntime();
+ppeFormal.runJob({ dryRun: false });
+assert.equal(ppeFormal.recordReads, 4, '正式提醒的兩台設備與兩項防護具都要重新讀紀錄');
+assert.equal(ppeFormal.state.settingsReads, 1);
+assert.equal(ppeFormal.sendCalls(), 1);
+
+// 共用資料缺欄位時仍要回報失敗，不可當成未填或已填。
+const ppeMissing = makePpeRuntime(['檢查日期', '表單類型', '設備類別']);
+const ppeMissingRows = ppeMissing.runJob({ dryRun: true, reuseDailyRecords: true });
+assert.equal(ppeRows(ppeMissingRows).length, 0);
+assert.equal(ppeMissingRows.filter(row => row.action === 'failed' && row.category === '場地防護具狀態').length, 1);
+
+// 分頁找不到不保存，下一台設備要重查而不是沿用空結果。
+const missingTab = makePpeRuntime();
+const realGetSheetByName = missingTab.books.new2027.getSheetByName;
+let hideMainTab = true;
+missingTab.books.new2027.getSheetByName = name => (hideMainTab && name === MAIN ? null : realGetSheetByName(name));
+missingTab.books.new2027.getSheets = () => [];
+const venueContext = {};
+const probe = { category: '堆高機', venueSheetTab: MAIN };
+const when = missingTab.context.todayStart_();
+assert.throws(() => missingTab.context.getVenueUsage_(probe, when, venueContext), /場地表分頁不存在/);
+hideMainTab = false;
+assert.equal(missingTab.context.getVenueUsage_(probe, when, venueContext).used, true);
 
 console.log('Reminder 場地讀取整合測試通過：6/6/12→1/1/2、狀態一致、跨操作更新、失敗復原、類別隔離及通知去重。');

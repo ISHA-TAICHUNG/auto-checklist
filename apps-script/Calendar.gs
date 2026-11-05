@@ -25,16 +25,20 @@ function getVenueUsage_(equipment, date, context) {
       ? supplied : SpreadsheetApp.openById(source.id);
     state.spreadsheets[source.id] = ss;
   }
-  if (source.mapped) validateVenueWorkbookYear_(ss, parts.y);
+  const workbookYear = source.id + ':' + parts.y;
+  if (source.mapped && !state.validatedWorkbookYears[workbookYear]) {
+    validateVenueWorkbookYear_(ss, parts.y);
+    state.validatedWorkbookYears[workbookYear] = true;
+  }
   const tabName = equipment.venueSheetTab || CONFIG.VENUE_SHEET_DEFAULT_TAB;
-  const primary = getVenueSheetByRef_(ss, tabName);
+  const primary = getCachedVenueSheet_(ss, source.id, tabName, state);
   if (!primary) throw new Error('場地表分頁不存在：' + tabName);
   const required = getVenueUsageRequiredKeywords_(equipment, state.settings);
   const definitions = [{ sheet: primary, keywords: required }];
   getVenueSupplementalTabs_(state.settings, equipment.category).forEach(def => {
-    const sheet = getVenueSheetByRef_(ss, def.tab);
+    const sheet = getCachedVenueSheet_(ss, source.id, def.tab, state);
     if (!sheet) throw new Error('補充場地表分頁不存在：' + def.tab);
-    if (sheet.getSheetId() !== primary.getSheetId()) {
+    if (sheet.sheetId !== primary.sheetId) {
       definitions.push({ sheet, keywords: def.keywords });
     }
   });
@@ -140,7 +144,10 @@ function getVenueReadState_(context) {
         .map(row => String(row[0] || '').trim()).filter(Boolean)
       : CONFIG.HOLIDAY_KEYWORDS_DEFAULT;
   }
-  const state = { dbId: CONFIG.DB_SHEET_ID, settings, holidays, spreadsheets: {}, months: {} };
+  const state = {
+    dbId: CONFIG.DB_SHEET_ID, settings, holidays,
+    spreadsheets: {}, months: {}, sheets: {}, validatedWorkbookYears: {},
+  };
   if (context) context.venueCalendarState = state;
   return state;
 }
@@ -202,10 +209,11 @@ function getVenueSupplementalTabs_(settings, category) {
 }
 
 /** 一次讀取當月矩形；排除星期欄與年曆右側的獨立備註。 */
-function readVenueMonthCells_(sheet, parts, sourceId, state) {
-  const cacheKey = sourceId + ':' + sheet.getSheetId() + ':' + parts.m;
+function readVenueMonthCells_(venueSheet, parts, sourceId, state) {
+  const cacheKey = sourceId + ':' + venueSheet.sheetId + ':' + parts.m;
   let month = state.months[cacheKey];
   if (!month) {
+    const sheet = venueSheet.sheet;
     const lastCol = sheet.getLastColumn();
     const lastRow = sheet.getLastRow();
     if (!lastCol || lastRow < 3) throw new Error('場地表無日期資料列');
@@ -251,6 +259,17 @@ function venueColumnLabel_(column) {
     label = String.fromCharCode(65 + (value - 1) % 26) + label;
   }
   return label;
+}
+
+// 同一次操作內每個分頁只向試算表服務查一次；找不到不保存，下一台設備會重查。
+function getCachedVenueSheet_(ss, sourceId, tabRef, state) {
+  const key = sourceId + ':' + tabRef;
+  if (!state.sheets[key]) {
+    const sheet = getVenueSheetByRef_(ss, tabRef);
+    if (!sheet) return null;
+    state.sheets[key] = { sheet, sheetId: sheet.getSheetId() };
+  }
+  return state.sheets[key];
 }
 
 function getVenueSheetByRef_(ss, tabRef) {

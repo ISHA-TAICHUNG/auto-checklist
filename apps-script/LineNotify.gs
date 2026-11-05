@@ -648,7 +648,7 @@ function startLoadingAnimation_(chatId, seconds) {
   // group/room ID 開頭非 U，不支援 loading
   if (!chatId.startsWith('U')) return;
   try {
-    const loadingSeconds = Math.min(20, Math.max(5, seconds || 10));
+    const loadingSeconds = Math.min(30, Math.max(5, seconds || 10));
     UrlFetchApp.fetch(`${LINE_API}/chat/loading/start`, {
       method: 'post',
       contentType: 'application/json',
