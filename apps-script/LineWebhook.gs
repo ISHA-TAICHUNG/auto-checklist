@@ -74,7 +74,8 @@ function dispatchLineEvent_(ev) {
   }
 
   if (source.type === 'user' && typeof startLoadingAnimation_ === 'function') {
-    startLoadingAnimation_(userId, 10);
+    // LINE 以最後一次請求的秒數為準；狀態查詢約 15～18 秒，10 秒會在回覆到達前結束。
+    startLoadingAnimation_(userId, 20);
   }
 
   if (requiresLineSubscriberAuth_(cmd) && !isLineSubscriberUser_(userId)) {
