@@ -140,6 +140,7 @@ function dailyReminderJob_(opts) {
 
   opts = opts || {};
   const dryRun = !!(opts && opts.dryRun);
+  const timing = opts.timing || { mark() {} };
   const results = [];
   const run = beginDailyReminderRun_(dryRun);
   try {
@@ -150,6 +151,7 @@ function dailyReminderJob_(opts) {
     const venueReadContext = {};              // 只重用本次執行的場地設定與月份原始資料
     // 僅 LINE 狀態的明確 dry-run 共用當次紀錄；正式提醒仍逐次重新查核。
     const dailyRecordReadContext = dryRun && opts.reuseDailyRecords === true ? {} : null;
+    timing.mark('設備與週期設定');
 
     for (const eqp of equipments) {
       try {
@@ -206,6 +208,8 @@ function dailyReminderJob_(opts) {
       }
     }
 
+    timing.mark('設備日檢');
+
     if (typeof dailyPpeChecklistStatusResults_ === 'function') {
       try {
         dailyPpeChecklistStatusResults_(today).forEach((row) => results.push(row));
@@ -214,6 +218,7 @@ function dailyReminderJob_(opts) {
         results.push(dailyReminderFailureResult_('場地防護具狀態', err));
       }
     }
+    timing.mark('場地防護具');
 
     if (typeof monthlyReminderJob_ === 'function') {
       try {
@@ -223,6 +228,7 @@ function dailyReminderJob_(opts) {
         results.push(dailyReminderFailureResult_('月檢提醒', err));
       }
     }
+    timing.mark('月檢');
 
     if (typeof pendingApprovalReminderJob_ === 'function') {
       try {
@@ -232,6 +238,7 @@ function dailyReminderJob_(opts) {
         results.push(dailyReminderFailureResult_('主管待簽核', err));
       }
     }
+    timing.mark('待簽核');
 
     finishDailyReminderRun_(run, results);
     Logger.log((dryRun ? 'dryRun ' : '') + 'dailyReminderJob 結果：' + JSON.stringify(results));

@@ -65,7 +65,7 @@ function handleGetRequest_(e) {
           ok: true,
           name: "auto-checklist-api",
           version: "1.0",
-          build: "2026-11-05-line-webhook-relay",
+          build: "2026-11-05-line-status-timing",
         };
         break;
 

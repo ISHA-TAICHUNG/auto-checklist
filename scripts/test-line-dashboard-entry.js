@@ -140,7 +140,7 @@ assert.deepStrictEqual(
   'a group or room reply must not expose the supervisor dashboard quick reply',
 );
 assert(
-  /cmdStatus_\(replyToken, userId, \{ isDirectChat: source\.type === 'user' \}\)/.test(webhookSource),
+  /cmdStatus_\(replyToken, userId, \{ isDirectChat: source\.type === 'user'(, timing)? \}\)/.test(webhookSource),
   'the LINE dispatcher must pass the direct-chat boundary into cmdStatus_',
 );
 

@@ -2929,10 +2929,6 @@ function getLineWebhookHealth_() {
   const expectedBase = lineWebhookEndpointBase_(expectedEndpoint);
   const lineBase = lineWebhookEndpointBase_(lineEndpoint);
   const lineToken = lineWebhookEndpointToken_(lineEndpoint);
-  // 切到 Cloudflare 前置層後，上面三個端點比對會恆為 false，改由這個欄位判斷 LINE 是否指向前置層。
-  const relayEndpoint = String(
-    PropertiesService.getScriptProperties().getProperty('LINE_WEBHOOK_RELAY_URL') || ''
-  ).trim();
 
   return {
     lineTokenConfigured: !!cfg.token,
@@ -2945,7 +2941,6 @@ function getLineWebhookHealth_() {
     endpointMatchesExpected: !!expectedEndpoint && !!lineEndpoint && lineEndpoint === expectedEndpoint,
     endpointBaseMatchesExpected: !!expectedBase && !!lineBase && expectedBase === lineBase,
     endpointTokenMatchesExpected: !!queryToken && !!lineToken && lineToken === queryToken,
-    endpointIsExpectedRelay: !!relayEndpoint && lineBase === lineWebhookEndpointBase_(relayEndpoint),
     lineError,
   };
 }
