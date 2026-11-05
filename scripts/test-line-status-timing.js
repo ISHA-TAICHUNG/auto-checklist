@@ -66,6 +66,8 @@ function dispatch({ text, source = { type: 'user', userId: USER_ID }, timestamp,
   loadSource(context, 'Reminder.js');
   Object.assign(context, {
     getLineConfig_: () => ({ token: 'token' }),
+    // 正式環境走這條分支；少了它，分段斷言只會驗到 fallback。
+    withStatusMetadataReadSnapshot_: callback => callback(),
     isLineSubscriberUser_: () => subscriber,
     getLineSubscriberProfileByUserId_: () => ({ isSupervisor: false }),
     buildSubscriberRegistrationFlex_: () => ({ type: 'flex', altText: '請先登錄' }),
