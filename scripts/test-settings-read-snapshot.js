@@ -84,7 +84,7 @@ verifyExistingBehavior();
   assert.equal(result.ok, true);
   assert.equal(result.version, '1.0', '健康檢查保留既有版本欄位');
   if (!process.argv.includes('--baseline')) {
-    assert.equal(result.build, '2026-11-04-settings-read-snapshot');
+    assert.equal(result.build, '2026-11-05-incident-lock-fail-closed');
   }
   assert.equal(state.reads, 0, '健康檢查不可讀取試算表');
 }

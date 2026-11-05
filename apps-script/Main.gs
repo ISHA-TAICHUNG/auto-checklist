@@ -65,7 +65,7 @@ function handleGetRequest_(e) {
           ok: true,
           name: "auto-checklist-api",
           version: "1.0",
-          build: "2026-11-04-settings-read-snapshot",
+          build: "2026-11-05-incident-lock-fail-closed",
         };
         break;
 
