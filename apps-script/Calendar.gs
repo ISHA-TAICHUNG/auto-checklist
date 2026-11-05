@@ -1,9 +1,9 @@
 /**
  * ===== 場地使用判斷 =====
  *
- * 用途：讀取「場地使用試算表」（DB 系統設定 venueSheetId），判斷指定日期是否有人使用該場地。
+ * 用途：依 DB 系統設定 venueSheetsByYear 選年度來源；未配置時相容 venueSheetId。
  *
- * 場地表結構（橫式行事曆，每月 2 欄）：
+ * 場地表結構（橫式行事曆，每月日期欄＋一至多個場地內容欄）：
  *   列 1：1月 _ 2月 _ 3月 _ ... 12月 _
  *   列 2：星期 日期 固定式｜日期 固定式｜日期 固定式｜...
  *   列 3+：星期(A) 1日(B) 課程(C) | 1日(D) 課程(E) | 1日(F) 課程(G) | ...
@@ -11,89 +11,246 @@
  * 日期欄可能是純數字、文字、或日期型別（依使用者輸入而定），這裡都處理。
  */
 
+const VENUE_CALENDAR_VERSION = '2026-11-04.3';
+
+/** 依檢查日期選年度，再逐格合併同類別場地；讀取失敗不能當成沒有使用。 */
 function getVenueUsage_(equipment, date, context) {
-  const tabName = equipment.venueSheetTab || CONFIG.VENUE_SHEET_DEFAULT_TAB;
-
-  const ss = context && context.spreadsheet ? context.spreadsheet : SpreadsheetApp.openById(getVenueSheetId_());
-  const sheet = getVenueSheetByRef_(ss, tabName);
-  if (!sheet) {
-    Logger.log(`場地表找不到分頁：${tabName}`);
-    throw new Error('場地表分頁不存在：' + tabName);
-  }
-
   const parts = dateParts_(date);
-  const month = parts.m;
-  const day = parts.d;
-
-  // 找出該月對應的「日期欄」與「內容欄」
-  const lastCol = sheet.getLastColumn();
-  if (lastCol < 1) throw new Error('場地表為空白表');
-
-  const headerRow = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
-  let dateCol = -1;
-  for (let c = 0; c < headerRow.length; c++) {
-    // 修 P2.1: 容錯 trailing / inner whitespace（場地表 header 寫成 '5月 ' 或 '5 月' 也認）
-    const v = cellStr_(headerRow[c]).replace(/\s/g, '');
-    if (v === `${month}月`) {
-      dateCol = c + 1;
-      break;
+  const state = getVenueReadState_(context);
+  const source = resolveVenueYearSource_(parts.y, state.settings);
+  let ss = state.spreadsheets[source.id];
+  if (!ss) {
+    const supplied = context && context.spreadsheet;
+    ss = supplied && supplied.getId() === source.id
+      ? supplied : SpreadsheetApp.openById(source.id);
+    state.spreadsheets[source.id] = ss;
+  }
+  if (source.mapped) validateVenueWorkbookYear_(ss, parts.y);
+  const tabName = equipment.venueSheetTab || CONFIG.VENUE_SHEET_DEFAULT_TAB;
+  const primary = getVenueSheetByRef_(ss, tabName);
+  if (!primary) throw new Error('場地表分頁不存在：' + tabName);
+  const required = getVenueUsageRequiredKeywords_(equipment, state.settings);
+  const definitions = [{ sheet: primary, keywords: required }];
+  getVenueSupplementalTabs_(state.settings, equipment.category).forEach(def => {
+    const sheet = getVenueSheetByRef_(ss, def.tab);
+    if (!sheet) throw new Error('補充場地表分頁不存在：' + def.tab);
+    if (sheet.getSheetId() !== primary.getSheetId()) {
+      definitions.push({ sheet, keywords: def.keywords });
     }
-  }
-  if (dateCol < 0) {
-    Logger.log(`場地表找不到月份欄：${month}月`);
-    throw new Error('場地表月份欄位不存在：' + month + '月');
-  }
-  const contentCol = dateCol + 1;
-  if (contentCol > lastCol) throw new Error('場地表缺少月份內容欄');
+  });
 
-  // 從列 3 開始往下找日期
+  // 先完成所有來源讀取，避免第一頁有課就掩蓋另一頁讀取失敗。
+  const cells = [];
+  definitions.forEach(def => {
+    readVenueMonthCells_(def.sheet, parts, source.id, state).forEach(cell => {
+      cells.push(Object.assign({}, cell, { keywords: def.keywords }));
+    });
+  });
+  const sources = cells.filter(cell => cell.content).map(cell => {
+    let reason = null;
+    const nonOperation = getVenueNonOperationReason_(cell.content);
+    const holiday = state.holidays.find(kw => kw && cell.content.indexOf(kw) >= 0);
+    if (nonOperation) reason = nonOperation;
+    else if (holiday) reason = '節假日（' + holiday + '）';
+    else if (/^(策略規劃會議|會員大會|台中林酒店春酒|春酒)$/.test(cell.content)) {
+      reason = '非機具使用活動';
+    } else if (equipment.category === '高空工作車' && cell.content.indexOf('高機') >= 0 &&
+        cell.content.indexOf('高空') < 0) {
+      reason = '未命中高空工作車明確關鍵字（高空）';
+    } else if (cell.keywords.length && !matchesVenueCategoryKeywords_(
+      cell.content, cell.keywords, equipment.category)) {
+      reason = '未命中' + equipment.category + '使用關鍵字（' + cell.keywords.join('、') + '）';
+    }
+    return {
+      tab: cell.tab, cell: cell.cell, field: cell.field, content: cell.content,
+      used: !reason, reason,
+      matchedMachineKeywords: getVenueMachineKeywordMatches_(cell.content),
+      needsReview: venueContentNeedsReview_(cell.content, state.holidays),
+    };
+  });
+  const usedSources = sources.filter(row => row.used);
+  const contents = [...new Set((usedSources.length ? usedSources : sources).map(row => row.content))];
+  return {
+    used: usedSources.length > 0,
+    content: contents.join('；'),
+    reason: usedSources.length ? null : sources.length ? sources[0].reason : null,
+    year: parts.y - 1911,
+    calendarVersion: VENUE_CALENDAR_VERSION,
+    sources,
+    needsReview: sources.some(row => row.needsReview),
+  };
+}
+
+/** 使用者已確認的非操作內容，優先於機具字詞；不擴張成整日停用。 */
+function getVenueNonOperationReason_(content) {
+  const text = String(content || '').replace(/\s/g, '');
+  if (text.indexOf('考職安乙不能考即測') >= 0) return '不操作機具（考職安乙不能考即測）';
+  if (text.indexOf('待考區') >= 0 || text.indexOf('挖掘擬真') >= 0) {
+    return '僅占用空間（待考區／挖掘擬真）';
+  }
+  return null;
+}
+
+/** 簡寫僅提供辨識證據，不推算期別或改變專屬分頁的既有類別。 */
+function getVenueMachineKeywordMatches_(content) {
+  const definitions = [
+    { category: '堆高機', keywords: ['堆', '高機'] },
+    { category: '移動式起重機', keywords: ['移動式', '吊'] },
+    { category: '固定式起重機', keywords: ['固', '地面', '機上'] },
+    { category: '高空工作車', keywords: ['高空'] },
+  ];
+  const text = String(content || '');
+  return definitions.map(def => ({
+    category: def.category, keywords: def.keywords.filter(keyword => text.indexOf(keyword) >= 0),
+  })).filter(def => def.keywords.length);
+}
+
+function venueContentNeedsReview_(content, holidays) {
+  const text = String(content || '');
+  if (getVenueNonOperationReason_(text)) return false;
+  if (/(?:^|[\/／\n])喬-/.test(text)) return true;
+  const hasHoliday = holidays.some(keyword => keyword && text.indexOf(keyword) >= 0);
+  const mixedHoliday = hasHoliday && text.split(/[\/／\n]/).some(part =>
+    part.trim() && !holidays.some(keyword => keyword && part.indexOf(keyword) >= 0));
+  const mixedMeeting = /策略規劃會議|會員大會|春酒/.test(text) &&
+    !/^(策略規劃會議|會員大會|台中林酒店春酒|春酒)$/.test(text);
+  return mixedHoliday || mixedMeeting;
+}
+
+/** 僅重用呼叫端傳入的單次執行 context，不建立跨請求快取。 */
+function getVenueReadState_(context) {
+  if (context && context.venueCalendarState &&
+      context.venueCalendarState.dbId === CONFIG.DB_SHEET_ID) return context.venueCalendarState;
+  const db = SpreadsheetApp.openById(CONFIG.DB_SHEET_ID);
+  const sheet = db.getSheetByName('系統設定');
+  if (!sheet) throw new Error('場地年度設定無法讀取：缺少系統設定分頁');
+  const settings = Object.create(null);
   const lastRow = sheet.getLastRow();
-  if (lastRow < 3) throw new Error('場地表無日期資料列');
-
-  const dateValues = sheet.getRange(3, dateCol, lastRow - 2, 1).getValues();
-  for (let i = 0; i < dateValues.length; i++) {
-    const v = dateValues[i][0];
-    if (v === null || v === undefined || v === '') continue;
-
-    let dayValue;
-    if (v instanceof Date) {
-      // Sheets 可能把 1, 2, 3 自動轉成日期物件
-      dayValue = Number(Utilities.formatDate(v, tz_(), 'd'));
-    } else if (typeof v === 'number') {
-      dayValue = v;
-    } else {
-      const n = Number(v);
-      if (isNaN(n)) continue;
-      dayValue = n;
-    }
-
-    if (dayValue === day) {
-      const row = i + 3;
-      const content = cellStr_(sheet.getRange(row, contentCol).getValue());
-
-      if (!content) return { used: false, content: '', reason: null };
-
-      // 節假日關鍵字檢查
-      const keywords = context && context.holidays ? context.holidays : getHolidayKeywords_();
-      for (const kw of keywords) {
-        if (kw && content.indexOf(kw) >= 0) {
-          return { used: false, content, reason: `節假日（${kw}）` };
-        }
-      }
-
-      const requiredKeywords = getVenueUsageRequiredKeywords_(equipment);
-      if (requiredKeywords.length > 0 && !hasAnyKeyword_(content, requiredKeywords)) {
-        return {
-          used: false,
-          content,
-          reason: `未命中${equipment.category}使用關鍵字（${requiredKeywords.join('、')}）`,
-        };
-      }
-
-      return { used: true, content, reason: null };
-    }
+  if (lastRow > 1) {
+    sheet.getRange(2, 1, lastRow - 1, 2).getValues().forEach(row => {
+      const key = String(row[0] || '').trim();
+      if (key && !Object.prototype.hasOwnProperty.call(settings, key)) settings[key] = row[1];
+    });
   }
-  throw new Error('場地表當月找不到該日：' + day);
+  let holidays = context && context.holidays;
+  if (!holidays) {
+    const holidaySheet = db.getSheetByName('節假日關鍵字');
+    holidays = holidaySheet && holidaySheet.getLastRow() > 1
+      ? holidaySheet.getRange(2, 1, holidaySheet.getLastRow() - 1, 1).getValues()
+        .map(row => String(row[0] || '').trim()).filter(Boolean)
+      : CONFIG.HOLIDAY_KEYWORDS_DEFAULT;
+  }
+  const state = { dbId: CONFIG.DB_SHEET_ID, settings, holidays, spreadsheets: {}, months: {} };
+  if (context) context.venueCalendarState = state;
+  return state;
+}
+
+function resolveVenueYearSource_(year, settings) {
+  const raw = settings.venueSheetsByYear;
+  if (raw === undefined || raw === null || raw === '') {
+    const id = String(settings.venueSheetId || CONFIG.VENUE_SHEET_ID_FALLBACK || '').trim();
+    if (!id) throw new Error('尚未設定場地使用試算表');
+    return { id, mapped: false };
+  }
+  const entries = parseVenueConfigObject_(raw, 'venueSheetsByYear');
+  const normalized = Object.create(null);
+  Object.keys(entries).forEach(key => {
+    if (!/^\d{3,4}$/.test(key)) throw new Error('年度場地設定含無效年份');
+    const value = entries[key];
+    const y = Number(key) < 1911 ? Number(key) + 1911 : Number(key);
+    if (y < 1912 || y > 2200 || typeof value !== 'string' || !/^[\w-]+$/.test(value)) {
+      throw new Error('年度場地設定含無效年份或試算表 ID');
+    }
+    if (normalized[y] && normalized[y] !== value) throw new Error('年度場地設定有重複衝突');
+    normalized[y] = value;
+  });
+  if (!normalized[year]) throw new Error('尚未設定民國 ' + (year - 1911) + ' 年場地表');
+  return { id: normalized[year], mapped: true };
+}
+
+function parseVenueConfigObject_(raw, name) {
+  let value;
+  try { value = JSON.parse(String(raw)); } catch (_) { throw new Error(name + ' 不是有效 JSON'); }
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error(name + ' 必須是年度／類別對應物件');
+  }
+  return value;
+}
+
+function validateVenueWorkbookYear_(ss, year) {
+  const match = String(ss.getName()).match(/^(?:民國)?(\d{3,4})(?:年|[\s_-]|$)/);
+  if (!match) return;
+  const declared = Number(match[1]) < 1911 ? Number(match[1]) + 1911 : Number(match[1]);
+  if (declared !== year) throw new Error('場地表標題年度與檢查日期不符');
+}
+
+function getVenueSupplementalTabs_(settings, category) {
+  const raw = settings.venueUsageSupplementalTabs;
+  if (raw === undefined || raw === null || raw === '') return [];
+  const config = parseVenueConfigObject_(raw, 'venueUsageSupplementalTabs');
+  const rows = config[category];
+  if (rows === undefined) return [];
+  if (!Array.isArray(rows)) throw new Error('補充場地分頁設定必須是陣列');
+  return rows.map(row => {
+    if (!row || typeof row.tab !== 'string' || !row.tab.trim() ||
+        !Array.isArray(row.keywords) || !row.keywords.length ||
+        row.keywords.some(kw => typeof kw !== 'string' || !kw.trim())) {
+      throw new Error('補充場地分頁須設定名稱及明確課程關鍵字');
+    }
+    return { tab: row.tab.trim(), keywords: row.keywords.map(kw => kw.trim()) };
+  });
+}
+
+/** 一次讀取當月矩形；排除星期欄與年曆右側的獨立備註。 */
+function readVenueMonthCells_(sheet, parts, sourceId, state) {
+  const cacheKey = sourceId + ':' + sheet.getSheetId() + ':' + parts.m;
+  let month = state.months[cacheKey];
+  if (!month) {
+    const lastCol = sheet.getLastColumn();
+    const lastRow = sheet.getLastRow();
+    if (!lastCol || lastRow < 3) throw new Error('場地表無日期資料列');
+    const headers = sheet.getRange(1, 1, 2, lastCol).getValues();
+    const dateIndex = headers[0].findIndex(v => cellStr_(v).replace(/\s/g, '') === parts.m + '月');
+    if (dateIndex < 0) throw new Error('場地表月份欄位不存在：' + parts.m + '月');
+    let end = lastCol;
+    for (let c = dateIndex + 1; c < lastCol; c += 1) {
+      if (/^\d{1,2}月$/.test(cellStr_(headers[0][c]).replace(/\s/g, '')) ||
+          cellStr_(headers[1][c]) === '日期') { end = c; break; }
+    }
+    const columns = [];
+    for (let c = dateIndex + 1; c < end; c += 1) {
+      const field = cellStr_(headers[1][c]);
+      if (field && field !== '星期') columns.push({ index: c, field });
+    }
+    if (!columns.length && dateIndex + 1 < end) {
+      columns.push({ index: dateIndex + 1, field: '' });
+    }
+    if (!columns.length) throw new Error('場地表缺少月份內容欄');
+    month = {
+      dateIndex, columns, tab: sheet.getName(),
+      rows: sheet.getRange(3, dateIndex + 1, lastRow - 2, end - dateIndex).getValues(),
+    };
+    state.months[cacheKey] = month;
+  }
+  const rowIndex = month.rows.findIndex(row => {
+    const value = row[0];
+    if (value === '' || value === null || value === undefined) return false;
+    return (value instanceof Date ? dateParts_(value).d : Number(value)) === parts.d;
+  });
+  if (rowIndex < 0) throw new Error('場地表當月找不到該日：' + parts.d);
+  return month.columns.map(column => ({
+    tab: month.tab, field: column.field,
+    cell: venueColumnLabel_(column.index + 1) + (rowIndex + 3),
+    content: cellStr_(month.rows[rowIndex][column.index - month.dateIndex]),
+  }));
+}
+
+function venueColumnLabel_(column) {
+  let label = '';
+  for (let value = column; value > 0; value = Math.floor((value - 1) / 26)) {
+    label = String.fromCharCode(65 + (value - 1) % 26) + label;
+  }
+  return label;
 }
 
 function getVenueSheetByRef_(ss, tabRef) {
@@ -119,14 +276,18 @@ function getVenueSheetByRef_(ss, tabRef) {
  * 多類別用分號或換行分隔，例如：
  *   堆高機=堆;固定式起重機=天車,固定式
  */
-function getVenueUsageRequiredKeywords_(equipment) {
+function getVenueUsageRequiredKeywords_(equipment, settings) {
   const category = String((equipment && equipment.category) || '').trim();
   if (!category) return [];
 
-  const configured = parseVenueUsageRequiredKeywords_(getSetting_('venueUsageRequiredKeywords', ''), category);
+  const raw = settings ? settings.venueUsageRequiredKeywords : getSetting_('venueUsageRequiredKeywords', '');
+  const configured = parseVenueUsageRequiredKeywords_(raw, category);
   if (configured !== null) return configured;
 
   const defaults = CONFIG.VENUE_USAGE_REQUIRED_KEYWORDS_DEFAULT || {};
+  if (!defaults[category] && ['移動式', '移動式起重機'].indexOf(category) >= 0) {
+    return ['移動式', '吊'];
+  }
   return (defaults[category] || []).map(k => String(k || '').trim()).filter(Boolean);
 }
 
@@ -148,6 +309,13 @@ function parseVenueUsageRequiredKeywords_(raw, category) {
       .filter(Boolean);
   }
   return null;
+}
+
+/** 保留原文匹配；使用者已確認的高機別名只擴充堆高機類別。 */
+function matchesVenueCategoryKeywords_(content, keywords, category) {
+  if (hasAnyKeyword_(content, keywords)) return true;
+  if (category !== '堆高機') return false;
+  return hasAnyKeyword_(String(content || '').replace(/堆?高機/g, '堆高機'), keywords);
 }
 
 function hasAnyKeyword_(content, keywords) {

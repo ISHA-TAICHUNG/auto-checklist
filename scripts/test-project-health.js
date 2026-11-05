@@ -309,13 +309,20 @@ test('signature tap/zero-distance movement stays empty; real stroke and clear wo
 
 test('unreadable venue data is an error, while empty/holiday/nonmatching dates are unused', () => {
   let header = ['9月', '內容'], days = [[8]], content = '堆高機課程', missing = false;
-  const sheet = { getLastColumn: () => header.length, getLastRow: () => days.length + 2,
-    getRange: (row) => ({ getValues: () => row === 1 ? [header] : days, getValue: () => content }) };
+  const sheet = { getName: () => '場地', getSheetId: () => 1,
+    getLastColumn: () => header.length, getLastRow: () => days.length + 2,
+    getRange: (row) => ({ getValues: () => row === 1
+      ? [header, ['日期', '內容']] : days.map(day => [day[0], content]) }) };
+  const settings = { getLastRow: () => 2,
+    getRange: () => ({ getValues: () => [['venueSheetId', 'mock']] }) };
+  const holidays = { getLastRow: () => 2,
+    getRange: () => ({ getValues: () => [['停班']] }) };
   const c = runtime(['apps-script/Calendar.gs'], {
-    getVenueSheetId_: () => 'mock', SpreadsheetApp: { openById: () => ({}) },
+    getVenueSheetId_: () => 'mock', SpreadsheetApp: { openById: id => id === 'db'
+      ? { getSheetByName: name => name === '系統設定' ? settings : holidays } : {} },
     dateParts_: () => ({ y: 2026, m: 9, d: 8 }),
     cellStr_: v => String(v || ''), getSetting_: () => '', getHolidayKeywords_: () => ['停班'],
-    CONFIG: { VENUE_USAGE_REQUIRED_KEYWORDS_DEFAULT: { 堆高機: ['堆'] } },
+    CONFIG: { DB_SHEET_ID: 'db', VENUE_USAGE_REQUIRED_KEYWORDS_DEFAULT: { 堆高機: ['堆'] } },
   });
   c.getVenueSheetByRef_ = () => missing ? null : sheet;
   const eq = { category: '堆高機' };
