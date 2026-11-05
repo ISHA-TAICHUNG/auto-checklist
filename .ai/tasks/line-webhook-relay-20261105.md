@@ -2,7 +2,7 @@
 
 - task_slug: line-webhook-relay-20261105
 - writer: Claude（管理職類測驗網題庫 session）；reviewer: Claude reviewer agent
-- lease_status: 量測中（前置層方案已取消、Worker 已刪；v141 等 hao 傳「狀態計時」）
+- lease_status: 量測中（前置層方案已取消、Worker 已刪；v142 等 hao 傳「狀態計時」）
 - 目標：按 LINE 按鈕後立即看到轉圈，不增加任何額度。回覆內容的耗時不變（幫助約 4 秒、狀態約 15～18 秒，v136 原生量測）。
 - 硬限制：不可增加訊息額度。Worker 只呼叫 chat/loading/start 與 Apps Script，不呼叫 LINE 訊息 API；reply 依官方收費文件不計入，轉圈不屬於官方列出的計入方式。POST 只送一次，任何轉址都不重送。
 - allowed_paths: cloudflare/line-webhook-relay/；apps-script/LineNotify、LineWebhook、Main 的 .gs 與 .js；scripts/test-line-webhook-relay.js、scripts/test-settings-read-snapshot.js（build 字串）；本檔。
@@ -19,6 +19,10 @@
 - 全套離線測試 25/25；`test-checklist-loading.js` 需要 `PLAYWRIGHT_MODULE`，且專案內 Playwright 要的瀏覽器版本未安裝，要包一層 `channel: 'chrome'` 才會真的跑。
 - 未驗證：真實 LINE 上的「狀態計時」回覆與版面、實際秒數。
 - 待 hao 傳「狀態計時」後依數字決定優化；量完移除指令與放寬的測試比對。
+- v141 實測一筆（hao 21:40，LINE 原生）：事件到程式 2022、合計 20615 毫秒，其中設備日檢 10233、場地防護具 5620、設備與週期設定 1441、待簽核 1250、月檢 864。同時段 3 筆 doPost 總秒數 26.7、29.1、22.7，比先前的 15～18 秒慢，原因未查。
+- v142 已發布（22:11）：場地防護具重用同次已讀的場地資料；填報紀錄只有 LINE 狀態查詢才共用，正式提醒仍逐次查核；同一次操作內分頁與年度只查一次；設備日檢拆成場地與填報紀錄兩段；轉圈 30 秒。受限套件只換 Calendar、DailyPpeAssignment、LineNotify、LineWebhook、Main、Reminder；已確認 `4fd4cf9` 與 v141 除 Config 與 manifest 外相同，HEAD 與 v142 都和套件逐位元相同。回滾：兩部署改回 v141；觸發器跑 HEAD，要再 push 舊內容才會退回。
+- 發布後驗證：兩個入口 health 正常，build `2026-11-05-line-status-read-reuse`；表單 21/21，鎖定 0。
+- 未驗證：v142 的實際秒數、正式提醒自然執行、原生 LINE 轉圈。待 hao 傳「狀態計時」比較；量完移除指令與放寬的測試比對。
 
 ## 2026-11-05 決定與待辦
 

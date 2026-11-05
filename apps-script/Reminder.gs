@@ -169,13 +169,16 @@ function dailyReminderJob_(opts) {
       }
 
       const usage = getVenueUsage_(full, today, venueReadContext);
+      timing.mark('設備日檢-場地');
       if (!usage.used) {
         results.push({ equipmentId: full.equipmentId, category: full.category, action: 'skip',
                        reason: usage.reason || '無使用紀錄' });
         continue;
       }
 
-      if (hasDailyRecordInCategory_(full.category, today, dailyRecordReadContext)) {
+      const alreadyFilled = hasDailyRecordInCategory_(full.category, today, dailyRecordReadContext);
+      timing.mark('設備日檢-填報紀錄');
+      if (alreadyFilled) {
         results.push({ equipmentId: full.equipmentId, category: full.category, action: 'skip',
                        reason: '該類別當日已填' });
         continue;
@@ -208,11 +211,12 @@ function dailyReminderJob_(opts) {
       }
     }
 
-    timing.mark('設備日檢');
+    timing.mark('設備日檢-其他');
 
     if (typeof dailyPpeChecklistStatusResults_ === 'function') {
       try {
-        dailyPpeChecklistStatusResults_(today).forEach((row) => results.push(row));
+        dailyPpeChecklistStatusResults_(today, { venueReadContext, dailyRecordReadContext })
+          .forEach((row) => results.push(row));
       } catch (err) {
         Logger.log('場地防護具狀態查詢失敗：' + dailyReminderSafeError_(err));
         results.push(dailyReminderFailureResult_('場地防護具狀態', err));

@@ -639,7 +639,7 @@ function linePushTo_(to, messages, _action) {
 /**
  * 觸發「正在輸入...」loading 動畫
  * 僅支援 1:1 私訊（group / room 不支援）
- * 不計入 LINE Messaging API 訊息額度；LINE API 支援 5-60 秒，本系統 UX 上限固定 20 秒。
+ * 不計入 LINE Messaging API 訊息額度；LINE API 支援 5-60 秒，本系統 UX 上限固定 30 秒。
  * https://developers.line.biz/en/reference/messaging-api/#display-a-loading-indicator
  */
 function startLoadingAnimation_(chatId, seconds) {
@@ -648,7 +648,7 @@ function startLoadingAnimation_(chatId, seconds) {
   // group/room ID 開頭非 U，不支援 loading
   if (!chatId.startsWith('U')) return;
   try {
-    const loadingSeconds = Math.min(20, Math.max(5, seconds || 10));
+    const loadingSeconds = Math.min(30, Math.max(5, seconds || 10));
     UrlFetchApp.fetch(`${LINE_API}/chat/loading/start`, {
       method: 'post',
       contentType: 'application/json',

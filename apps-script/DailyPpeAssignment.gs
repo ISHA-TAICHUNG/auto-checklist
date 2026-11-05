@@ -200,7 +200,9 @@ function dailyPpeCollectMissingConfirmations_(date) {
   return out;
 }
 
-function dailyPpeChecklistStatusResults_(date) {
+// readContext 由 dailyReminderJob_ 傳入，重用同次執行已讀到的場地與填報紀錄；未傳時各自重新讀取。
+function dailyPpeChecklistStatusResults_(date, readContext) {
+  const reuse = readContext || {};
   const targetDate = dailyPpeAssignmentResolveDate_(date);
   const out = [];
   DAILY_PPE_ASSIGNMENT_EQUIPMENTS.forEach(def => {
@@ -211,12 +213,12 @@ function dailyPpeChecklistStatusResults_(date) {
     }
 
     const usageProbe = dailyPpeUsageProbeEquipment_(def, equipment);
-    const usage = getVenueUsage_(usageProbe, targetDate);
+    const usage = getVenueUsage_(usageProbe, targetDate, reuse.venueReadContext);
     if (!usage || !usage.used) {
       return;
     }
 
-    const alreadyFilled = dailyPpeHasDailyRecordForEquipment_(def.id, targetDate);
+    const alreadyFilled = dailyPpeHasDailyRecordForEquipment_(def.id, targetDate, reuse.dailyRecordReadContext);
     out.push({
       type: 'dailyPpeStatus',
       equipmentId: def.id,
@@ -255,26 +257,36 @@ function dailyPpeUsageProbeEquipment_(def, ppeEquipment) {
   return probe;
 }
 
-function dailyPpeHasDailyRecordForEquipment_(equipmentId, date) {
-  const ss = SpreadsheetApp.openById(CONFIG.DB_SHEET_ID);
-  const sheet = ss.getSheetByName('填報紀錄');
-  if (!sheet) throw new Error('填報紀錄分頁不存在，無法判斷防護具日檢');
-  if (sheet.getLastRow() < 2) return false;
-  const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0].map(h => String(h || '').trim());
+function dailyPpeHasDailyRecordForEquipment_(equipmentId, date, readContext) {
+  const dbId = String(CONFIG.DB_SHEET_ID);
+  let data = readContext && readContext.dbId === dbId && Array.isArray(readContext.data)
+    ? readContext.data : null;
+  if (!data) {
+    const ss = SpreadsheetApp.openById(CONFIG.DB_SHEET_ID);
+    const sheet = ss.getSheetByName('填報紀錄');
+    if (!sheet) throw new Error('填報紀錄分頁不存在，無法判斷防護具日檢');
+    if (sheet.getLastRow() < 2) return false;
+    data = sheet.getDataRange().getValues();
+  }
+  const headers = data[0].map(h => String(h || '').trim());
   const dateCol = headers.indexOf('檢查日期');
   const typeCol = headers.indexOf('表單類型');
   const eqpCol = headers.indexOf('設備代號');
   if (dateCol < 0 || typeCol < 0 || eqpCol < 0) throw new Error('填報紀錄缺少防護具日檢必要欄位');
+  // 只保存通過欄位驗證的原始列；本函式不修改或回傳這些列。
+  if (readContext) {
+    readContext.dbId = dbId;
+    readContext.data = data;
+  }
   const targetDate = formatISODate_(date);
   const targetEqp = String(equipmentId || '').trim();
-  const values = sheet.getRange(2, 1, sheet.getLastRow() - 1, headers.length).getValues();
-  for (let i = 0; i < values.length; i++) {
-    let rowDate = values[i][dateCol];
+  for (let i = 1; i < data.length; i++) {
+    let rowDate = data[i][dateCol];
     rowDate = rowDate instanceof Date ? formatISODate_(rowDate) : String(rowDate || '').trim();
     if (
       rowDate === targetDate &&
-      String(values[i][typeCol] || '').trim() === '每日' &&
-      String(values[i][eqpCol] || '').trim() === targetEqp
+      String(data[i][typeCol] || '').trim() === '每日' &&
+      String(data[i][eqpCol] || '').trim() === targetEqp
     ) {
       return true;
     }

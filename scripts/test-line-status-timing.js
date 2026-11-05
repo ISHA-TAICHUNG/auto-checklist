@@ -10,9 +10,13 @@ const GAS_ENDPOINT = 'https://script.google.com/macros/s/abc/exec?lineWebhookTok
 const USER_ID = 'U-private-user';
 const REPLY_TOKEN = 'reply-token-private';
 const SEGMENTS = [
-  '轉圈', '訂閱者檢查', '設備與週期設定', '設備日檢', '場地防護具', '月檢', '待簽核',
+  '轉圈', '訂閱者檢查', '設備與週期設定', '設備日檢-場地', '設備日檢-填報紀錄', '設備日檢-其他',
+  '場地防護具', '月檢', '待簽核',
   '提醒收尾', '訂閱者資料', '狀態卡片', '防護具', '每日作業',
 ];
+
+// 兩台同類別設備：同名分段要累加成一行，不能各列一次。
+const EQUIPMENT = ['F-1', 'F-2'].map(equipmentId => ({ equipmentId, category: '堆高機', active: true }));
 
 function loadSource(context, name) {
   const source = fs.readFileSync(path.join(__dirname, '..', 'apps-script', name), 'utf8');
@@ -46,7 +50,7 @@ function readHealth(lineEndpoint) {
 }
 
 // 走真實的 dispatchLineEvent_、cmdStatus_、dailyReminderJob_ 與 lineReply_，只替換資料來源。
-function dispatch({ text, source = { type: 'user', userId: USER_ID }, timestamp, subscriber = true, optional = false }) {
+function dispatch({ text, source = { type: 'user', userId: USER_ID }, timestamp, subscriber = true, optional = false, fakeClock = false }) {
   const state = { loading: [], replies: [], reminderRuns: 0 };
   const context = vm.createContext({
     Logger: { log() {} },
@@ -64,6 +68,8 @@ function dispatch({ text, source = { type: 'user', userId: USER_ID }, timestamp,
   loadSource(context, 'LineNotify.js');
   loadSource(context, 'LineWebhook.js');
   loadSource(context, 'Reminder.js');
+  // 每次取時間固定前進 100 毫秒，分段數字才能精確斷言。
+  if (fakeClock) vm.runInContext('{ let now = 1000; Date.now = () => (now += 100); }', context);
   Object.assign(context, {
     getLineConfig_: () => ({ token: 'token' }),
     // 正式環境走這條分支；少了它，分段斷言只會驗到 fallback。
@@ -77,8 +83,11 @@ function dispatch({ text, source = { type: 'user', userId: USER_ID }, timestamp,
     beginDailyReminderRun_: () => { state.reminderRuns += 1; return {}; },
     finishDailyReminderRun_: () => {},
     todayStart_: () => new Date('2026-11-05T00:00:00Z'),
-    getEquipmentList_: () => [],
-    getTemplateCyclesByCategory_: () => ({}),
+    getEquipmentList_: () => EQUIPMENT,
+    getEquipmentById_: id => EQUIPMENT.find(row => row.equipmentId === id),
+    getTemplateCyclesByCategory_: () => ({ 堆高機: ['每日'] }),
+    getVenueUsage_: () => ({ used: true, content: '課程' }),
+    hasDailyRecordInCategory_: () => false,
     dailyPpeChecklistStatusResults_: () => [],
     monthlyReminderJob_: () => [],
     pendingApprovalReminderJob_: () => ({ action: 'skip' }),
@@ -124,6 +133,17 @@ function timingText(state) {
   assert.deepStrictEqual(lines.slice(2, -1).map(line => line.split(' ')[0]), SEGMENTS);
   lines.slice(2).forEach(line => assert.match(line, /^\S+ \d+$/));
   assert.match(lines[lines.length - 1], /^合計 \d+$/);
+  const sum = lines.slice(2, -1).reduce((total, line) => total + Number(line.split(' ')[1]), 0);
+  assert.ok(sum <= Number(lines[lines.length - 1].split(' ')[1]), '各段加總不可超過合計');
+}
+
+// 兩台設備的同名分段要累加；各段加上組訊息前的最後一段等於合計
+{
+  const lines = timingText(dispatch({ text: '狀態計時', fakeClock: true })).split('\n');
+  assert.ok(lines.includes('設備日檢-場地 200'));
+  assert.ok(lines.includes('設備日檢-填報紀錄 200'));
+  const sum = lines.slice(2, -1).reduce((total, line) => total + Number(line.split(' ')[1]), 0);
+  assert.strictEqual(sum + 100, Number(lines[lines.length - 1].split(' ')[1]));
 }
 
 // 狀態計時：不帶 userId 與 reply token，訊息內容也不寫入個資
@@ -163,8 +183,8 @@ assert.match(timingText(dispatch({ text: '狀態計時' })), /\n事件到程式 
   assert.strictEqual(timingText(group), null);
 }
 
-// 轉圈要長於狀態查詢的 15～18 秒；群組不支援轉圈
-assert.deepStrictEqual(plain(dispatch({ text: '幫助' }).loading), [{ chatId: USER_ID, loadingSeconds: 20 }]);
+// 轉圈要涵蓋實測超過 20 秒的狀態查詢；群組不支援轉圈
+assert.deepStrictEqual(plain(dispatch({ text: '幫助' }).loading), [{ chatId: USER_ID, loadingSeconds: 30 }]);
 assert.strictEqual(
   dispatch({ text: '/幫助', source: { type: 'group', groupId: 'C1', userId: USER_ID } }).loading.length,
   0,
