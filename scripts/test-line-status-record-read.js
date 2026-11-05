@@ -77,6 +77,55 @@ assert.equal(candidate.state.reads, 1, '同次狀態不可逐設備重讀填報�
 assert.equal(candidate.state.opens, 1, '共用資料不能仍逐設備開啟試算表');
 assert.equal(candidate.state.sent, 0, '狀態查詢不可發提醒');
 
+// 日期轉換只做在表單類型與類別相符的列；同類別多台設備共用第一次掃描，結果不變。
+{
+  const { c, state, run } = runtime();
+  for (let i = 0; i < 50; i += 1) {
+    state.books.db.push([new Date(today), '每日', '其他類別'], [new Date(today), '每月', '堆高機']);
+  }
+  let conversions = 0;
+  c.formatISODate_ = value => { conversions += 1; return iso(value); };
+  assert.equal(JSON.stringify(run()), JSON.stringify(before));
+  // 7 次查詢各算一次目標日期，加上堆高機與固定式起重機各一列相符的日檢。
+  assert.equal(conversions, 9);
+}
+
+// 日檢判定維持嚴格比對：表單類型、類別或字串日期帶空白都不算今日已填，否則會漏發提醒。
+{
+  const { c, state } = runtime();
+  state.books.db.push(
+    ['2026-11-04', ' 每日 ', '堆高機'],
+    ['2026-11-04', '每日', ' 堆高機'],
+    [' 2026-11-04', '每日', '堆高機'],
+  );
+  assert.equal(c.hasDailyRecordInCategory_('堆高機', today), false);
+  assert.equal(c.hasDailyRecordInCategory_('堆高機', today, {}), false);
+}
+
+// 已填的結果也要共用：第二次查詢只算目標日期，不再轉資料列的日期。
+{
+  const { c, state } = runtime();
+  state.books.db.push([new Date(today), '每日', '堆高機']);
+  let conversions = 0;
+  c.formatISODate_ = value => { conversions += 1; return iso(value); };
+  const context = {};
+  assert.equal(c.hasDailyRecordInCategory_('堆高機', today, context), true);
+  const afterFirstScan = conversions;
+  assert.equal(c.hasDailyRecordInCategory_('堆高機', today, context), true);
+  assert.equal(conversions, afterFirstScan + 1);
+}
+
+// 不同日期不可共用掃描結果；有共用資料時仍看得到當次資料中的今日日檢。
+{
+  const { c, state } = runtime();
+  const context = {};
+  state.books.db.push([new Date(today), '每日', '堆高機']);
+  assert.equal(c.hasDailyRecordInCategory_('堆高機', today, context), true);
+  assert.equal(c.hasDailyRecordInCategory_('堆高機', new Date('2026-11-02T04:00:00Z'), context), false);
+  assert.equal(c.hasDailyRecordInCategory_('固定式起重機', today, context), true);
+  assert.equal(state.reads, 1);
+}
+
 // 正式入口使用真實metadata wrapper；缺少helper的相容fallback也必須opt-in。
 {
   const fallback = runtime(false, false);
