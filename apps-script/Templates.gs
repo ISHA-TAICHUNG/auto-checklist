@@ -201,15 +201,20 @@ function getTemplateCyclesByCategory_() {
  *
  * 同一項次（order）有多筆 → 取最新一筆（依通報日期 desc）
  *
+ * 無法確認時一律拋錯：缺分頁、缺欄位，或本設備未結案列的表單類型、項次無效，
+ * 都不可當成「沒有異常」，否則前端會顯示可正常填寫的表單，鎖內查核也會放行。
+ * 表頭完整但沒有資料才回空陣列。錯誤前綴列在 friendlyError_ 白名單，使用者才看得到真因。
+ *
  * 回傳：[ { order, itemName, incidentId, reportDate, description, status, note, dueDate, assignee } ]
  */
 function getLockedItemsForEquipment_(equipmentId, formType) {
   const ss = SpreadsheetApp.openById(CONFIG.DB_SHEET_ID);
   const sheet = getMachineIncidentSheet_(ss);
-  if (!sheet || sheet.getLastRow() < 2) return [];
+  if (!sheet) throw new Error('無法核對未結案異常：缺少機具設備異常事件分頁');
 
   const data = sheet.getDataRange().getValues();
-  const headers = data[0];
+  // 與 setupSheet_ 及其他異常表讀取端一致；否則表頭多空白時 setup 也修不好。
+  const headers = data[0].map(value => String(value || '').trim());
   const idx = name => headers.indexOf(name);
   const cell = (row, name) => {
     const col = idx(name);
@@ -221,12 +226,10 @@ function getLockedItemsForEquipment_(equipmentId, formType) {
     return String(value || '').trim();
   };
 
-  // 欄位防呆：「機具設備異常事件」表如果還沒初始化會缺欄位，避免崩潰
   const REQUIRED = ['設備代號', '表單類型', '項次', '項目名稱', '通報日期', '異常說明', '狀態'];
   for (const col of REQUIRED) {
     if (idx(col) < 0) {
-      Logger.log(`getLockedItemsForEquipment_：「機具設備異常事件」缺欄位 ${col}，回空陣列`);
-      return [];
+      throw new Error(`無法核對未結案異常：機具設備異常事件缺少「${col}」欄位`);
     }
   }
 
@@ -243,12 +246,21 @@ function getLockedItemsForEquipment_(equipmentId, formType) {
   // 依 order 聚合，先收全部未完成列，再由最新列承接前一筆處理脈絡。
   const byOrder = {};
   for (let i = 1; i < data.length; i++) {
-    if (cell(data[i], '設備代號') !== equipmentId) continue;
-    if (cell(data[i], '表單類型') !== targetType) continue;
+    // 字串比對：手動編輯可能留下空白，Sheets 也可能把純數字代號轉成數字。
+    if (String(cell(data[i], '設備代號')).trim() !== String(equipmentId).trim()) continue;
     if (!isLocked(cell(data[i], '狀態'))) continue;
 
-    const order = Number(cell(data[i], '項次')) || 0;
-    if (!order) continue;
+    const incidentRef = String(cell(data[i], '事件ID') || '').trim() || `第 ${i + 1} 列`;
+    const rowType = String(cell(data[i], '表單類型') || '').trim();
+    if (rowType !== '每日' && rowType !== '每月') {
+      throw new Error(`無法核對未結案異常：${incidentRef} 缺少有效表單類型`);
+    }
+    if (rowType !== targetType) continue;
+
+    const order = Number(cell(data[i], '項次'));
+    if (!Number.isInteger(order) || order <= 0) {
+      throw new Error(`無法核對未結案異常：${incidentRef} 缺少有效項次`);
+    }
 
     const rdStr = dateCell(data[i], '通報日期');
 

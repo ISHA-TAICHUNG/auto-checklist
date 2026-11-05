@@ -1580,7 +1580,11 @@ function writeIncidents_({
     Logger.log("「機具設備異常事件」表不存在，跳過異常追蹤寫入");
     return;
   }
-  const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  // 須與 getLockedItemsForEquipment_ 同樣 trim，否則寫出缺設備代號的列，下次查核就鎖不到。
+  const headers = sheet
+    .getRange(1, 1, 1, sheet.getLastColumn())
+    .getValues()[0]
+    .map((value) => String(value || "").trim());
   const submittedAtStr = Utilities.formatDate(submittedAt, tz_(), "HH:mm:ss");
   const checkDateStr = formatISODate_(checkDate);
   const lockedByOrder = machineIncidentLockedByOrder_(lockedItems);

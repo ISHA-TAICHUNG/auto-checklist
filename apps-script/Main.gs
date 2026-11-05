@@ -85,11 +85,17 @@ function handleGetRequest_(e) {
         const form = e.parameter.form;
         const eqp = e.parameter.eqp;
         if (!form || !eqp) throw new Error("需提供 form 與 eqp 參數");
-        result = {
-          ok: true,
-          meta: getPublicFormMeta_(form, eqp),
-          locked: getLockedItemsForEquipment_(eqp, form),
-        };
+        const meta = getPublicFormMeta_(form, eqp);
+        const locked = getLockedItemsForEquipment_(eqp, form);
+        // 鎖內查核一定會拒絕這張表；先說明真因，避免使用者填完才被要求反覆重新載入。
+        const formOrders = new Set(meta.items.map((item) => Number(item.order)));
+        const orphan = locked.find((item) => !formOrders.has(item.order));
+        if (orphan) {
+          throw new Error(
+            `無法核對未結案異常：${orphan.incidentId || "第 " + orphan.order + " 項"} 的項次不在目前表單內`,
+          );
+        }
+        result = { ok: true, meta, locked };
         break;
       }
 
@@ -1258,6 +1264,7 @@ function friendlyError_(err) {
     // 業務驗證錯誤（v8.10 加）
     "標為異常但未填",
     "仍有未處理異常",
+    "無法核對未結案異常",
     "無法標為",
     // 修 P2.2: 補白名單（讓使用者看到真因而非「請聯絡管理員」）
     "結果值不合法",
