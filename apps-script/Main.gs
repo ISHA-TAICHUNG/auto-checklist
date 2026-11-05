@@ -25,6 +25,20 @@
 
 function doGet(e) {
   const api = (e && e.parameter && e.parameter.api) || "health";
+  // 管理入口可能在同一次操作修改設定，必須保留讀後寫後讀的即時行為。
+  if (api === "admin") return handleGetRequest_(e);
+  return runWithSettingsReadSnapshot_(() => handleGetRequest_(e));
+}
+
+function runWithSettingsReadSnapshot_(callback) {
+  // 保留分檔測試及舊版 Config 的相容性；正式環境由 Config 提供作用域。
+  return typeof withSettingsReadSnapshot_ === "function"
+    ? withSettingsReadSnapshot_(callback)
+    : callback();
+}
+
+function handleGetRequest_(e) {
+  const api = (e && e.parameter && e.parameter.api) || "health";
 
   try {
     if (e && e.parameter && e.parameter.page) {
@@ -47,7 +61,12 @@ function doGet(e) {
     let result;
     switch (api) {
       case "health":
-        result = { ok: true, name: "auto-checklist-api", version: "1.0" };
+        result = {
+          ok: true,
+          name: "auto-checklist-api",
+          version: "1.0",
+          build: "2026-11-04-settings-read-snapshot",
+        };
         break;
 
       case "equipments":
@@ -1093,7 +1112,7 @@ function doPost(e) {
         Logger.log("[LINE webhook] query token 不符，拒絕");
         return jsonResponse_({ ok: false, error: "invalid_webhook_token" });
       }
-      const r = handleLineWebhook_(raw);
+      const r = runWithSettingsReadSnapshot_(() => handleLineWebhook_(raw));
       return jsonResponse_(r);
     }
 
@@ -1193,7 +1212,7 @@ function doPost(e) {
         break;
       default:
         requirePublicSession_(payload);
-        result = handleSubmission_(payload);
+        result = runWithSettingsReadSnapshot_(() => handleSubmission_(payload));
     }
     return jsonResponse_(result);
   } catch (err) {
