@@ -65,7 +65,7 @@ function handleGetRequest_(e) {
           ok: true,
           name: "auto-checklist-api",
           version: "1.0",
-          build: "2026-11-06-submission-timing",
+          build: "2026-11-06-line-status-skip-pending-approval",
         };
         break;
 
@@ -1086,7 +1086,6 @@ function getPublicFormMeta_(form, equipmentId) {
 }
 
 function doPost(e) {
-  const requestStartedAt = Date.now();
   try {
     const raw = (e && e.postData && e.postData.contents) || "";
     if (!raw) throw new Error("空白 payload");
@@ -1217,14 +1216,9 @@ function doPost(e) {
         requirePublicSession_(payload);
         result = submitDailyWorkCheck_(payload);
         break;
-      default: {
-        const timing = createSubmissionTiming_(requestStartedAt);
-        timing.mark("收件與解析");
+      default:
         requirePublicSession_(payload);
-        timing.mark("操作票證");
-        result = runWithSettingsReadSnapshot_(() => handleSubmission_(payload, timing));
-        timing.save(payload.formType, result, raw.length);
-      }
+        result = runWithSettingsReadSnapshot_(() => handleSubmission_(payload));
     }
     return jsonResponse_(result);
   } catch (err) {
@@ -1241,61 +1235,6 @@ function doPost(e) {
     } catch (_) {}
     return jsonResponse_({ ok: false, error: friendlyError_(err) });
   }
-}
-
-// ponytail: 臨時量測，預設 GCP 專案讀不到匿名呼叫的執行紀錄，只保存最後一筆送件的各段毫秒數，
-// 供 LINE「送件計時」查詢；決定優化方向後移除。
-const SUBMISSION_TIMING_PROPERTY = "SUBMISSION_TIMING_LAST_V1";
-
-function createSubmissionTiming_(startedAt) {
-  const segments = {};
-  let last = startedAt;
-  const mark = (name) => {
-    const now = Date.now();
-    segments[name] = (segments[name] || 0) + now - last;
-    last = now;
-  };
-  return {
-    mark,
-    // 只存表單類型、處理方式與毫秒數，不存紀錄 ID、人名或填報內容；寫入失敗不影響送件結果。
-    save(formType, result, payloadChars) {
-      mark("收尾");
-      try {
-        PropertiesService.getScriptProperties().setProperty(
-          SUBMISSION_TIMING_PROPERTY,
-          JSON.stringify({
-            recordedAt: Utilities.formatDate(new Date(), tz_(), "yyyy-MM-dd HH:mm:ss"),
-            formType: formType === "monthly" ? "月檢" : "日檢",
-            mode: result && result.idempotent
-              ? "重送"
-              : result && result.approvalPending ? "待簽核文件" : "PDF",
-            incident: !!(result && result.incidentCount > 0),
-            payloadKB: Math.round(Number(payloadChars || 0) / 1024),
-            segments,
-            total: last - startedAt,
-          }),
-        );
-      } catch (err) {
-        Logger.log("送件計時保存失敗：" + err);
-      }
-    },
-  };
-}
-
-function submissionTimingText_() {
-  const raw = PropertiesService.getScriptProperties().getProperty(SUBMISSION_TIMING_PROPERTY);
-  if (!raw) return "還沒有送件計時紀錄。請先從網頁送出一張檢查表，再傳「送件計時」。";
-  let data;
-  try {
-    data = JSON.parse(raw);
-  } catch (_) {
-    return "送件計時紀錄無法讀取。";
-  }
-  const segments = data.segments || {};
-  return ["送件計時（毫秒）", data.recordedAt + " " + data.formType + "・" + data.mode +
-    (data.incident ? "・含異常" : ""), "資料量 " + data.payloadKB + " KB"]
-    .concat(Object.keys(segments).map((name) => name + " " + segments[name]), ["合計 " + data.total])
-    .join("\n");
 }
 
 /**
