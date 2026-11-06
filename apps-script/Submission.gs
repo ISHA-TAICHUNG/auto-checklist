@@ -1681,21 +1681,22 @@ function findRecordByClientId_(clientId) {
   const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
   const idIdx = headers.indexOf("clientSubmissionId");
   if (idIdx < 0) return null; // 此 DB 尚未 migrate 此欄位，視為無 idempotency
-  const data = sheet.getRange(2, 1, lastRow - 1, headers.length).getValues();
-  for (let i = 0; i < data.length; i++) {
-    if (data[i][idIdx] === clientId) {
-      const approvalStatus = headers.indexOf("簽核狀態") >= 0
-        ? String(data[i][headers.indexOf("簽核狀態")] || "")
-        : "";
-      return {
-        recordId: data[i][headers.indexOf("紀錄ID")],
-        fileUrl: data[i][headers.indexOf("PDF連結")] || "",
-        approvalPending: ["待異常處理", "待主管簽核"].indexOf(approvalStatus) >= 0,
-        approvalDeferredForIncidents: approvalStatus === "待異常處理",
-      };
-    }
-  }
-  return null;
+  // 只讀 ID 欄找列：整列含完整資料 JSON，這段又在指令碼鎖內，整表讀取會隨紀錄增加拖慢每次送件。
+  const ids = sheet.getRange(2, idIdx + 1, lastRow - 1, 1).getValues();
+  const offset = ids.findIndex(row => row[0] === clientId);
+  if (offset < 0) return null;
+  const row = sheet.getRange(offset + 2, 1, 1, headers.length).getValues()[0];
+  // 兩次讀取之間若有人手動插入或刪除列，同一列號可能已換成別筆；寧可請使用者重送，也不回錯紀錄。
+  if (row[idIdx] !== clientId) throw new Error("填報紀錄正在變動，請稍後再送出一次");
+  const approvalStatus = headers.indexOf("簽核狀態") >= 0
+    ? String(row[headers.indexOf("簽核狀態")] || "")
+    : "";
+  return {
+    recordId: row[headers.indexOf("紀錄ID")],
+    fileUrl: row[headers.indexOf("PDF連結")] || "",
+    approvalPending: ["待異常處理", "待主管簽核"].indexOf(approvalStatus) >= 0,
+    approvalDeferredForIncidents: approvalStatus === "待異常處理",
+  };
 }
 
 /**

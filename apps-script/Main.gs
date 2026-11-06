@@ -65,7 +65,7 @@ function handleGetRequest_(e) {
           ok: true,
           name: "auto-checklist-api",
           version: "1.0",
-          build: "2026-11-06-line-status-skip-pending-approval",
+          build: "2026-11-06-submission-dedupe-column",
         };
         break;
 
