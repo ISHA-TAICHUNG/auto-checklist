@@ -2,7 +2,7 @@
 
 - task_slug: submission-timing-20261106
 - writer: Claude（主 session）；reviewer: reviewer agent（獨立、只讀）
-- lease_status: 待 hao 決定（11/6 08:27 日檢實測合計 7819 毫秒；建議 v146 改重送檢查只查一欄並移除計時）
+- lease_status: 完成（v146 已上線：重送檢查只讀 ID 欄、送件計時已移除；待真實送件確認）
 - 目標：先量出網頁送件各段秒數，再決定要不要優化、改哪一段。不建測試資料，不改前台。
 
 ## 背景
@@ -48,6 +48,18 @@
 - 產生 PDF 加雲端硬碟 4592 毫秒，約佔 59%。PDF 是建 Google 文件、匯出、丟進垃圾桶，屬於正式紀錄格式，不建議為了速度改寫。雲端硬碟一段是 3 層資料夾查找、建檔、設定連結分享；快取資料夾 ID 可省約 1 秒，但資料夾被移到垃圾桶時 PDF 會跟著進垃圾桶（30 天後刪除），不建議。
 - 重送檢查 784 毫秒：`findRecordByClientId_` 讀整張填報紀錄（含完整資料 JSON）只為比對一欄，而且在指令碼鎖內，會隨填報紀錄變多而變慢、拉長其他送件的等待。改成只查 clientSubmissionId 一欄是唯一乾淨可省的段落。
 - 11/4 Codex 實測同 ID 重送 7.1 秒，伺服器端到重送檢查為止只約 2 秒，推測網頁感受時間有約 5 秒在程式外（網路、轉址、Apps Script 啟動）。另外前台操作票證在開頁時預取、9.5 分鐘後過期；填表超過這個時間，送出前會多一次取票請求，這段量不到。
+
+## v146（11/6 09:00）
+
+- hao 回「好，做 v146」。分支 `fix/submission-dedupe-column`，合併為 `702e7b6`。
+- `6ce314f`：撤回 `694c6d2`、`3ddb80f`，apps-script 與 scripts 和 `aa51ed8`（v144）逐檔相同。
+- `347de23`：`findRecordByClientId_` 先讀 clientSubmissionId 一欄找第一個 `===` 的列，命中才讀該列；讀回的 ID 不符時，擋下並回「填報紀錄正在變動，請稍後再送出一次」，不回錯紀錄。build 為 `2026-11-06-submission-dedupe-column`。
+- `5c14d53`：reviewer P2，把「填報紀錄正在變動」加入 `friendlyError_` 白名單，否則使用者會看到「請聯絡管理員」，可能重新整理換掉送件 ID 造成重複歸檔。reviewer P3，新增 ID 欄在第一欄的表結構。
+- 測試：新增 `scripts/test-submission-client-id-lookup.js`（8 組；72 組與舊整表比對結果相同、鎖住讀取範圍、插刪列擋下、白名單）。全套 27 支（含瀏覽器）通過；突變：舊整表、拿掉防呆、比對放寬、命中列只讀到 ID 欄、拿掉白名單都會被抓到。
+- 發布：受限套件只換 LineWebhook、Main、Submission；已確認 `f1b2946` 與 v145 除 Config 與 manifest 外相同，HEAD 與 v146 都和套件逐位元相同。兩入口 build 正確，表單 21/21、鎖定 0（3.49／4.43／8.55 秒）。
+- 回滾：兩部署改回 v144（整表重送檢查、無計時）；觸發器跑 HEAD，要再 push 舊內容。
+- 留下：Script Property `SUBMISSION_TIMING_LAST_V1` 是 v145 最後一筆計時，v146 不再寫入；是否刪除由 hao 決定。
+- 既有問題、不在範圍：`Setup.gs` 的清除函式刪列時沒有取指令碼鎖（reviewer P3）。
 
 ## 讀數注意
 
