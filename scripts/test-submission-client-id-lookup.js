@@ -7,7 +7,8 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 
-const source = fs.readFileSync(path.resolve(__dirname, '..', 'apps-script', 'Submission.gs'), 'utf8');
+const root = path.resolve(__dirname, '..', 'apps-script');
+const source = fs.readFileSync(path.join(root, 'Submission.gs'), 'utf8');
 
 // 舊版整表比對（v145 以前）當對照組，逐字保留。
 function legacyFindRecordByClientId(clientId, sheet) {
@@ -78,6 +79,8 @@ const ROWS = [
   ['R-7', '2026-11-06', '{}', null, null, ' C-7 '],
 ];
 const clone = rows => rows.map(row => row.slice());
+// 真實表的 ID 欄不一定在最後；命中列要讀到整列，才拿得到 ID 欄後面的簽核狀態。
+const ID_FIRST = clone(ROWS).map(row => [row[5], row[0], row[1], row[2], row[3], row[4]]);
 
 let cases = 0;
 function test(name, run) {
@@ -93,6 +96,7 @@ test('各種情境結果與舊整表比對完全相同', () => {
     [['紀錄ID', 'PDF連結', '簽核狀態']].concat(clone(ROWS).slice(1).map(row => [row[0], row[3], row[4]])),
     clone(ROWS).map(row => row.filter((_, i) => i !== 4)), // 沒有簽核狀態欄
     clone(ROWS).map(row => row.filter((_, i) => i !== 0 && i !== 3)), // 沒有紀錄ID、PDF連結欄
+    ID_FIRST,
   ];
   const ids = [undefined, '', 'C-1', 'C-2', 'C-3', 'C-4', 'C-404', '12345', 12345, 'C-7', ' C-7 ', 'c-1'];
   let compared = 0;
@@ -104,7 +108,7 @@ test('各種情境結果與舊整表比對完全相同', () => {
       compared += 1;
     }
   }
-  assert.equal(compared, 60);
+  assert.equal(compared, 72);
 });
 
 test('同一 ID 有兩列時回第一列，與舊行為一致', () => {
@@ -132,6 +136,19 @@ test('找到時只多讀命中的那一列', () => {
   ]);
 });
 
+test('ID 欄不在最後一欄時，命中列仍讀到後面的簽核狀態與 PDF 連結', () => {
+  const { find, sheet } = runtime(clone(ID_FIRST));
+  assert.deepEqual(JSON.parse(JSON.stringify(find('C-3'))), {
+    recordId: 'R-3', fileUrl: '', approvalPending: true, approvalDeferredForIncidents: true,
+  });
+  assert.equal(find('C-4').fileUrl, 'https://pdf/4');
+  assert.deepEqual(sheet.reads.slice(0, 3), [
+    { row: 1, column: 1, numRows: 1, numColumns: 6 },
+    { row: 2, column: 1, numRows: 7, numColumns: 1 },
+    { row: 4, column: 1, numRows: 1, numColumns: 6 },
+  ]);
+});
+
 test('兩次讀取之間被刪列或插列時擋下，不回錯紀錄', () => {
   for (const change of [rows => rows.splice(2, 1), rows => rows.splice(1, 0, ['R-0', '', '', '', '', 'C-0'])]) {
     const { find, sheet } = runtime(clone(ROWS));
@@ -147,6 +164,13 @@ test('沒有 ID 欄或只有表頭時不讀資料列', () => {
   const empty = runtime([HEADERS]);
   assert.equal(empty.find('C-1'), null);
   assert.equal(empty.sheet.reads.length, 0);
+});
+
+test('使用者看到的是請重送的原訊息，不被改寫成聯絡管理員', () => {
+  const context = vm.createContext({ Logger: { log() {} } });
+  vm.runInContext(fs.readFileSync(path.join(root, 'Main.gs'), 'utf8'), context);
+  assert.equal(context.friendlyError_(new Error('填報紀錄正在變動，請稍後再送出一次')),
+    '填報紀錄正在變動，請稍後再送出一次');
 });
 
 console.log(`重送檢查只讀 ID 欄：${cases} 組通過，結果與舊整表比對一致。`);
