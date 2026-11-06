@@ -30,9 +30,8 @@
  *   }
  */
 
-function handleSubmission_(payload, timing) {
+function handleSubmission_(payload) {
   // 這層不 catch — 讓 doPost 用 friendlyError 統一包裝
-  timing = timing || { mark() {} };
   if (!payload || !payload.formType) throw new Error("缺少 formType");
   if (!payload.equipmentId) throw new Error("缺少 equipmentId");
   if (!payload.checkDate) throw new Error("缺少 checkDate");
@@ -156,20 +155,17 @@ function handleSubmission_(payload, timing) {
       }
     }
   });
-  timing.mark("驗證與模板");
   // 鎖：避免同設備同日重複寫 / 並發 race
   const lock = LockService.getScriptLock();
   if (!lock.tryLock(30000)) throw new Error("系統忙碌，請稍後再試");
-  timing.mark("等待鎖");
 
   try {
     // codex P1: idempotency — 若前端帶 clientSubmissionId 且已存在 → 回原紀錄
-    const existing = payload.clientSubmissionId
-      ? findRecordByClientId_(payload.clientSubmissionId)
-      : null;
-    timing.mark("重送檢查");
-    if (existing) {
-      return Object.assign({ ok: true, idempotent: true }, existing);
+    if (payload.clientSubmissionId) {
+      const existing = findRecordByClientId_(payload.clientSubmissionId);
+      if (existing) {
+        return Object.assign({ ok: true, idempotent: true }, existing);
+      }
     }
 
     // 已保存的提交直接回傳；只有新提交須符合目前異常鎖定狀態。
@@ -183,7 +179,6 @@ function handleSubmission_(payload, timing) {
         throw new Error(`第 ${it.order} 項仍有未處理異常，無法標為「${it.result}」`);
       }
     });
-    timing.mark("鎖定項目");
 
     const currentForm = getFormMeta_(payload.formType, payload.equipmentId);
     validateSubmissionItemsAgainstTemplate_(payload.items, currentForm.items);
@@ -212,7 +207,6 @@ function handleSubmission_(payload, timing) {
     let docInfo = null;
     let draftDocUrl = "";
     let fileUrl = "";
-    timing.mark("表單比對");
 
     if (needsApproval) {
       approvalToken = createApprovalToken_();
@@ -229,7 +223,6 @@ function handleSubmission_(payload, timing) {
         payload,
         template: tplMeta,
       });
-      timing.mark("產生PDF或文件");
       const draftFile = DriveApp.getFileById(docInfo.docId);
       draftFile.setName(
         buildDraftDocFilename_(payload.formType, checkDate, equipment, payload.checkMonth),
@@ -250,7 +243,6 @@ function handleSubmission_(payload, timing) {
       pdfBlob.setName(
         buildPdfFilename_(payload.formType, checkDate, equipment),
       );
-      timing.mark("產生PDF或文件");
       const folder = getOrCreateArchiveFolderForSubmission_(
         payload.formType,
         equipment,
@@ -260,7 +252,6 @@ function handleSubmission_(payload, timing) {
       sharePdfFileForLinkView_(file, "submission");
       fileUrl = file.getUrl();
     }
-    timing.mark("雲端硬碟");
 
     // 3-4. 寫紀錄 + 異常事件
     //
@@ -316,7 +307,6 @@ function handleSubmission_(payload, timing) {
       }
       throw writeErr;
     }
-    timing.mark("寫紀錄");
     // 主紀錄已成功，異常追蹤失敗時只 log（不影響使用者結果）
     try {
       // tplMeta 帶下去，writeIncidents_ 內部會從 tplMeta.resultOptions 算 allowedResults
@@ -339,7 +329,6 @@ function handleSubmission_(payload, timing) {
           (incidentErr.stack || ""),
       );
     }
-    timing.mark("異常追蹤");
     // 異常通報仍維持「檢查人送出當下即時推播」；正式 PDF 連結待主管簽核後回填到 Sheet。
     if (incidentCount > 0) {
       try {
@@ -362,8 +351,6 @@ function handleSubmission_(payload, timing) {
         );
       }
     }
-
-    timing.mark("異常通報");
 
     let approvalNotice = null;
     if (needsApproval && incidentCount === 0) {
@@ -389,7 +376,6 @@ function handleSubmission_(payload, timing) {
         approvalNotice = { ok: false, reason: "line_error" };
       }
     }
-    timing.mark("主管通知");
 
     return {
       ok: true,
@@ -1695,21 +1681,22 @@ function findRecordByClientId_(clientId) {
   const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
   const idIdx = headers.indexOf("clientSubmissionId");
   if (idIdx < 0) return null; // 此 DB 尚未 migrate 此欄位，視為無 idempotency
-  const data = sheet.getRange(2, 1, lastRow - 1, headers.length).getValues();
-  for (let i = 0; i < data.length; i++) {
-    if (data[i][idIdx] === clientId) {
-      const approvalStatus = headers.indexOf("簽核狀態") >= 0
-        ? String(data[i][headers.indexOf("簽核狀態")] || "")
-        : "";
-      return {
-        recordId: data[i][headers.indexOf("紀錄ID")],
-        fileUrl: data[i][headers.indexOf("PDF連結")] || "",
-        approvalPending: ["待異常處理", "待主管簽核"].indexOf(approvalStatus) >= 0,
-        approvalDeferredForIncidents: approvalStatus === "待異常處理",
-      };
-    }
-  }
-  return null;
+  // 只讀 ID 欄找列：整列含完整資料 JSON，這段又在指令碼鎖內，整表讀取會隨紀錄增加拖慢每次送件。
+  const ids = sheet.getRange(2, idIdx + 1, lastRow - 1, 1).getValues();
+  const offset = ids.findIndex(row => row[0] === clientId);
+  if (offset < 0) return null;
+  const row = sheet.getRange(offset + 2, 1, 1, headers.length).getValues()[0];
+  // 兩次讀取之間若有人手動插入或刪除列，同一列號可能已換成別筆；寧可請使用者重送，也不回錯紀錄。
+  if (row[idIdx] !== clientId) throw new Error("填報紀錄正在變動，請稍後再送出一次");
+  const approvalStatus = headers.indexOf("簽核狀態") >= 0
+    ? String(row[headers.indexOf("簽核狀態")] || "")
+    : "";
+  return {
+    recordId: row[headers.indexOf("紀錄ID")],
+    fileUrl: row[headers.indexOf("PDF連結")] || "",
+    approvalPending: ["待異常處理", "待主管簽核"].indexOf(approvalStatus) >= 0,
+    approvalDeferredForIncidents: approvalStatus === "待異常處理",
+  };
 }
 
 /**

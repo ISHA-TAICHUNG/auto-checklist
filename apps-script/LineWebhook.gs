@@ -87,7 +87,6 @@ function dispatchLineEvent_(ev) {
   if (timing) timing.mark('訂閱者檢查');
 
   // 指令路由
-  if (cmd === '送件計時') return lineReply_(replyToken, { type: 'text', text: submissionTimingText_() });
   if (/^(狀態|status)$/i.test(cmd) || timing) {
     return cmdStatus_(replyToken, userId, { isDirectChat: source.type === 'user', timing });
   }
