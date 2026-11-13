@@ -131,6 +131,30 @@
     }
     .done h2 { margin: 0 0 8px; color: var(--green); }
     .loading { padding: 48px 16px; text-align: center; color: var(--muted); }
+    .progress { display: flex; gap: 4px; margin: 14px 0 6px; }
+    .step { flex: 1; text-align: center; font-size: 13px; color: #9aa0a6; }
+    .step b { display: block; font-size: 16px; }
+    .step.done { color: var(--green); }
+    .step.now { color: var(--blue); font-weight: 900; }
+    .holder { margin: 0; font-size: 14px; font-weight: 800; color: #174ea6; text-align: center; }
+    .holder.warn { color: var(--red); }
+    .returned { margin: 0 0 14px; padding: 12px 14px; border-left: 4px solid var(--red); background: #fce8e6; color: var(--red); white-space: pre-wrap; }
+    .thumbs { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+    .thumb { position: relative; width: 84px; height: 84px; }
+    .thumb img { width: 100%; height: 100%; object-fit: cover; border-radius: 6px; border: 1px solid var(--line); }
+    .thumb button { position: absolute; top: -6px; right: -6px; width: 24px; height: 24px; padding: 0; border-radius: 50%; background: var(--red); font-size: 14px; line-height: 24px; }
+    .hint { margin: 6px 0 0; color: var(--muted); font-size: 13px; }
+    .review-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 12px; }
+    button.approve { background: var(--green); }
+    button.reject { background: var(--red); }
+    .readonly-item { padding: 12px 0; border-top: 1px solid var(--line); }
+    .readonly-item:first-of-type { border-top: 0; }
+    .readonly-item h3 { margin: 0 0 4px; font-size: 15px; }
+    .readonly-item p { margin: 2px 0; white-space: pre-wrap; }
+    .gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px; margin-top: 10px; }
+    .gallery a img { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 6px; border: 1px solid var(--line); }
+    .warn-box { margin-top: 12px; padding: 12px; border-radius: 6px; background: #fef7e0; color: #8a5300; font-weight: 800; }
+    .warn-box button { margin-top: 10px; background: #e37400; }
     [hidden] { display: none !important; }
     @media (max-width: 480px) {
       header h1 { font-size: 21px; }
@@ -144,7 +168,7 @@
     <p id="subtitle">讀取中...</p>
   </header>
   <main>
-    <div class="notice">同一次檢查的異常已整併在本頁。若為月檢，全部處理完成後，處理紀錄會接在原月檢表後方送主管簽核；核准後才產生正式合併 PDF。</div>
+    <div class="notice">同一次檢查的異常已整併在本頁。全部處理完成時請選擇核判主管：每日檢由該主管在本頁核判；月檢則接在原月檢表後方，送該主管簽核後產生正式合併 PDF。</div>
     <div id="loading" class="loading">正在驗證連結並讀取資料...</div>
     <div id="errorBox" class="summary" hidden>
       <h2>無法載入</h2>
@@ -161,20 +185,53 @@
           <span>異常項數</span><strong id="countText"></strong>
         </div>
         <a id="originalPdf" class="pdf-link" target="_blank" rel="noopener" hidden>查看原檢查 PDF</a>
+        <div id="progress" class="progress"></div>
+        <p id="holder" class="holder"></p>
       </section>
 
       <section id="doneBox" class="done" hidden>
         <h2 id="doneTitle">本次異常已完成處理</h2>
         <p id="doneText">處理資料已留存在機具設備異常事件表。</p>
         <a id="handlingPdf" class="pdf-link" target="_blank" rel="noopener" hidden>查看異常處理紀錄 PDF</a>
+        <div id="noticeWarn" class="warn-box" hidden>
+          核判主管的 LINE 通知沒有送達，主管可能不知道要核判。
+          <button id="resendBtn" type="button">重新通知主管</button>
+          <p id="resendMessage" class="message"></p>
+        </div>
+      </section>
+
+      <section id="readonlyBox" class="summary" hidden>
+        <h2>處理結果</h2>
+        <div id="readonlyItems"></div>
+        <h2 id="galleryTitle" style="margin-top:14px">處理後照片</h2>
+        <div id="gallery" class="gallery"></div>
+      </section>
+
+      <section id="reviewBox" class="summary" hidden>
+        <h2>主管核判</h2>
+        <p class="hint">請確認各項處理說明與處理後照片（照片會附在核准後的正式 PDF）。</p>
+        <label for="reviewComment">主管意見（退回時必填）</label>
+        <textarea id="reviewComment" maxlength="600" placeholder="例如：已確認修復完成；或請補拍更換後零件照片"></textarea>
+        <div class="review-actions">
+          <button id="approveBtn" class="approve" type="button">核准歸檔</button>
+          <button id="returnBtn" class="reject" type="button">退回補正</button>
+        </div>
+        <p id="reviewMessage" class="message"></p>
       </section>
 
       <section id="formBox">
+        <p id="returnedBox" class="returned" hidden></p>
         <h2 class="section-title">逐項處理</h2>
         <div id="items" class="items"></div>
         <section class="summary">
           <label for="completedDate">處理完成日期（有項目選擇「已完成」時必填）</label>
           <input id="completedDate" type="date">
+          <label for="photoInput">處理後照片（選填）</label>
+          <input id="photoInput" type="file" accept="image/*" multiple>
+          <p id="photoHint" class="hint"></p>
+          <div id="thumbs" class="thumbs"></div>
+          <label for="supervisorSelect">核判主管（全部項目完成時必選）</label>
+          <select id="supervisorSelect"></select>
         </section>
         <div class="actions">
           <button id="submitBtn" type="button">更新處理回報</button>
@@ -193,6 +250,7 @@
     const recordId = query.get('recordId') || INJECTED.recordId || '';
     const token = query.get('token') || INJECTED.token || '';
     let current = null;
+    let pendingPhotos = [];
 
     if (!recordId || !token) {
       showError('處理回報連結缺少必要參數，請從最新 LINE 圖卡重新開啟。');
@@ -215,10 +273,197 @@
       document.getElementById('countText').textContent = `${(group.items || []).length} 項`;
       setLink('originalPdf', group.originalPdfUrl);
       document.getElementById('completedDate').value = latestCompletedDate(group.items) || todayIso();
-      renderItems(group.items || []);
+      renderSupervisors(res.supervisors || [], group.supervisorKey);
+      renderGroupState(group);
       document.getElementById('loading').hidden = true;
       document.getElementById('content').hidden = false;
-      if (group.allCompleted) renderDone(group);
+    }
+
+    function renderGroupState(group) {
+      renderProgress(group.progress);
+      renderPhotoHint(group);
+      const returned = document.getElementById('returnedBox');
+      returned.hidden = !(group.returned && group.reviewComment);
+      returned.textContent = `主管退回補正：${group.reviewComment || ''}`;
+      if (group.allCompleted) {
+        renderDone(group);
+        renderReadonly(group);
+      } else {
+        document.getElementById('formBox').hidden = false;
+        document.getElementById('doneBox').hidden = true;
+        document.getElementById('readonlyBox').hidden = true;
+        renderItems(group.items || []);
+      }
+      document.getElementById('noticeWarn').hidden = !(current && current.reviewerNoticeFailed && group.awaitingApproval);
+      document.getElementById('reviewBox').hidden = !(current && current.canReview && group.awaitingApproval);
+    }
+
+    // 完成後（含主管核判時）以唯讀方式列出各項處理說明與已上傳照片。
+    function renderReadonly(group) {
+      const list = document.getElementById('readonlyItems');
+      list.textContent = '';
+      (group.items || []).forEach(item => {
+        const box = document.createElement('div');
+        box.className = 'readonly-item';
+        const title = document.createElement('h3');
+        title.textContent = `第 ${item.order || '—'} 項｜${item.itemName || '未命名異常項目'}`;
+        const desc = document.createElement('p');
+        desc.className = 'description';
+        desc.textContent = `異常：${item.description || '未填'}`;
+        const note = document.createElement('p');
+        note.textContent = `處理說明：${item.note || '未填'}`;
+        const meta = document.createElement('p');
+        meta.className = 'hint';
+        meta.textContent = `${item.status || ''}｜完成日 ${item.completedDate || '—'}｜處理人 ${item.owner || '—'}`;
+        box.append(title, desc, note, meta);
+        list.appendChild(box);
+      });
+      const photos = (current && current.photos) || [];
+      const gallery = document.getElementById('gallery');
+      gallery.textContent = '';
+      photos.forEach((photo, index) => {
+        const link = document.createElement('a');
+        link.href = photo.dataUrl;
+        link.target = '_blank';
+        link.rel = 'noopener';
+        const img = document.createElement('img');
+        img.src = photo.dataUrl;
+        img.alt = `處理後照片 ${index + 1}`;
+        link.appendChild(img);
+        gallery.appendChild(link);
+      });
+      document.getElementById('galleryTitle').textContent = photos.length
+        ? `處理後照片（${photos.length} 張）`
+        : '處理後照片：未上傳';
+      document.getElementById('readonlyBox').hidden = false;
+    }
+
+    document.getElementById('resendBtn').addEventListener('click', () => {
+      const button = document.getElementById('resendBtn');
+      const message = document.getElementById('resendMessage');
+      button.disabled = true;
+      message.textContent = '重新通知中...';
+      message.className = 'message';
+      google.script.run
+        .withSuccessHandler(res => {
+          button.disabled = false;
+          if (!res || !res.ok) {
+            message.textContent = (res && res.error) || '通知失敗';
+            message.className = 'message error';
+            return;
+          }
+          current.reviewerNoticeFailed = false;
+          document.getElementById('noticeWarn').hidden = true;
+          setMessage('已重新通知核判主管。', 'success');
+        })
+        .withFailureHandler(err => {
+          button.disabled = false;
+          message.textContent = errorMessage(err);
+          message.className = 'message error';
+        })
+        .resendMachineIncidentReviewNoticeFromPage({ recordId, token });
+    });
+
+    function renderProgress(progress) {
+      const root = document.getElementById('progress');
+      root.textContent = '';
+      if (!progress) return;
+      progress.steps.forEach((label, index) => {
+        const step = document.createElement('div');
+        step.className = 'step' + (index < progress.current ? ' done' : (index === progress.current ? ' now' : ''));
+        const mark = document.createElement('b');
+        mark.textContent = index < progress.current ? '✓' : (index === progress.current ? '●' : '○');
+        step.appendChild(mark);
+        step.appendChild(document.createTextNode(label));
+        root.appendChild(step);
+      });
+      const holder = document.getElementById('holder');
+      holder.textContent = [progress.note, progress.holder].filter(Boolean).join('｜');
+      holder.className = 'holder' + (progress.note ? ' warn' : '');
+    }
+
+    function renderSupervisors(list, selectedKey) {
+      const select = document.getElementById('supervisorSelect');
+      select.textContent = '';
+      const empty = document.createElement('option');
+      empty.value = '';
+      empty.textContent = list.length ? '— 請選擇核判主管 —' : '— 主管名單是空的，請聯絡管理員 —';
+      select.appendChild(empty);
+      list.forEach(person => {
+        const option = document.createElement('option');
+        option.value = person.key;
+        option.textContent = person.label;
+        option.selected = person.key === selectedKey;
+        select.appendChild(option);
+      });
+    }
+
+    function photoRoom(group) {
+      return Math.max(0, (group.maxPhotos || 8) - (group.photoCount || 0) - pendingPhotos.length);
+    }
+
+    function renderPhotoHint(group) {
+      document.getElementById('photoHint').textContent =
+        `已上傳 ${group.photoCount || 0} 張，本次新增 ${pendingPhotos.length} 張，還可加 ${photoRoom(group)} 張（上限 ${group.maxPhotos || 8} 張）。`;
+      const thumbs = document.getElementById('thumbs');
+      thumbs.textContent = '';
+      pendingPhotos.forEach((dataUrl, index) => {
+        const box = document.createElement('div');
+        box.className = 'thumb';
+        const img = document.createElement('img');
+        img.src = dataUrl;
+        img.alt = `第 ${index + 1} 張處理後照片`;
+        const remove = document.createElement('button');
+        remove.type = 'button';
+        remove.textContent = '×';
+        remove.setAttribute('aria-label', `移除第 ${index + 1} 張照片`);
+        remove.addEventListener('click', () => {
+          pendingPhotos.splice(index, 1);
+          renderPhotoHint(current.group);
+        });
+        box.appendChild(img);
+        box.appendChild(remove);
+        thumbs.appendChild(box);
+      });
+    }
+
+    document.getElementById('photoInput').addEventListener('change', async event => {
+      const files = Array.from(event.target.files || []);
+      event.target.value = '';
+      for (const file of files) {
+        if (photoRoom(current.group) <= 0) {
+          setMessage(`處理後照片最多 ${current.group.maxPhotos || 8} 張。`, 'error');
+          break;
+        }
+        try {
+          pendingPhotos.push(await compressImage(file, 1280, 0.7));
+        } catch (err) {
+          setMessage(`照片「${file.name}」無法讀取，請改用 JPG 或 PNG。`, 'error');
+        }
+      }
+      renderPhotoHint(current.group);
+    });
+
+    // 壓縮到長邊 1280、JPEG 0.7，與日常異常一致，避免超過後端單張 600KB 上限。
+    function compressImage(file, maxDim, quality) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onerror = reject;
+        reader.onload = () => {
+          const img = new Image();
+          img.onerror = reject;
+          img.onload = () => {
+            const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
+            const canvas = document.createElement('canvas');
+            canvas.width = Math.round(img.width * scale);
+            canvas.height = Math.round(img.height * scale);
+            canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+            resolve(canvas.toDataURL('image/jpeg', quality));
+          };
+          img.src = reader.result;
+        };
+        reader.readAsDataURL(file);
+      });
     }
 
     function renderItems(items) {
@@ -286,18 +531,33 @@
       }));
       const missing = items.find(item => item.status === '已完成' && !item.note);
       if (missing) return setMessage(`第 ${missing.order || '—'} 項標記完成前，請填寫處理說明。`, 'error');
+      const supervisorKey = document.getElementById('supervisorSelect').value;
+      if (items.every(item => item.status === '已完成') && !supervisorKey) {
+        return setMessage('全部項目完成時，請選擇核判主管。', 'error');
+      }
       setBusy(true);
       google.script.run
         .withSuccessHandler(res => {
           setBusy(false);
           if (!res || !res.ok) return setMessage((res && res.error) || '更新失敗', 'error');
+          pendingPhotos = [];
+          current.reviewerNoticeFailed = !!res.reviewerNoticeFailed;
           current.group = res.group;
-          if (res.group && res.group.allCompleted) {
-            renderDone(res.group);
-          } else {
-            renderItems((res.group && res.group.items) || []);
-            setMessage('處理狀態已更新。', 'success');
+          if (res.group.allCompleted) {
+            // 全部完成後重新讀取一次，直接以含剛上傳照片的最新資料重繪，避免先閃出舊相簿。
+            setMessage('已送出，正在讀取最新狀態...', 'success');
+            google.script.run
+              .withSuccessHandler(fresh => {
+                if (fresh && fresh.ok) current = fresh;
+                renderGroupState(current.group);
+                setMessage('', '');
+              })
+              .withFailureHandler(() => { renderGroupState(current.group); setMessage('', ''); })
+              .getMachineIncidentHandlingPageData(recordId, token);
+            return;
           }
+          renderGroupState(res.group);
+          setMessage('處理狀態已更新。', 'success');
         })
         .withFailureHandler(err => {
           setBusy(false);
@@ -307,26 +567,77 @@
           recordId,
           token,
           completedDate: document.getElementById('completedDate').value,
+          supervisorKey,
+          photos: pendingPhotos.slice(),
           items,
         });
     });
+
+    function submitReview(decision) {
+      const comment = document.getElementById('reviewComment').value.trim();
+      if (decision === 'return' && !comment) return setReviewMessage('退回時請填寫退回原因。', 'error');
+      const confirmText = decision === 'approve' ? '確定核准並產生正式處理紀錄 PDF？' : '確定退回給處理人補正？';
+      if (!confirm(confirmText)) return;
+      setReviewBusy(true);
+      google.script.run
+        .withSuccessHandler(res => {
+          setReviewBusy(false);
+          if (!res || !res.ok) return setReviewMessage((res && res.error) || '核判失敗', 'error');
+          current.canReview = false;
+          current.group = res.group;
+          renderGroupState(res.group);
+          if (res.decision === 'return') {
+            document.getElementById('formBox').hidden = true;
+            document.getElementById('doneBox').hidden = false;
+            document.getElementById('doneTitle').textContent = '已退回處理人補正';
+            document.getElementById('doneText').textContent = '處理人補正後重新送出，系統會再通知你核判。';
+            setLink('handlingPdf', '');
+          }
+        })
+        .withFailureHandler(err => {
+          setReviewBusy(false);
+          setReviewMessage(errorMessage(err), 'error');
+        })
+        .reviewMachineIncidentHandlingFromPage({ recordId, token, decision, comment });
+    }
+
+    document.getElementById('approveBtn').addEventListener('click', () => submitReview('approve'));
+    document.getElementById('returnBtn').addEventListener('click', () => submitReview('return'));
+
+    function setReviewBusy(busy) {
+      document.getElementById('approveBtn').disabled = busy;
+      document.getElementById('returnBtn').disabled = busy;
+      if (busy) setReviewMessage('處理中，產生 PDF 可能需要數十秒...', '');
+    }
+
+    function setReviewMessage(text, cls) {
+      const el = document.getElementById('reviewMessage');
+      el.textContent = text || '';
+      el.className = 'message ' + (cls || '');
+    }
 
     function renderDone(group) {
       document.getElementById('formBox').hidden = true;
       document.getElementById('doneBox').hidden = false;
       const title = document.getElementById('doneTitle');
       const text = document.getElementById('doneText');
+      const monthly = group.formType === '每月';
+      const supervisor = group.supervisorName || '主管';
       if (group.approved) {
-        title.textContent = '主管已簽核並完成歸檔';
-        text.textContent = '原月檢表與異常處理紀錄已合併為同一份正式 PDF。';
+        title.textContent = '主管已核判並完成歸檔';
+        text.textContent = monthly
+          ? '原月檢表與異常處理紀錄已合併為同一份正式 PDF。'
+          : `${group.handlingSupervisor || supervisor} 已於 ${group.handlingApprovedAt || ''} 核准，處理紀錄 PDF 已歸檔。`;
       } else if (group.awaitingApproval) {
-        title.textContent = '處理完成，已送主管簽核';
-        text.textContent = '處理紀錄已接在原月檢表後方；主管核准後才會產生正式合併 PDF。';
+        title.textContent = `處理完成，已送 ${supervisor} 核判`;
+        text.textContent = monthly
+          ? '處理紀錄已接在原月檢表後方；主管核准後才會產生正式合併 PDF。'
+          : '主管核准後才會產生正式處理紀錄 PDF；若被退回，會在 LINE 通知你補正。';
       } else {
         title.textContent = '本次異常已完成處理';
         text.textContent = '處理資料已留存並產生處理紀錄 PDF。';
       }
-      document.getElementById('handlingPdf').textContent = group.approved
+      document.getElementById('handlingPdf').textContent = group.approved && group.formType === '每月'
         ? '查看月檢與異常處理合併 PDF'
         : '查看異常處理紀錄 PDF';
       setLink('handlingPdf', group.handlingPdfUrl);
