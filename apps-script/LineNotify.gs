@@ -1074,6 +1074,7 @@ function buildIncidentSummaryFlex_(summary, pdfUrl) {
         layout: 'vertical',
         spacing: 'sm',
         contents: [
+          buildFlowProgressBox_(machineIncidentFlowProgress_({})),
           dailyIncidentFlexField_('設備', summary.equipmentName || '—', { weight: 'bold' }),
           dailyIncidentFlexField_('類別', summary.category || '—'),
           dailyIncidentFlexField_('日期', summary.reportDate || '—'),
@@ -1695,6 +1696,12 @@ function buildOpenIncidentBubble_(incident) {
       layout: 'vertical',
       spacing: 'sm',
       contents: [
+        buildFlowProgressBox_(machineIncidentFlowProgress_({
+          handlingApprovalStatus: incident.handlingApprovalStatus,
+          allCompleted: incident.status === '已完成',
+          supervisorName: incident.supervisorName,
+          items: [{ owner: incident.assignee || incident.owner }],
+        })),
         dailyIncidentFlexField_('設備', incident.equipmentName, { weight: 'bold' }),
         dailyIncidentFlexField_('類別', incident.category || incident.formType),
         dailyIncidentFlexField_('日期', incident.reportDate),
@@ -1961,6 +1968,174 @@ function dailyIncidentFlexField_(label, value, opts) {
   };
 }
 
+/**
+ * LINE 圖卡共用流程進度條：✓ 已完成、● 目前、○ 未到，下方標示目前卡在誰手上。
+ * @param {{steps: string[], current: number, holder?: string, note?: string}} progress
+ */
+function buildFlowProgressBox_(progress) {
+  const steps = (progress && progress.steps) || [];
+  // LINE 不接受空 contents 的 box，沒有步驟時放 filler，避免整張圖卡送不出。
+  if (!steps.length) return { type: 'filler' };
+  const current = Number(progress && progress.current) || 0;
+  const stepColor = index => (index < current ? '#137333' : (index === current ? '#1A73E8' : '#9AA0A6'));
+  const contents = [{
+    type: 'box',
+    layout: 'horizontal',
+    spacing: 'xs',
+    contents: steps.map((label, index) => ({
+      type: 'box',
+      layout: 'vertical',
+      flex: 1,
+      contents: [
+        {
+          type: 'text',
+          text: index < current ? '✓' : (index === current ? '●' : '○'),
+          size: 'sm',
+          align: 'center',
+          weight: 'bold',
+          color: stepColor(index),
+        },
+        {
+          type: 'text',
+          text: label,
+          size: 'xxs',
+          align: 'center',
+          wrap: true,
+          weight: index === current ? 'bold' : 'regular',
+          color: stepColor(index),
+        },
+      ],
+    })),
+  }];
+  const status = [progress && progress.note, progress && progress.holder].filter(Boolean).join('｜');
+  if (status) {
+    contents.push({
+      type: 'text',
+      text: '📍 ' + trimLineText_(status, 80),
+      size: 'xs',
+      wrap: true,
+      margin: 'sm',
+      color: progress.note ? '#B3261E' : '#174EA6',
+      weight: 'bold',
+    });
+  }
+  return {
+    type: 'box',
+    layout: 'vertical',
+    paddingAll: 'sm',
+    cornerRadius: 'md',
+    backgroundColor: '#F1F3F4',
+    margin: 'none',
+    contents,
+  };
+}
+
+/** 日常異常事件目前流程位置（通報 → 處理 → 主管審核 → 結案）。 */
+function dailyIncidentFlowProgress_(incident) {
+  incident = incident || {};
+  const steps = ['通報', '處理', '主管審核', '結案'];
+  const review = String(incident.reviewStatus || '');
+  if (review === '已結案') return { steps, current: 4, holder: '已結案', note: '' };
+  if (review === '待主管審核') {
+    return { steps, current: 2, holder: '審核主管：' + (incident.supervisor || '全部主管'), note: '' };
+  }
+  return {
+    steps,
+    current: 1,
+    holder: '承辦：' + (incident.owner || '尚未指派') + (incident.processStatus ? `（${incident.processStatus}）` : ''),
+    note: review === '退回補正' ? '主管退回補正' : '',
+  };
+}
+
+/** 每日檢機具異常處理完成，推給指定核判主管。 */
+function buildMachineIncidentReviewRequestFlex_(group, url, meta) {
+  const ownerName = (meta && meta.actorName) || (group.items || []).map(item => item.owner).filter(Boolean)[0] || '';
+  return {
+    type: 'flex',
+    altText: `🖊 機具異常待核判｜${group.equipmentName}`,
+    contents: {
+      type: 'bubble',
+      header: {
+        type: 'box',
+        layout: 'vertical',
+        backgroundColor: '#1A73E8',
+        paddingAll: 'md',
+        contents: [
+          { type: 'text', text: '🖊 機具異常處理待核判', color: '#FFFFFF', weight: 'bold', size: 'lg', wrap: true },
+          { type: 'text', text: `${group.formType || '檢查'}｜${(group.items || []).length} 項已處理`, color: '#E8F0FE', size: 'sm' },
+        ],
+      },
+      body: {
+        type: 'box',
+        layout: 'vertical',
+        spacing: 'sm',
+        contents: [
+          buildFlowProgressBox_(machineIncidentFlowProgress_(Object.assign({}, group, {
+            allCompleted: true,
+            handlingApprovalStatus: '待主管簽核',
+          }))),
+          dailyIncidentFlexField_('設備', group.equipmentName, { weight: 'bold' }),
+          dailyIncidentFlexField_('檢查日', group.reportDate),
+          dailyIncidentFlexField_('處理人', ownerName),
+          dailyIncidentFlexField_('完成日', (meta && meta.completedDate) || ''),
+          dailyIncidentFlexField_('照片', `${Number(group.photoCount) || 0} 張`),
+        ],
+      },
+      footer: {
+        type: 'box',
+        layout: 'vertical',
+        contents: [{
+          type: 'button',
+          style: 'primary',
+          color: '#1A73E8',
+          action: { type: 'uri', label: '查看並核判', uri: url },
+        }],
+      },
+    },
+  };
+}
+
+/** 每日檢機具異常主管核准後通知處理人。 */
+function buildMachineIncidentReviewResultFlex_(group) {
+  const pdfUrl = /^https?:\/\//.test(group.handlingPdfUrl || '') ? group.handlingPdfUrl : '';
+  return {
+    type: 'flex',
+    altText: `✅ 機具異常已核判歸檔｜${group.equipmentName}`,
+    contents: {
+      type: 'bubble',
+      header: {
+        type: 'box',
+        layout: 'vertical',
+        backgroundColor: '#137333',
+        paddingAll: 'md',
+        contents: [
+          { type: 'text', text: '✅ 機具異常已核判歸檔', color: '#FFFFFF', weight: 'bold', size: 'lg', wrap: true },
+        ],
+      },
+      body: {
+        type: 'box',
+        layout: 'vertical',
+        spacing: 'sm',
+        contents: [
+          buildFlowProgressBox_(machineIncidentFlowProgress_(group)),
+          dailyIncidentFlexField_('設備', group.equipmentName, { weight: 'bold' }),
+          dailyIncidentFlexField_('檢查日', group.reportDate),
+          dailyIncidentFlexField_('核判主管', group.handlingSupervisor),
+          dailyIncidentFlexField_('核判時間', group.handlingApprovedAt),
+          ...(group.reviewComment ? [dailyIncidentFlexField_('主管意見', group.reviewComment, { maxLen: 200 })] : []),
+        ],
+      },
+      ...(pdfUrl ? {
+        footer: {
+          type: 'box',
+          layout: 'vertical',
+          contents: [{ type: 'button', style: 'secondary', action: { type: 'uri', label: '查看處理紀錄 PDF', uri: pdfUrl } }],
+        },
+      } : {}),
+    },
+  };
+}
+
 function buildDailyIncidentCreatedFlex_(incident, opts) {
   opts = opts || {};
   const incidentId = incident.incidentId || '';
@@ -1992,6 +2167,7 @@ function buildDailyIncidentCreatedFlex_(incident, opts) {
       body: {
         type: 'box', layout: 'vertical', spacing: 'sm',
         contents: [
+          buildFlowProgressBox_(dailyIncidentFlowProgress_(incident)),
           dailyIncidentFlexField_('地點', incident.location, { weight: 'bold' }),
           dailyIncidentFlexField_('事項', incident.subject),
           dailyIncidentFlexField_('填報人', incident.reporter),
@@ -2147,6 +2323,7 @@ function buildDailyIncidentReturnedFlex_(incident) {
       body: {
         type: 'box', layout: 'vertical', spacing: 'sm',
         contents: [
+          buildFlowProgressBox_(dailyIncidentFlowProgress_(incident)),
           dailyIncidentFlexField_('地點', incident.location, { weight: 'bold' }),
           dailyIncidentFlexField_('事項', incident.subject),
           dailyIncidentFlexField_('承辦人', incident.owner),
@@ -2209,6 +2386,7 @@ function buildDailyIncidentApprovalFlex_(incident) {
       body: {
         type: 'box', layout: 'vertical', spacing: 'sm',
         contents: [
+          buildFlowProgressBox_(dailyIncidentFlowProgress_(incident)),
           dailyIncidentFlexField_('地點', incident.location, { weight: 'bold' }),
           dailyIncidentFlexField_('事項', incident.subject),
           dailyIncidentFlexField_('承辦人', incident.owner),
@@ -2248,6 +2426,7 @@ function buildDailyIncidentProcessingReviewFlex_(incident) {
       body: {
         type: 'box', layout: 'vertical', spacing: 'sm',
         contents: [
+          buildFlowProgressBox_(dailyIncidentFlowProgress_(incident)),
           dailyIncidentFlexField_('地點', incident.location, { weight: 'bold' }),
           dailyIncidentFlexField_('事項', incident.subject),
           dailyIncidentFlexField_('承辦人', incident.owner),
@@ -2298,6 +2477,7 @@ function buildDailyIncidentSupervisorCommentFlex_(incident) {
       body: {
         type: 'box', layout: 'vertical', spacing: 'sm',
         contents: [
+          buildFlowProgressBox_(dailyIncidentFlowProgress_(incident)),
           dailyIncidentFlexField_('地點', incident.location, { weight: 'bold' }),
           dailyIncidentFlexField_('事項', incident.subject),
           dailyIncidentFlexField_('承辦人', incident.owner),
@@ -2347,6 +2527,7 @@ function buildDailyIncidentClosedFlex_(incident) {
       body: {
         type: 'box', layout: 'vertical', spacing: 'sm',
         contents: [
+          buildFlowProgressBox_(dailyIncidentFlowProgress_(incident)),
           dailyIncidentFlexField_('地點', incident.location, { weight: 'bold' }),
           dailyIncidentFlexField_('事項', incident.subject),
           dailyIncidentFlexField_('填報人', incident.reporter),
@@ -2723,6 +2904,13 @@ function sendApprovalRequest_(record) {
   }
   const flex = buildApprovalRequestFlex_(record);
   const messages = withQuickReply_(flex);
+  // 異常處理人有指定核判主管時只送給他；找不到該主管才退回通知全部主管，避免簽核卡住。
+  if (record.supervisorKey || record.supervisorName) {
+    return linePushToSupervisorName_(record.supervisorName, messages, {
+      personKey: record.supervisorKey,
+      allowFallback: true,
+    });
+  }
   return linePushToSupervisors_(messages);
 }
 

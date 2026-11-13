@@ -676,6 +676,12 @@ function initializeDatabase_() {
       "處理簽核狀態",
       "處理簽核主管",
       "處理簽核時間",
+      "處理照片數",
+      "處理照片資料夾",
+      "指定主管",
+      "指定主管Key",
+      "處理人Key",
+      "主管核判意見",
     ],
     [],
   );
@@ -862,6 +868,12 @@ function normalizeMachineIncidentSheet_(ss) {
     "處理簽核狀態",
     "處理簽核主管",
     "處理簽核時間",
+    "處理照片數",
+    "處理照片資料夾",
+    "指定主管",
+    "指定主管Key",
+    "處理人Key",
+    "主管核判意見",
   ]);
   const lastCol = sheet.getLastColumn();
   const lastRow = sheet.getLastRow();
@@ -1696,6 +1708,8 @@ function listOpenIncidents_() {
       dueDate: toISO(data[i][idx("預計完成日")]),
       assignee: data[i][idx("負責人")],
       note: idx("備註") >= 0 ? data[i][idx("備註")] : "",
+      handlingApprovalStatus: idx("處理簽核狀態") >= 0 ? String(data[i][idx("處理簽核狀態")] || "") : "",
+      supervisorName: idx("指定主管") >= 0 ? String(data[i][idx("指定主管")] || "") : "",
     });
   }
   applyMachineIncidentTrackingContext_(incidents);
